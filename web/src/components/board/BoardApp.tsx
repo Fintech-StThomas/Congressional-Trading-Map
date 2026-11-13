@@ -92,6 +92,7 @@ export function BoardApp(props: Props) {
   const [view, setView] = useState<"board" | "table">("board");
   const [panel, setPanel] = useState<"delegation" | "cases">("delegation");
   const [open, setOpen] = useState<Edge | null>(null);
+  const [openGroup, setOpenGroup] = useState<Edge[] | null>(null);
   const trigger = useRef<Element | null>(null);
 
   const [chunks, setChunks] = useState<Record<string, StateChunk>>(props.initialChunks);
@@ -278,8 +279,7 @@ export function BoardApp(props: Props) {
   const selfId = center?.kind === "member" ? center.member.id : center?.kind === "org" ? center.org.id : "";
 
   const [resolving, setResolving] = useState(false);
-  const openEdge = useCallback((e: Edge, el: Element) => {
-    trigger.current = el;
+  const showEdge = useCallback((e: Edge) => {
     setOpen(e);
     const tie = (e as TieEdge)._tie;
     if (tie?.edge) {
@@ -291,6 +291,14 @@ export function BoardApp(props: Props) {
         .finally(() => setResolving(false));
     }
   }, []);
+  const openEdge = useCallback(
+    (e: Edge, el: Element, group?: Edge[]) => {
+      trigger.current = el;
+      setOpenGroup(group && group.length > 1 ? group : null);
+      showEdge(e);
+    },
+    [showEdge],
+  );
   const closeEdge = useCallback(() => {
     setOpen(null);
     const t = trigger.current as HTMLElement | SVGElement | null;
@@ -479,7 +487,7 @@ export function BoardApp(props: Props) {
         </aside>
       </div>
 
-      <EvidenceDrawer edge={open} book={book} sources={sources} range={range} onClose={closeEdge} loading={resolving} />
+      <EvidenceDrawer edge={open} book={book} sources={sources} range={range} onClose={closeEdge} loading={resolving} siblings={openGroup ?? undefined} onPick={showEdge} />
     </div>
   );
 }

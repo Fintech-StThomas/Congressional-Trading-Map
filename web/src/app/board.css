@@ -182,19 +182,36 @@ button.crumb:hover {
   border-radius: 4px;
   overflow: hidden;
   background-color: var(--felt);
+  /* One lamp above and slightly in front, a little above the middle: a warm
+     pool on the felt that falls off to near-black at the frame. */
   background-image:
+    radial-gradient(ellipse 46% 42% at 50% 36%, oklch(0.62 0.07 70 / 0.22), transparent 100%),
+    radial-gradient(ellipse 78% 70% at 50% 38%, transparent 30%, oklch(0.06 0.008 50 / 0.86) 100%),
     var(--felt-mottle),
-    var(--felt-grain),
-    radial-gradient(ellipse 85% 75% at 50% 45%, transparent 55%, oklch(0 0 0 / 0.38));
-  background-size: 600px, 240px, 100% 100%;
-  background-blend-mode: multiply, soft-light, normal;
+    var(--felt-grain);
+  background-size: 100% 100%, 100% 100%, 600px, 240px;
+  background-blend-mode: soft-light, normal, multiply, soft-light;
   box-shadow:
     inset 0 0 0 1px oklch(0 0 0 / 0.5),
-    inset 0 2px 18px oklch(0 0 0 / 0.55),
+    inset 0 3px 22px oklch(0 0 0 / 0.6),
     0 0 0 6px var(--frame),
-    0 0 0 7px var(--rule-soft);
+    0 0 0 7px var(--rule-soft),
+    0 18px 50px -20px oklch(0 0 0 / 0.9);
   margin: 7px;
   isolation: isolate;
+}
+/* The same fall-off over the map, so it sits in the room rather than on top of it. */
+.canvas__light {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 40% 36% at 50% 36%, oklch(0.9 0.06 75 / 0.05), transparent 100%),
+    radial-gradient(ellipse 80% 74% at 50% 38%, transparent 45%, oklch(0.05 0.008 50 / 0.5) 100%);
+}
+.canvas:not(.has-center) .canvas__light {
+  background: radial-gradient(ellipse 90% 85% at 50% 38%, transparent 60%, oklch(0.05 0.008 50 / 0.3) 100%);
 }
 .canvas__nomap {
   position: absolute;
@@ -383,37 +400,71 @@ button.crumb:hover {
   --w: 100%;
 }
 
+/* Lit objects. Each carries --sx/--sy (shadow offset, px, away from the lamp),
+   --sb (blur, softer further out), --dim (0 under the lamp, 1 at the edge) and
+   --lang (direction from the lamp). Set in BoardCanvas from the object's position. */
+.canvas {
+  --lit-shadow:
+    calc(var(--sx, 0) * 0.18px) calc(var(--sy, 2) * 0.18px + 1px) 1.5px oklch(0 0 0 / 0.42),
+    calc(var(--sx, 0) * 1px) calc(var(--sy, 2) * 1px + 2px) calc(var(--sb, 10) * 1px) -4px oklch(0 0 0 / 0.68);
+}
+.canvas__slip .slip {
+  box-shadow: var(--lit-shadow);
+}
+.canvas__center .print {
+  --shadow-print: 0 1px 1.5px oklch(0 0 0 / 0.4), 0 7px 15px -5px oklch(0 0 0 / 0.6);
+}
+
 /* pinned cards around the centre */
 .bcard {
   position: absolute;
   z-index: 3;
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 14px 11px 9px;
-  background: var(--paper);
+  /* Paper catches the lamp on the side facing it and greys a little toward the
+     dark edge; the floor (oklch 0.87) keeps ink-2 text above 4.5:1. */
+  background:
+    linear-gradient(var(--lang, 180deg), oklch(1 0.01 85 / 0.16), transparent 60%),
+    color-mix(in oklch, var(--paper), oklch(0.66 0.03 65) calc(var(--dim, 0) * 22%));
   color: var(--ink);
-  border: 0;
   border-radius: 1px;
-  box-shadow: var(--shadow-card);
-  text-align: left;
-  cursor: pointer;
+  box-shadow: var(--lit-shadow);
   transform: rotate(var(--tilt, 0deg));
   transition: transform 160ms ease-out, box-shadow 160ms ease-out;
   animation: card-pin 260ms cubic-bezier(0.2, 0.75, 0.25, 1) backwards;
-  animation-delay: calc(var(--i, 0) * 85ms + 220ms);
+  animation-delay: calc(var(--i, 0) * 55ms + 200ms);
 }
-.bcard:hover,
 .bcard.is-hot {
   transform: rotate(var(--tilt, 0deg)) translateY(-1px);
-  box-shadow: 0 1px 1px oklch(0 0 0 / 0.3), 0 10px 20px -6px oklch(0 0 0 / 0.7);
+  box-shadow:
+    calc(var(--sx, 0) * 0.3px) calc(var(--sy, 2) * 0.3px + 1.5px) 2px oklch(0 0 0 / 0.36),
+    calc(var(--sx, 0) * 1.5px) calc(var(--sy, 2) * 1.5px + 5px) calc(var(--sb, 10) * 1.4px) -5px oklch(0 0 0 / 0.72);
 }
-.bcard:focus-visible {
+.bcard:has(.bcard__open:focus-visible) {
   outline: 2px solid var(--focus);
   outline-offset: 3px;
 }
 .bcard.is-focus {
-  box-shadow: 0 0 0 2px var(--paper), 0 0 0 4px var(--ink), var(--shadow-card);
+  box-shadow: 0 0 0 2px var(--paper), 0 0 0 4px var(--ink), var(--lit-shadow);
+}
+.bcard__open {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  height: 100%;
+  min-height: 44px;
+  padding: 13px 34px 9px 11px;
+  background: none;
+  color: inherit;
+  border: 0;
+  border-radius: 1px;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  outline: none;
+}
+.bcard--centre {
+  display: flex;
+  gap: 9px;
 }
 .bcard__text {
   display: flex;
@@ -452,11 +503,59 @@ button.crumb:hover {
 .bcard--member .bcard__name {
   -webkit-line-clamp: 1;
 }
+.bcard__says {
+  margin-top: 2px;
+  font-size: 11.5px;
+  line-height: 1.25;
+  color: var(--red-ink);
+  font-weight: 550;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bcard__more {
+  color: var(--ink-2);
+  font-family: var(--mono);
+  font-size: 10.5px;
+}
+/* Separate, smaller control: re-centre on this card. 44px touch target. */
+.bcard__recentre {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid color-mix(in oklch, var(--ink) 30%, transparent);
+  border-radius: 50%;
+  background: color-mix(in oklch, var(--paper) 70%, transparent);
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: color 120ms, background 120ms, border-color 120ms;
+}
+.bcard__recentre::before {
+  content: "";
+  position: absolute;
+  inset: -9px;
+}
+.bcard__recentre:hover {
+  color: var(--paper);
+  background: var(--ink);
+  border-color: var(--ink);
+}
+.bcard__recentre:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px var(--ink);
+}
 .bcard .tag {
   position: absolute;
-  right: -6px;
+  left: -6px;
   bottom: -8px;
   transform: rotate(-3deg);
+  pointer-events: none;
 }
 .bcard--centre {
   position: relative;
@@ -486,7 +585,8 @@ button.crumb:hover {
   }
 }
 
-/* yarn */
+/* yarn: wool core, two twisted plies, stray fibres; frayed when the tie is
+   derived or thin. Shadows fall away from the lamp (--sx/--sy). */
 .yarns {
   position: absolute;
   inset: 0;
@@ -494,78 +594,129 @@ button.crumb:hover {
   pointer-events: none;
   overflow: visible;
 }
-.yarn {
-  outline: none;
-  cursor: pointer;
-}
-.yarn path {
+.yarns path {
   fill: none;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-.yarn__hit {
-  stroke: transparent;
-  stroke-width: 16px;
-  pointer-events: stroke;
+.yv {
+  transition: opacity 160ms ease-out;
 }
-.yarn__halo {
+.yv__halo {
   stroke: var(--focus);
   opacity: 0;
 }
-.yarn:focus-visible .yarn__halo {
-  opacity: 0.85;
+.yv.is-focus .yv__halo {
+  opacity: 0.9;
 }
-.yarn__under {
-  stroke: var(--red-under);
-  opacity: 0.85;
+.yv__shadow-soft {
+  stroke: oklch(0 0 0 / 0.16);
+  transform: translate(calc(var(--sx) * 0.7px), calc(var(--sy) * 0.7px + 2px));
+  transition: transform 180ms ease-out, opacity 180ms;
 }
-.yarn__main {
+.yv__shadow {
+  stroke: oklch(0.04 0.01 30 / 0.5);
+  transform: translate(calc(var(--sx) * 0.22px), calc(var(--sy) * 0.22px + 1px));
+  transition: transform 180ms ease-out, opacity 180ms;
+}
+.yv__lift {
+  transition: transform 180ms ease-out;
+}
+.yv__core {
   stroke: var(--red);
-  transition: stroke 140ms ease-out, opacity 140ms;
+  transition: stroke 160ms ease-out;
 }
-.yarn__twist {
-  stroke: oklch(0.82 0.11 35 / 0.45);
-  stroke-dasharray: 1.2 3.4;
+.yv__fuzz {
+  stroke: var(--yarn-fibre);
+  stroke-linecap: butt;
+  stroke-dasharray: 0.35 1.6;
+  opacity: 0.85;
 }
-.yarn--derived .yarn__main,
-.yarn--derived .yarn__under {
-  stroke-dasharray: 9 6;
+.yv__ply {
+  stroke-linecap: butt;
+  stroke-dasharray: 1.5 2.1;
 }
-.yarn--derived .yarn__twist {
-  stroke-dasharray: none;
-  opacity: 0;
+.yv__ply--dark {
+  stroke: var(--yarn-ply-dark);
 }
-.yarn--weak .yarn__main,
-.yarn--weak .yarn__under {
-  stroke-dasharray: 2.5 5;
+.yv__ply--lite {
+  stroke: var(--yarn-ply-lite);
+  stroke-dashoffset: 1.8;
+  transition: stroke 160ms ease-out;
 }
-.yarn--weak .yarn__twist {
-  opacity: 0;
+.yv--frayed .yv__core {
+  stroke: color-mix(in oklch, var(--red) 88%, var(--felt));
 }
-.yarn--context .yarn__main {
+.yv--frayed .yv__ply--lite {
+  stroke-dasharray: 1.2 2.6;
+  opacity: 0.8;
+}
+.yv--frayed .yv__fuzz {
+  stroke-dasharray: 0.3 1.1;
+  opacity: 1;
+}
+.yv__strand {
+  stroke: var(--yarn-fibre);
+  stroke-width: 0.7px;
+  opacity: 0.95;
+}
+.yarn__breaks {
+  stroke: white;
+  stroke-width: 44px;
+  stroke-linecap: butt;
+  fill: none;
+}
+.yv--context .yv__core {
   stroke: var(--context);
 }
-.yarn--context .yarn__under {
-  stroke: var(--context-under);
+.yv--context .yv__shadow {
+  stroke: oklch(0 0 0 / 0.4);
 }
-.yarn.is-hot .yarn__main {
+/* Hover: the string lifts off the felt and catches more light. */
+.yv.is-hot .yv__core {
   stroke: var(--red-hot);
 }
-.yarn--context.is-hot .yarn__main {
+.yv.is-hot .yv__ply--lite {
+  stroke: oklch(0.88 0.1 45 / 0.9);
+}
+.yv.is-hot .yv__lift {
+  transform: translate(calc(var(--sx) * -0.08px), calc(var(--sy) * -0.08px - 0.6px));
+}
+.yv.is-hot .yv__shadow {
+  transform: translate(calc(var(--sx) * 0.5px), calc(var(--sy) * 0.5px + 2.4px));
+  opacity: 0.75;
+}
+.yv.is-hot .yv__shadow-soft {
+  transform: translate(calc(var(--sx) * 1.1px), calc(var(--sy) * 1.1px + 4px));
+}
+.yv--context.is-hot .yv__core {
   stroke: var(--text);
 }
-.yarn.is-dim {
+.yv.is-dim {
   opacity: 0.38;
+}
+/* The interactive layer: an invisible 22px band per string, above the yarn. */
+.yarn {
+  stroke: transparent;
+  stroke-width: 22px;
+  pointer-events: stroke;
+  cursor: pointer;
+  outline: none;
+}
+@media (pointer: coarse) {
+  .yarn {
+    stroke-width: 44px;
+  }
 }
 .yarn__reveal {
   fill: none;
   stroke: white;
-  stroke-width: 26px;
+  stroke-width: 70px;
   stroke-linecap: round;
   stroke-dasharray: 1 1;
   stroke-dashoffset: 1;
-  animation: yarn-draw 300ms cubic-bezier(0.3, 0.6, 0.2, 1) forwards;
-  animation-delay: calc(var(--i, 0) * 85ms + 100ms);
+  animation: yarn-draw 320ms cubic-bezier(0.3, 0.6, 0.2, 1) forwards;
+  animation-delay: calc(var(--i, 0) * 55ms + 80ms);
 }
 @keyframes yarn-draw {
   to {
@@ -575,19 +726,22 @@ button.crumb:hover {
 
 .pinhead {
   animation: card-fade 200ms ease-out backwards;
-  animation-delay: calc(var(--i, 0) * 85ms + 220ms);
+  animation-delay: calc(var(--i, 0) * 55ms + 200ms);
 }
 .pinhead__shadow {
-  fill: oklch(0 0 0 / 0.45);
+  fill: oklch(0 0 0 / 0.5);
 }
 .pinhead__head {
   fill: var(--pin);
-  stroke: oklch(0.18 0.01 60);
+  stroke: oklch(0.14 0.01 60);
   stroke-width: 0.6;
+}
+.pinhead__sheen {
+  fill: oklch(0.55 0.01 70 / 0.45);
 }
 .pinhead__glint {
   fill: var(--pin-glint);
-  opacity: 0.85;
+  opacity: 0.95;
 }
 @keyframes card-fade {
   from {
@@ -598,25 +752,44 @@ button.crumb:hover {
 .yarnlabel {
   position: absolute;
   z-index: 8;
-  transform: translate(-50%, 10px);
+  transform: translate(-50%, 12px);
   display: flex;
-  gap: 8px;
-  align-items: baseline;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 300px;
   background: var(--frame);
   color: var(--text);
   border: 1px solid var(--rule);
-  padding: 5px 9px;
+  padding: 6px 10px 7px;
   border-radius: var(--r-sm);
   font-size: 12.5px;
-  white-space: nowrap;
   pointer-events: none;
-  box-shadow: 0 6px 16px -6px oklch(0 0 0 / 0.8);
+  box-shadow: 0 8px 18px -6px oklch(0 0 0 / 0.85);
+}
+.yarnlabel__line {
+  font-weight: 600;
+  line-height: 1.3;
+}
+.yarnlabel__who {
+  color: var(--text);
+}
+.yarnlabel__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  align-items: baseline;
+  color: var(--text-2);
+  font-size: 12px;
 }
 .yarnlabel__type {
-  font-weight: 650;
+  color: var(--text-2);
 }
 .yarnlabel .mono {
   color: var(--text-2);
+}
+.yarnlabel__cue {
+  color: var(--text);
+  font-style: italic;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -670,6 +843,11 @@ button.crumb:hover {
   fill: none;
   stroke: var(--red);
   stroke-linecap: round;
+}
+.legend__thick .legend__ply {
+  stroke: var(--yarn-ply-lite);
+  stroke-linecap: butt;
+  stroke-dasharray: 1.5 2.1;
 }
 .legend .tag--inline {
   margin-left: 0;
@@ -924,6 +1102,44 @@ button.crumb:hover {
   border-bottom: 1px solid var(--paper-edge);
   flex: none;
 }
+.drawer__tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 10px 22px 0;
+  flex: none;
+}
+.drawer__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 4px 10px;
+  border: 1px solid var(--paper-edge);
+  border-radius: var(--r-sm);
+  background: var(--paper-2);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 550;
+  cursor: pointer;
+}
+.drawer__tab .mono {
+  font-size: 11.5px;
+}
+.drawer__tab[aria-selected="true"] {
+  background: var(--paper);
+  color: var(--ink);
+  border-color: var(--ink);
+  box-shadow: inset 0 -2px 0 var(--red-ink);
+}
+.drawer__tab .linesample__core,
+.drawer__tab .linesample__fibre {
+  stroke: var(--red-ink);
+}
+.drawer__tab .linesample__shadow {
+  stroke: oklch(0 0 0 / 0.15);
+}
 .drawer__kicker {
   font-family: var(--type);
   font-weight: 700;
@@ -983,8 +1199,12 @@ button.crumb:hover {
   border-radius: 999px;
   color: var(--ink-2);
 }
-.marks .linesample path {
+.marks .linesample__core,
+.marks .linesample__fibre {
   stroke: var(--red-ink);
+}
+.marks .linesample__shadow {
+  stroke: oklch(0 0 0 / 0.18);
 }
 .facts {
   display: grid;

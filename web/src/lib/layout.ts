@@ -95,7 +95,28 @@ export function isClear(placed: Rect[], obstacles: Rect[] = []): boolean {
   return true;
 }
 
-export type Yarn = { d: string; mid: { x: number; y: number }; length: number };
+type Pt = { x: number; y: number };
+export type Yarn = { d: string; mid: Pt; length: number; p0: Pt; c: Pt; p1: Pt };
+
+/** The yarn's path with its sag scaled by `k` (1 = at rest): used for the settle sway. */
+export function yarnAt(y: Pick<Yarn, "p0" | "c" | "p1">, k: number): string {
+  const r = (v: number) => Math.round(v * 10) / 10;
+  const mx = (y.p0.x + y.p1.x) / 2, my = (y.p0.y + y.p1.y) / 2;
+  return `M${r(y.p0.x)} ${r(y.p0.y)}Q${r(mx + (y.c.x - mx) * k)} ${r(my + (y.c.y - my) * k)} ${r(y.p1.x)} ${r(y.p1.y)}`;
+}
+
+/** A point on the yarn at parameter t, and the unit normal there. */
+export function yarnPoint(y: Pick<Yarn, "p0" | "c" | "p1">, t: number, k = 1): { x: number; y: number; nx: number; ny: number } {
+  const mx = (y.p0.x + y.p1.x) / 2, my = (y.p0.y + y.p1.y) / 2;
+  const cx = mx + (y.c.x - mx) * k, cy = my + (y.c.y - my) * k;
+  const u = 1 - t;
+  const x = u * u * y.p0.x + 2 * u * t * cx + t * t * y.p1.x;
+  const yy = u * u * y.p0.y + 2 * u * t * cy + t * t * y.p1.y;
+  const dx = 2 * u * (cx - y.p0.x) + 2 * t * (y.p1.x - cx);
+  const dy = 2 * u * (cy - y.p0.y) + 2 * t * (y.p1.y - cy);
+  const l = Math.hypot(dx, dy) || 1;
+  return { x, y: yy, nx: -dy / l, ny: dx / l };
+}
 
 /** Where a ray from the centre of `r` towards `to` leaves the rectangle, pulled in by `inset`. */
 function exitPoint(r: Rect, to: { x: number; y: number }, inset: number) {
@@ -126,5 +147,5 @@ export function yarn(from: Rect, pin: { x: number; y: number }, slack = 1, shift
   const c = { x: (s.x + pin.x) / 2, y: (s.y + pin.y) / 2 + sag };
   const mid = { x: 0.25 * s.x + 0.5 * c.x + 0.25 * pin.x, y: 0.25 * s.y + 0.5 * c.y + 0.25 * pin.y };
   const r = (v: number) => Math.round(v * 10) / 10;
-  return { d: `M${r(s.x)} ${r(s.y)}Q${r(c.x)} ${r(c.y)} ${r(pin.x)} ${r(pin.y)}`, mid, length: L };
+  return { d: `M${r(s.x)} ${r(s.y)}Q${r(c.x)} ${r(c.y)} ${r(pin.x)} ${r(pin.y)}`, mid, length: L, p0: s, c, p1: { x: pin.x, y: pin.y } };
 }

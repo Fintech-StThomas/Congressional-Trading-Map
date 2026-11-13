@@ -155,3 +155,68 @@ export function plainStat(stat: NonNullable<Edge["stat"]>): string {
   const exp = stat.expected < 1 ? "less than 1" : `about ${Math.round(stat.expected).toLocaleString("en-US")}`;
   return `Seen ${stat.observed.toLocaleString("en-US")} ${stat.observed === 1 ? "time" : "times"}; ${exp} expected by chance.`;
 }
+
+/** Weak or derived strings are drawn frayed. Never the only signal: see `frayCue`. */
+export function isFrayed(e: Pick<Edge, "basis" | "weak" | "family">): boolean {
+  return e.family !== "context" && (e.basis === "derived" || e.weak);
+}
+
+/** The words that go with a frayed string, so appearance is never the only cue. */
+export function frayCue(e: Pick<Edge, "basis" | "weak">): string | null {
+  if (e.basis === "derived") return e.weak ? "statistical, not filed; thin evidence" : "statistical, not filed";
+  if (e.weak) return "thin evidence";
+  return null;
+}
+
+function surname(name: string): string {
+  const parts = name.replace(/,.*$/, "").trim().split(/\s+/).filter((p) => !/^(jr\.?|sr\.?|ii|iii|iv)$/i.test(p));
+  return parts[parts.length - 1] ?? name;
+}
+
+/**
+ * What a string says, with the card at its far end as the subject:
+ * "gave $2K to Rooney", "spent $238 opposing Rooney", "received $5K from its PAC".
+ * `centre` is the name of the board's centre (member or organisation).
+ */
+export function tiePhrase(e: Edge, cardId: string, centre: string, range?: [number, number]): string {
+  const amt = amountText(filteredAmount(e, range), true);
+  const $ = amt ? ` ${amt}` : "";
+  const cardIsFrom = e.from.id === cardId;
+  const cardIsOrg = (cardIsFrom ? e.from : e.to).kind === "org";
+  const c = cardIsOrg ? surname(centre) : "this member";
+  switch (e.type) {
+    case "funds":
+      return cardIsFrom ? `gave${$} to ${surname(centre)}` : `received${$} from ${surname(centre)}`;
+    case "outside_spending": {
+      const side = spendingSideOf(e);
+      const verb = side === "oppose" ? "opposing" : side === "support" ? "supporting" : "on the race of";
+      return cardIsOrg ? `spent${$} ${verb} ${c}` : `${amt ?? "money"} spent ${side === "oppose" ? "against" : "for"} them`;
+    }
+    case "pac_money":
+      return cardIsOrg ? `PAC gave${$} to ${c}` : `received${$} from its PAC`;
+    case "employee_money":
+      return cardIsOrg ? `employees gave${$} to ${c}` : `received${$} from its employees`;
+    case "lobbyist_money":
+      return cardIsOrg ? `lobbyists gave${$} to ${c}` : `received${$} from its lobbyists`;
+    case "paid_travel":
+      return cardIsOrg ? `paid${$} for ${c}'s travel` : `travel paid${$}`;
+    case "traded":
+      return cardIsOrg ? `stock traded by ${c}'s household${amt ? `, ${amt}` : ""}` : `household traded this stock${amt ? `, ${amt}` : ""}`;
+    case "owns":
+      return cardIsOrg ? `held by ${c}${amt ? `, ${amt}` : ""}` : `holds this stock${amt ? `, ${amt}` : ""}`;
+    case "traded_together":
+      return `traded the same stocks close in time (statistical)`;
+    case "shared_donors":
+      return `shares donors (statistical)`;
+    case "fundraises_with":
+      return `joint fundraising committee`;
+    default:
+      return typeLabel(e).toLowerCase();
+  }
+}
+
+function spendingSideOf(e: Pick<Edge, "note" | "via">): "support" | "oppose" | null {
+  if (e.note === "oppose" || e.via?.id.endsWith(":oppose")) return "oppose";
+  if (e.note === "support" || e.via?.id.endsWith(":support")) return "support";
+  return null;
+}

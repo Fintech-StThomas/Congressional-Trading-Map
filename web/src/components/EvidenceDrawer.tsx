@@ -19,6 +19,9 @@ type Props = {
   onClose: () => void;
   /** The full record is being fetched. */
   loading?: boolean;
+  /** Every string to the same card, when the drawer was opened from a card. */
+  siblings?: Edge[];
+  onPick?: (e: Edge) => void;
 };
 
 function NodeLink({ n, book }: { n: NodeRef; book: NameBook }) {
@@ -53,14 +56,14 @@ function LedgerOnly({ edge }: { edge: Edge }) {
   );
 }
 
-export function EvidenceDrawer({ edge, book, sources, range, onClose, loading }: Props) {
+export function EvidenceDrawer({ edge, book, sources, range, onClose, loading, siblings, onPick }: Props) {
   const ref = useRef<HTMLElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
   const open = Boolean(edge);
 
   useEffect(() => {
     if (!open) return;
-    titleRef.current?.focus();
+    if (!(document.activeElement instanceof HTMLElement && document.activeElement.classList.contains("drawer__tab"))) titleRef.current?.focus();
     const onKey = (ev: KeyboardEvent) => {
       if (ev.key === "Escape") {
         ev.stopPropagation();
@@ -88,6 +91,33 @@ export function EvidenceDrawer({ edge, book, sources, range, onClose, loading }:
           </svg>
         </button>
       </div>
+      {siblings && siblings.length > 1 && onPick && (
+        <div className="drawer__tabs" role="tablist" aria-label="Strings to this card">
+          {siblings.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              role="tab"
+              aria-selected={s.id === edge.id}
+              className="drawer__tab"
+              onClick={() => onPick(s)}
+              onKeyDown={(ev) => {
+                if (ev.key !== "ArrowRight" && ev.key !== "ArrowLeft") return;
+                ev.preventDefault();
+                const i = siblings.findIndex((x) => x.id === s.id);
+                const next = siblings[(i + (ev.key === "ArrowRight" ? 1 : siblings.length - 1)) % siblings.length];
+                onPick(next);
+                const tabs = (ev.currentTarget.parentElement?.children ?? []) as HTMLCollectionOf<HTMLElement>;
+                tabs[siblings.indexOf(next)]?.focus();
+              }}
+            >
+              <LineSample style={stringStyle(s)} width={18} />
+              {typeLabel(s)}
+              <span className="mono">{amountText(filteredAmount(s, range), true) ?? `${count(s.count)} rec.`}</span>
+            </button>
+          ))}
+        </div>
+      )}
       <div className="drawer__body">
         <h2 id="drawer-title" ref={titleRef} tabIndex={-1}>
           {typeLabel(edge)}
