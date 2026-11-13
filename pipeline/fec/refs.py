@@ -112,6 +112,18 @@ class Companies:
     names: dict[str, str]          # org id -> display name (fallback only; may be empty)
 
 
+def sec_company_info() -> dict[str, dict]:
+    """org id -> {name, ticker, cik} from SEC company_tickers.json (first listed ticker per CIK)."""
+    path = download.generic(SEC_TICKERS, "company_tickers.json")
+    data = json.loads(path.read_text(encoding="utf-8"))
+    out: dict[str, dict] = {}
+    for key in sorted(data, key=lambda k: int(k)):   # file order = SEC's ranking; keep the first ticker
+        row = data[key]
+        oid = f"co:{int(row['cik_str'])}"
+        out.setdefault(oid, {"name": row["title"], "ticker": row.get("ticker"), "cik": int(row["cik_str"])})
+    return out
+
+
 def load_companies(prefer_shared: bool = True) -> Companies:
     if prefer_shared and COMPANY_NAMES.exists():
         raw = json.loads(COMPANY_NAMES.read_text(encoding="utf-8"))

@@ -10,6 +10,7 @@ and prints the audit and sanity checks.
 from __future__ import annotations
 
 import argparse
+import heapq
 import json
 import os
 import sys
@@ -46,6 +47,57 @@ def write_jsonl(path: Path, rows: list[dict]) -> tuple[int, int]:
             f.write(line + "\n")
     os.replace(tmp, path)
     return len(lines), path.stat().st_size
+
+
+class Summary:
+    """Small running summaries so edges never have to be held in memory."""
+
+    def __init__(self) -> None:
+        self.by_type: Counter = Counter()
+        self.pm_sizes: list[tuple[float, int, bool]] = []   # pac_money (exact, bytes, to current member)
+        self.top: dict[str, list] = {"org": [], "pac_money": [], "funds": []}
+
+    def _push(self, name: str, amt: float, e: dict) -> None:
+        h = self.top[name]
+        item = (amt, e["type"], e["from"]["id"], e["to"]["id"], (e.get("via") or {}).get("id") or "")
+        if len(h) < 20:
+            heapq.heappush(h, (item, _slim(e)))
+        elif item > h[0][0]:
+            heapq.heapreplace(h, (item, _slim(e)))
+
+    def add(self, e: dict, nbytes: int, current: set[str]) -> None:
+        self.by_type[e["type"]] += 1
+        amt = e["amount"]["exact"]
+        if e["type"] == "pac_money":
+            self.pm_sizes.append((amt, nbytes, e["to"]["id"] in current))
+            self._push("pac_money", amt, e)
+        if e["from"]["kind"] == "org" and amt is not None:
+            self._push("org", amt, e)
+        if e["type"] == "funds":
+            self._push("funds", amt, e)
+
+    def tops(self, name: str) -> list[dict]:
+        return [e for _, e in sorted(self.top[name], key=lambda x: x[0], reverse=True)]
+
+
+def _slim(e: dict) -> dict:
+    return {"type": e["type"], "from": e["from"], "to": e["to"], "via": e["via"], "amount": e["amount"],
+            "count": e["count"]}
+
+
+def write_jsonl_stream(path: Path, rows, summ: "Summary", current: set[str]) -> tuple[int, int]:
+    """Write rows (already in deterministic order) one per line; key-sorted JSON."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    n = 0
+    with open(tmp, "w", encoding="utf-8") as f:
+        for r in rows:
+            line = dumps(r)
+            f.write(line + "\n")
+            summ.add(r, len(line.encode("utf-8")) + 1, current)
+            n += 1
+    os.replace(tmp, path)
+    return n, path.stat().st_size
 
 
 def table(title: str, headers: tuple, rows: list[tuple]) -> None:
@@ -107,39 +159,54 @@ def main(argv: list[str] | None = None) -> int:
     build.resolve_orgs(con, companies, overrides, report)
     build.edge_inputs(con)
     member_names = {b: m["name"] for b, m in members.info.items()}
-    edges, stats = build.aggregate(con, member_names)
+    current = {b for b, m in members.info.items() if m.get("current")}
+    summ = Summary()
+    stats: dict = {}
+    used_orgs: set[str] = set()
+    below = 0
+    sizes = {}
+
+    def checked(edges):
+        nonlocal below
+        for e in edges:
+            # Contract checks the assembler also enforces.
+            assert e["evidence"], e
+            assert sum(y["n"] for y in e["by_year"]) == e["count"], e
+            if e["amount"]["exact"] is not None:
+                assert abs(sum(y["exact"] for y in e["by_year"]) - e["amount"]["exact"]) < 0.005, e
+                if e["amount"]["exact"] < args.min_total:
+                    below += 1
+                    continue
+            for end in (e["from"], e["to"]):
+                if end["kind"] == "member":
+                    assert end["id"] in members.info, end
+                else:
+                    used_orgs.add(end["id"])
+            yield e
+
+    for t, path in EDGE_FILES.items():
+        if t == "fundraises_with":
+            src = iter(build.fundraises_with(con, members, cycles, report))
+        else:
+            src = build.aggregate(con, member_names, t, stats)
+        n, size = write_jsonl_stream(path, checked(src), summ, current)
+        sizes[path.name] = {"edges": n, "bytes": size}
+        print(f"  wrote {path.name}: {n:,} edges, {size / 2**20:,.1f} MiB", flush=True)
     report.update(stats)
     if args.min_total > 0:
-        before = len(edges)
-        edges = [e for e in edges if e["amount"]["exact"] >= args.min_total]
-        report["min_total_threshold"] = {"value": args.min_total, "edges_dropped": before - len(edges)}
-    fw = build.fundraises_with(con, members, cycles, report)
-    all_edges = edges + fw
+        report["min_total_threshold"] = {"value": args.min_total, "edges_dropped": below}
 
-    # Contract checks the assembler also enforces.
-    for e in all_edges:
-        assert e["evidence"], e
-        assert sum(y["n"] for y in e["by_year"]) == e["count"], e
-        if e["amount"]["exact"] is not None:
-            assert abs(sum(y["exact"] for y in e["by_year"]) - e["amount"]["exact"]) < 0.005, e
-        for end in (e["from"], e["to"]):
-            if end["kind"] == "member":
-                assert end["id"] in members.info, end
-
-    orgs = build.org_records(con, all_edges)
-    by_type = defaultdict(list)
-    for e in all_edges:
-        by_type[e["type"]].append(e)
-    sizes = {}
-    for t, path in EDGE_FILES.items():
-        n, size = write_jsonl(path, by_type.get(t, []))
-        sizes[path.name] = {"edges": n, "bytes": size}
+    orgs = build.org_records(con, used_orgs, refs.sec_company_info(), report)
+    lacking = used_orgs - {o["id"] for o in orgs}
+    if lacking:
+        raise SystemExit(f"self-check failed: {len(lacking)} edge org endpoints lack an org record")
     n, size = write_jsonl(ORG_FILE, orgs)
     sizes[ORG_FILE.name] = {"orgs": n, "bytes": size}
     report["outputs"] = sizes
+    print(f"self-check: all {len(used_orgs):,} org endpoints have an org record")
 
     _audit_tables(con, report)
-    _sanity(con, members, report, all_edges, sizes)
+    _sanity(con, members, report, summ, sizes)
     _write_sources(report)
     print(f"\ndone in {time.monotonic() - t0:.0f}s")
     return 0
@@ -184,12 +251,12 @@ def _audit_tables(con, report: dict) -> None:
           [(c, (nm or "")[:60], n, float(s)) for c, nm, n, s in earm])
 
 
-def _sanity(con, members: refs.Members, report: dict, edges: list[dict], sizes: dict) -> None:
+def _sanity(con, members: refs.Members, report: dict, summ: Summary, sizes: dict) -> None:
     names = {b: m["name"] for b, m in members.info.items()}
     current = {b for b, m in members.info.items() if m.get("current")}
 
     # edges by type
-    ct = Counter(e["type"] for e in edges)
+    ct = summ.by_type
     table("edges by type", ("type", "edges"), sorted(ct.items()))
     report["edges_by_type"] = dict(sorted(ct.items()))
     table("output files", ("file", "rows", "bytes"),
@@ -198,8 +265,7 @@ def _sanity(con, members: refs.Members, report: dict, edges: list[dict], sizes: 
     if big:
         print(f"\nWARNING: over 150 MB: {big}. Nothing was truncated; consider --min-total.")
         # what a threshold would do
-        pm = [(e["amount"]["exact"], len(dumps(e)) + 1, e["to"]["id"] in current)
-              for e in edges if e["type"] == "pac_money"]
+        pm = summ.pm_sizes
         report["size_options_pac_money"] = []
         for thr in (0, 1000, 2500, 5000, 10000):
             keep = [x for x in pm if x[0] >= thr]
@@ -291,19 +357,19 @@ def _sanity(con, members: refs.Members, report: dict, edges: list[dict], sizes: 
     orgnames = dict(q(con, "SELECT pac_id, name FROM giver_org"))
     def olabel(ref):
         return orgnames.get(ref["id"], ref["id"])
-    om = sorted((e for e in edges if e["from"]["kind"] == "org"), key=lambda e: -e["amount"]["exact"])[:20]
+    om = summ.tops("org")
     report["top_org_member_edges"] = [{"type": e["type"], "from": e["from"]["id"], "via": e["via"], "to": e["to"]["id"],
                                        "exact": e["amount"]["exact"], "count": e["count"]} for e in om]
     table("top 20 org -> member edges by dollars", ("type", "from", "via", "to", "dollars", "n"),
           [(e["type"], f"{e['from']['id']} {olabel(e['from'])[:30]}", (e["via"] or {}).get("name", "")[:34],
             label(e["to"])[:22], float(e["amount"]["exact"]), e["count"]) for e in om])
-    om2 = sorted((e for e in edges if e["type"] == "pac_money"), key=lambda e: -e["amount"]["exact"])[:20]
+    om2 = summ.tops("pac_money")
     report["top_pac_money_edges"] = [{"from": e["from"]["id"], "via": e["via"], "to": e["to"]["id"],
                                       "exact": e["amount"]["exact"], "count": e["count"]} for e in om2]
     table("top 20 pac_money edges by dollars", ("from", "via", "to", "dollars", "n"),
           [(f"{e['from']['id']} {olabel(e['from'])[:34]}", (e["via"] or {}).get("name", "")[:34],
             label(e["to"])[:22], float(e["amount"]["exact"]), e["count"]) for e in om2])
-    fm = sorted((e for e in edges if e["type"] == "funds"), key=lambda e: -e["amount"]["exact"])[:20]
+    fm = summ.tops("funds")
     report["top_funds_edges"] = [{"from": e["from"]["id"], "via": e["via"], "to": e["to"]["id"],
                                   "exact": e["amount"]["exact"], "count": e["count"]} for e in fm]
     table("top 20 member -> member funds edges by dollars", ("from", "via", "to", "dollars", "n"),

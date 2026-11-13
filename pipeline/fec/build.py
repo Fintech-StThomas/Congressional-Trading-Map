@@ -196,7 +196,10 @@ def classify_rows(con: duckdb.DuckDBPyConnection, cycles: list[int], today: str)
       SELECT cycle, line_no, CMTE_ID, AMNDT_IND, RPT_TP, TRANSACTION_PGI, IMAGE_NUM, TRANSACTION_TP AS tp, ENTITY_TP, NAME,
              OTHER_ID, CAND_ID, TRAN_ID, FILE_NUM, MEMO_CD, MEMO_TEXT, SUB_ID,
              try_cast(TRANSACTION_AMT AS DECIMAL(18,2)) AS amt,
-             try_strptime(TRANSACTION_DT, '%m%d%Y')::DATE AS dt,
+             coalesce(try_strptime(TRANSACTION_DT, '%m%d%Y')::DATE,
+                      CASE WHEN length(IMAGE_NUM) = 18
+                           THEN try_strptime(substr(IMAGE_NUM, 1, 8), '%Y%m%d')::DATE END) AS dt,
+             (try_strptime(TRANSACTION_DT, '%m%d%Y') IS NULL) AS date_fallback,
              TRANSACTION_AMT AS amt_raw
       FROM pas2 WHERE cycle IN ({cyc})""")
     # Duplicate re-reports: same filer, same transaction id (or, for paper rows without one, the same
@@ -305,6 +308,8 @@ def resolve_orgs(con: duckdb.DuckDBPyConnection, companies: Companies, overrides
             kind = "pac"
         else:
             kind = "other"
+        if nm is None:
+            kind = "other"
         pac_id = f"pac:{cmte}"
         out.append((cmte, pac_id, nm or f"FEC committee {cmte}", kind, org, how or "none",
                     conn_clean or None, nm is None))
@@ -341,7 +346,7 @@ def edge_inputs(con: duckdb.DuckDBPyConnection) -> None:
              WHEN r.rule = 'keep:outside_oppose' THEN 'oppose' END AS direction,
         CASE WHEN r.rule = 'keep:funds' AND r.giver_auth_member IS NULL THEN 'leadership PAC' END AS lpac,
         r.CMTE_ID, coalesce(c.CMTE_NM, 'FEC committee ' || r.CMTE_ID) AS giver_name,
-        r.tp, r.amt, r.dt, r.NAME AS counterparty, r.IMAGE_NUM, r.TRAN_ID, r.SUB_ID, r.cycle
+        r.tp, r.amt, r.dt, r.date_fallback, r.NAME AS counterparty, r.IMAGE_NUM, r.TRAN_ID, r.SUB_ID, r.cycle
       FROM p_rules r
       LEFT JOIN giver_org g USING (CMTE_ID)
       LEFT JOIN cm_latest c USING (CMTE_ID)
@@ -354,6 +359,8 @@ def edge_inputs(con: duckdb.DuckDBPyConnection) -> None:
 def _evidence_label(r: dict, member_names: dict[str, str]) -> str:
     amt = money(r["amt"])
     d = r["dt"].isoformat()
+    if r.get("date_fallback"):
+        d = f"{d} (filing date; no transaction date on the record)"
     tp = r["tp"]
     if r["type"] == "outside_spending":
         who = member_names.get(r["to_id"], r["to_id"])
@@ -373,56 +380,62 @@ def _evidence_url(r: dict) -> str:
     return f"https://www.fec.gov/data/committee/{r['CMTE_ID']}/"
 
 
-def aggregate(con: duckdb.DuckDBPyConnection, member_names: dict[str, str]) -> tuple[list[dict], dict]:
-    """Aggregate e_in into edges. Returns (edges, stats)."""
-    key = "type, from_kind, from_id, to_id, coalesce(via_id, ''), coalesce(direction, '')"
-    tot = q(con, f"""SELECT type, from_kind, from_id, to_id, via_id, any_value(via_name), direction,
-                            any_value(lpac), sum(amt), count(*), min(dt), max(dt)
-                     FROM e_in GROUP BY {key}, via_id, direction ORDER BY 1,2,3,4,5,7""")
-    years = q(con, f"""SELECT type, from_kind, from_id, to_id, coalesce(via_id,''), coalesce(direction,''),
-                              year(dt) y, count(*), sum(amt)
-                       FROM e_in GROUP BY {key}, y ORDER BY 1,2,3,4,5,6,7""")
-    ev = q(con, f"""SELECT * FROM (
-                      SELECT type, from_kind, from_id, to_id, coalesce(via_id,'') v, coalesce(direction,'') d,
-                             CMTE_ID, giver_name, tp, amt, dt, counterparty, IMAGE_NUM, TRAN_ID, SUB_ID, direction,
-                             row_number() OVER (PARTITION BY {key} ORDER BY amt DESC, dt DESC, SUB_ID) rk
-                      FROM e_in WHERE amt > 0) WHERE rk <= 5 ORDER BY 1,2,3,4,5,6,rk""")
-    by_year: dict[tuple, list] = {}
-    for t, fk, f, to, v, d, y, n, s in years:
-        by_year.setdefault((t, fk, f, to, v, d), []).append(
-            {"y": int(y), "n": int(n), "low": _num(s), "high": _num(s), "exact": _num(s)})
-    evid: dict[tuple, list] = {}
-    cols = ["type", "from_kind", "from_id", "to_id", "v", "d", "CMTE_ID", "giver_name", "tp", "amt", "dt",
-            "counterparty", "IMAGE_NUM", "TRAN_ID", "SUB_ID", "direction", "rk"]
-    for row in ev:
-        r = dict(zip(cols, row))
-        r["type"] = row[0]
-        r["to_id"] = row[3]
-        k = tuple(row[:6])
-        evid.setdefault(k, []).append({
-            "label": _evidence_label(r, member_names), "date": r["dt"].isoformat(), "url": _evidence_url(r),
-            "source": "fec", "record": r["TRAN_ID"] or r["SUB_ID"]})
-    edges, dropped_nonpos = [], {"count": 0, "dollars": 0.0, "records": 0}
-    for t, fk, f, to, v, vname, d, lpac, s, n, first, last in tot:
-        k = (t, fk, f, to, v or "", d or "")
-        if s is None or s <= 0:
-            dropped_nonpos["count"] += 1
-            dropped_nonpos["dollars"] += float(s or 0)
-            dropped_nonpos["records"] += int(n)
-            continue
-        note = d
-        if t == "funds" and lpac:
-            note = "via leadership PAC"
-        edges.append({
-            "type": t, "family": "money", "basis": "filed",
-            "from": {"kind": fk, "id": f}, "to": {"kind": "member", "id": to}, "directed": True,
-            "via": {"id": v, "name": vname} if v else None,
-            "amount": {"low": _num(s), "high": _num(s), "exact": _num(s)},
-            "count": int(n), "first": first.isoformat(), "last": last.isoformat(),
-            "by_year": by_year[k], "evidence": evid[k], "evidence_total": int(n),
-            "stat": None, "weak": False, "note": note,
-        })
-    return edges, {"edges_dropped_nonpositive_net": dropped_nonpos}
+def aggregate(con: duckdb.DuckDBPyConnection, member_names: dict[str, str], edge_type: str,
+              stats: dict, chunk: int = 60):
+    """Yield the edges of one type, aggregated from e_in, a few dozen recipient members at a time so
+    memory stays flat. Output order is deterministic: by recipient member id, then by key."""
+    key = "from_kind, from_id, to_id, coalesce(via_id, ''), coalesce(direction, '')"
+    to_ids = [r[0] for r in q(con, "SELECT DISTINCT to_id FROM e_in WHERE type = ? ORDER BY 1", [edge_type])]
+    nonpos = stats.setdefault("edges_dropped_nonpositive_net", {}).setdefault(
+        edge_type, {"count": 0, "dollars": 0.0, "records": 0})
+    cols = ["from_kind", "from_id", "to_id", "v", "d", "CMTE_ID", "giver_name", "tp", "amt", "dt",
+            "counterparty", "IMAGE_NUM", "TRAN_ID", "SUB_ID", "direction", "date_fallback", "rk"]
+    for i in range(0, len(to_ids), chunk):
+        ids = to_ids[i:i + chunk]
+        where = "type = ? AND to_id IN (" + ",".join("?" * len(ids)) + ")"
+        params = [edge_type, *ids]
+        tot = q(con, f"""SELECT from_kind, from_id, to_id, coalesce(via_id, ''), any_value(via_name),
+                                coalesce(direction, ''), any_value(lpac), sum(amt), count(*), min(dt), max(dt),
+                                count(*) FILTER (WHERE date_fallback)
+                         FROM e_in WHERE {where} GROUP BY {key} ORDER BY 3, 1, 2, 4, 6""", params)
+        by_year: dict[tuple, list] = {}
+        for fk, f, to, v, d, y, n, sm in q(con, f"""SELECT {key}, year(dt) y, count(*), sum(amt) FROM e_in
+                                                  WHERE {where} GROUP BY {key}, y ORDER BY 1,2,3,4,5,6""", params):
+            by_year.setdefault((fk, f, to, v, d), []).append(
+                {"y": int(y), "n": int(n), "low": _num(sm), "high": _num(sm), "exact": _num(sm)})
+        evid: dict[tuple, list] = {}
+        for row in q(con, f"""SELECT * FROM (
+                          SELECT from_kind, from_id, to_id, coalesce(via_id,'') v, coalesce(direction,'') d,
+                                 CMTE_ID, giver_name, tp, amt, dt, counterparty, IMAGE_NUM, TRAN_ID, SUB_ID, direction,
+                                 date_fallback, row_number() OVER (PARTITION BY {key} ORDER BY amt DESC, dt DESC, SUB_ID) rk
+                          FROM e_in WHERE {where} AND amt > 0) WHERE rk <= 5 ORDER BY 1,2,3,4,5,rk""", params):
+            r = dict(zip(cols, row))
+            r["type"] = edge_type
+            evid.setdefault(tuple(row[:5]), []).append({
+                "label": _evidence_label(r, member_names), "date": r["dt"].isoformat(), "url": _evidence_url(r),
+                "source": "fec", "record": r["TRAN_ID"] or r["SUB_ID"]})
+        for fk, f, to, v, vname, d, lpac, sm, n, first, last, n_fallback in tot:
+            k = (fk, f, to, v, d)
+            if sm is None or sm <= 0:
+                nonpos["count"] += 1
+                nonpos["dollars"] = round(nonpos["dollars"] + float(sm or 0), 2)
+                nonpos["records"] += int(n)
+                continue
+            note = d or None
+            if edge_type == "funds" and lpac:
+                note = "via leadership PAC"
+            yield {
+                "type": edge_type, "family": "money", "basis": "filed",
+                "from": {"kind": fk, "id": f}, "to": {"kind": "member", "id": to}, "directed": True,
+                "via": {"id": v, "name": vname} if v else None,
+                "amount": {"low": _num(sm), "high": _num(sm), "exact": _num(sm)},
+                "count": int(n), "first": first.isoformat(), "last": last.isoformat(),
+                "by_year": by_year[k], "evidence": evid[k], "evidence_total": int(n),
+                "stat": None, "weak": bool(n_fallback), "note": note,
+            }
+            if n_fallback:
+                stats.setdefault("edges_weak_date_from_filing", {}).setdefault(edge_type, 0)
+                stats["edges_weak_date_from_filing"][edge_type] += 1
 
 
 # ------------------------------------------------------------------------------------------
@@ -502,11 +515,48 @@ def fundraises_with(con: duckdb.DuckDBPyConnection, members: Members, cycles: li
     return edges
 
 
-def org_records(con: duckdb.DuckDBPyConnection, edges: list[dict]) -> list[dict]:
-    used = {e["from"]["id"] for e in edges if e["from"]["kind"] == "org" and e["from"]["id"].startswith("pac:")}
-    rows = q(con, "SELECT pac_id, name, kind FROM giver_org ORDER BY 1")
-    return [{"id": pid, "name": nm, "kind": kind, "ticker": None, "cik": None, "sector": None}
-            for pid, nm, kind in rows if pid in used]
+def org_records(con: duckdb.DuckDBPyConnection, used_ids: set[str], company_info: dict[str, dict],
+                report: dict) -> list[dict]:
+    """One OrgSummary for every org endpoint in our edges.
+
+    pac:<id>  name/kind from the most recent loaded committee master record of that committee;
+              a committee absent from every loaded committee master gets its id as name, kind other.
+    co:<cik>  name/ticker/cik from SEC company_tickers.json (the company module may also emit the
+              same id; the assembler merges by id).
+    """
+    used = sorted(used_ids)
+    giver = {pid: (nm, kind, missing) for pid, nm, kind, missing in
+             q(con, "SELECT pac_id, name, kind, missing_cm FROM giver_org ORDER BY 1")}
+    out, missing_cm, missing_sec = [], [], []
+    for oid in used:
+        if oid.startswith("pac:"):
+            nm, kind, miss = giver.get(oid, (oid.removeprefix("pac:"), "other", True))
+            if miss:
+                missing_cm.append(oid)
+                nm, kind = oid.removeprefix("pac:"), "other"
+            out.append({"id": oid, "name": nm, "kind": kind, "ticker": None, "cik": None, "sector": None})
+        elif oid.startswith("co:"):
+            info = company_info.get(oid)
+            if info is None:
+                missing_sec.append(oid)
+                info = {"name": oid, "ticker": None, "cik": int(oid[3:]) if oid[3:].isdigit() else None}
+            out.append({"id": oid, "name": info["name"], "kind": "company", "ticker": info["ticker"],
+                        "cik": info["cik"], "sector": None})
+        else:
+            raise AssertionError(f"unexpected org id {oid}")
+    have = {o["id"] for o in out}
+    lacking = [oid for oid in used if oid not in have]
+    assert not lacking, f"edge endpoints without an org record: {lacking[:10]}"
+    report["org_records"] = {
+        "pac": sum(1 for o in out if o["id"].startswith("pac:")),
+        "company": sum(1 for o in out if o["id"].startswith("co:")),
+        "pac_not_in_any_loaded_committee_master": missing_cm,
+        "company_not_in_sec_tickers": missing_sec,
+        "note": "company records are emitted here because the company module only writes companies "
+                "that have trades; 4,697 pac_money edges were previously dropped by the assembler "
+                "for lack of a co: record",
+    }
+    return out
 
 
 def today_iso() -> str:

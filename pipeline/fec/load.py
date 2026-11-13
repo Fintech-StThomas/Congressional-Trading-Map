@@ -38,7 +38,7 @@ DB_PATH = download.CACHE / "fec.duckdb"
 def connect(path: Path = DB_PATH) -> duckdb.DuckDBPyConnection:
     path.parent.mkdir(parents=True, exist_ok=True)
     con = duckdb.connect(str(path))
-    con.execute("SET memory_limit='2GB'")
+    con.execute("SET memory_limit='1500MB'")
     con.execute("SET threads=4")
     con.execute("SET enable_progress_bar=false")
     con.execute("SET preserve_insertion_order=true")

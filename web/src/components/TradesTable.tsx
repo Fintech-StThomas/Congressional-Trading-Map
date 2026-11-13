@@ -98,7 +98,6 @@ export function TradesTable({ initial, total, fullUrl }: Props) {
 
   useEffect(() => {
     scroller.current?.scrollTo({ top: 0 });
-    setTop(0);
   }, [year, owner, cls, late, sort]);
 
   if (!total) return <p className="empty">No periodic transaction reports on file for this member. Reports exist only from July 2012.</p>;

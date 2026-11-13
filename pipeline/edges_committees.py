@@ -6,6 +6,7 @@ five committee pages as evidence. Writes pipeline/build/edges/committees.jsonl.
 from __future__ import annotations
 
 from collections import defaultdict
+from email.utils import parsedate_to_datetime
 from itertools import combinations
 
 from .edges import make_edge, node, top_evidence
@@ -13,9 +14,16 @@ from .spine import SOURCE_ID
 from .util import BUILD, EDGES_DIR, read_json, write_jsonl
 
 
+def roster_date() -> str:
+    """Date the committee roster last changed upstream (Last-Modified), so unchanged rosters give identical edges."""
+    source = read_json(BUILD / "sources" / "legislators.json")["sources"][SOURCE_ID]
+    f = next(f for f in source["files"] if f["path"] == "committee-membership-current.json")
+    return parsedate_to_datetime(f["last_modified"]).date().isoformat() if f.get("last_modified") else source["retrieved"][:10]
+
+
 def run() -> None:
     committees = read_json(BUILD / "committees.json")
-    as_of = read_json(BUILD / "sources" / "legislators.json")["sources"][SOURCE_ID]["retrieved"][:10]
+    as_of = roster_date()
     shared: dict[tuple[str, str], list[str]] = defaultdict(list)
     for cid, c in sorted(committees.items()):
         if c["parent"] is not None:

@@ -1,6 +1,6 @@
 // Browser-safe helpers: where the data lives, a small fetch cache, and the
 // name book used to label nodes. No Node APIs in this file.
-import type { MemberSummary, NodeRef, OrgSummary } from "./types";
+import type { Edge, MemberSummary, NodeRef, OrgSummary } from "./types";
 
 export const DATA_BASE = process.env.NEXT_PUBLIC_DATA_BASE ?? "/data";
 export const IS_SAMPLE_CLIENT = process.env.NEXT_PUBLIC_SAMPLE === "1";
@@ -85,7 +85,7 @@ export function boardHref(params: { m?: string; s?: string; o?: string; focus?: 
 }
 
 export type OrgLite = { id: string; name: string; kind: OrgSummary["kind"]; degree: number; ticker: string | null };
-export type SearchIndex = { members: (BoardMember & { counts?: never })[]; orgs: OrgLite[] };
+export type SearchIndex = { members: BoardMember[]; orgs: OrgLite[] };
 
 type RawIndex = {
   m: [string, string, string, MemberSummary["party"], string, MemberSummary["chamber"], number | null, number, number, number][];
@@ -106,4 +106,15 @@ export function loadSearchIndex(): Promise<SearchIndex> {
     indexPromise.catch(() => (indexPromise = null));
   }
   return indexPromise;
+}
+
+/**
+ * Full Edge for a tie row, loaded lazily from the member's case file.
+ * Returns the row itself when no full record exists.
+ */
+export async function resolveTie<E extends Edge & { _tie?: { member: string; edge: string | null } }>(e: E): Promise<Edge> {
+  const t = e._tie;
+  if (!t?.edge) return e;
+  const file = await getJSON<{ edges: Edge[] }>(dataUrl(`members/${t.member}.json`));
+  return file.edges.find((x) => x.id === t.edge) ?? e;
 }

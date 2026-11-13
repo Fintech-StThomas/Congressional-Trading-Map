@@ -17,11 +17,11 @@ const cache = new Map<string, unknown>();
 function read<T>(rel: string, fallback?: T): T {
   if (cache.has(rel)) return cache.get(rel) as T;
   const p = join(DATA_DIR, rel);
-  if (!existsSync(p)) {
+  if (!existsSync(/*turbopackIgnore: true*/ p)) {
     if (fallback !== undefined) return fallback;
     throw new Error(`Missing data file: ${p}`);
   }
-  const value = JSON.parse(readFileSync(p, "utf8")) as T;
+  const value = JSON.parse(readFileSync(/*turbopackIgnore: true*/ p, "utf8")) as T;
   // Per-member files are read once each during a build; keep them out of the cache.
   if (!rel.startsWith("members/")) cache.set(rel, value);
   return value;

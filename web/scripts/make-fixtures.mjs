@@ -240,7 +240,6 @@ function evidenceLabel(type, member, other, yearRow, via) {
 }
 
 const yrs = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
-const via = (id) => ({ id, name: orgById[id]?.name ?? id });
 
 // ---- member X000001: twelve strings (layout check) ------------------------------
 const A = "X000001";
@@ -523,14 +522,15 @@ for (const m of MEMBERS) {
   const TCOLS = ["id", "version", "amended", "date", "available", "lag_days", "late", "owner", "action", "partial", "ticker", "ticker_source", "asset", "asset_class", "low", "high", "org", "doc"];
   const filings = {};
   for (const t of TRADES[m.id]) filings[t.doc] = `https://example.org/sample-record/ptr/${t.doc}.pdf`;
-  const mine = ledgerRows.filter((r) => r[0] === m.id).map((r) => r.slice(1));
+  // Member ledger cols: type, kind, other, via, exact, low, high, count, first, last, note
+  const mine = ledgerRows.filter((r) => r[0] === m.id).map((r) => [r[1], "org", ...r.slice(2)]);
   write(`members/${m.id}.json`, {
     member: { ...s, terms: terms(m), committees: COMMITTEES[m.id] ?? [], fec_ids: [`H0SAMPLE${m.id.slice(-3)}`] },
     edges: edges.filter((e) => touches(e, m.id)),
     trades: { cols: TCOLS, rows: TRADES[m.id].map((t) => TCOLS.map((c) => t[c] ?? null)) },
     filings,
-    ledger: { cols: ["type", "org", "via", "exact", "low", "high", "count", "first", "last", "note"], rows: mine },
-    ledger_totals: ledgerTotalsOf(mine, 0, 3, 6),
+    ledger: { cols: ["type", "kind", "other", "via", "exact", "low", "high", "count", "first", "last", "note"], rows: mine },
+    ledger_totals: ledgerTotalsOf(mine, 0, 4, 7),
     cases: cases.filter((c) => c.member === m.id),
     coverage: coverage(m),
   });
@@ -539,12 +539,19 @@ write("orgs.json", orgSummaries);
 const shards = {};
 for (const o of orgSummaries) {
   const shard = sha1(o.id).slice(0, 2);
-  const lrows = ledgerRows.filter((r) => r[2] === o.id).map((r) => [r[1], r[0], r[4], r[7], r[8], r[9], r[10]]);
+  // Org files carry no full edges: one row per tie, pointing at the full Edge
+  // in the member's file when there is one.
+  // cols: type, member, exact, low, high, count, first, last, edge
+  const full = edges.filter((e) => touchesOrg(e, o.id)).map((e) => {
+    const mem = [e.from, e.to].find((n) => n.kind === "member").id;
+    return [e.type, mem, e.amount.exact, e.amount.low, e.amount.high, e.count, e.first, e.last, e.id];
+  });
+  const fromLedger = ledgerRows.filter((r) => r[2] === o.id).map((r) => [r[1], r[0], r[4], r[5], r[6], r[7], r[8], r[9], null]);
+  const ties = [...full, ...fromLedger].sort((a, b) => (b[2] ?? b[4] ?? 0) - (a[2] ?? a[4] ?? 0));
   (shards[shard] ??= {})[o.id] = {
     org: o,
-    edges: edges.filter((e) => touchesOrg(e, o.id)),
-    ledger: { cols: ["type", "member", "exact", "count", "first", "last", "note"], rows: lrows },
-    ledger_totals: ledgerTotalsOf(lrows, 0, 2, 3),
+    ties: { cols: ["type", "member", "exact", "low", "high", "count", "first", "last", "edge"], rows: ties },
+    ledger_totals: ledgerTotalsOf(ties, 0, 2, 5),
   };
 }
 for (const [shard, body] of Object.entries(shards)) write(`orgs/${shard}.json`, body);

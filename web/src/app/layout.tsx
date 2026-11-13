@@ -9,6 +9,8 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { Wordmark } from "@/components/Wordmark";
 import { NavLinks } from "@/components/NavLinks";
 import "./globals.css";
+import "./board.css";
+import "./pages.css";
 
 const sans = Public_Sans({ subsets: ["latin"], variable: "--font-sans", display: "swap", weight: ["400", "500", "600", "700"] });
 const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono", display: "swap", weight: ["400", "500", "600"] });

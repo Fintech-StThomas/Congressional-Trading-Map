@@ -5,7 +5,8 @@ import { useEffect, useRef } from "react";
 import type { Edge, NodeRef } from "@/lib/types";
 import { TYPE_LABEL, TYPE_RULE, FAMILY_LABEL, filteredAmount, plainStat, stringStyle } from "@/lib/edges";
 import { amountText, count, date, NOT_DISCLOSED } from "@/lib/format";
-import { memberHref, nodeName, orgHref, type NameBook } from "@/lib/client";
+import { IS_SAMPLE_CLIENT, memberHref, nodeName, orgHref, type NameBook } from "@/lib/client";
+import { recordUrlFor } from "@/lib/decode";
 import { SITE, YEAR_MAX, YEAR_MIN } from "@/lib/site";
 import { YearBars } from "./YearBars";
 import { LineSample } from "./LineSample";
@@ -16,6 +17,8 @@ type Props = {
   sources: Record<string, string>;
   range?: [number, number];
   onClose: () => void;
+  /** The full record is being fetched. */
+  loading?: boolean;
 };
 
 function NodeLink({ n, book }: { n: NodeRef; book: NameBook }) {
@@ -31,7 +34,26 @@ export function ExternalIcon() {
   );
 }
 
-export function EvidenceDrawer({ edge, book, sources, range, onClose }: Props) {
+function LedgerOnly({ edge }: { edge: Edge }) {
+  const org = [edge.from, edge.to].find((n) => n.kind === "org");
+  const url = org && !IS_SAMPLE_CLIENT ? recordUrlFor(org.id) : null;
+  return (
+    <div className="drawer__ledger">
+      <p>
+        This tie comes from the summary ledger, which totals the filings without listing them one by one.
+        {url ? " The committee's filings are on the official record:" : " Search the source for the organisation to read the filings."}
+      </p>
+      {url && (
+        <a className="evidence__link" href={url} target="_blank" rel="noopener noreferrer">
+          {url.includes("fec.gov") ? "Open the FEC committee page" : "Open the SEC filings"} <ExternalIcon />
+          <span className="visually-hidden"> (opens in a new tab)</span>
+        </a>
+      )}
+    </div>
+  );
+}
+
+export function EvidenceDrawer({ edge, book, sources, range, onClose, loading }: Props) {
   const ref = useRef<HTMLElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
   const open = Boolean(edge);
@@ -110,8 +132,12 @@ export function EvidenceDrawer({ edge, book, sources, range, onClose }: Props) {
           </p>
         )}
 
-        <h3>By year</h3>
-        <YearBars e={edge} range={filtered} />
+        {edge.by_year.length > 0 && (
+          <>
+            <h3>By year</h3>
+            <YearBars e={edge} range={filtered} />
+          </>
+        )}
 
         {edge.stat && (
           <div className="stat">
@@ -131,6 +157,8 @@ export function EvidenceDrawer({ edge, book, sources, range, onClose }: Props) {
         <h3>
           Records <span className="h-count mono">{shown < edge.evidence_total ? `${shown} of ${count(edge.evidence_total)}` : count(shown)}</span>
         </h3>
+        {loading && <p className="drawer__loading" role="status">Fetching the records from the member&rsquo;s case file…</p>}
+        {!loading && shown === 0 && <LedgerOnly edge={edge} />}
         <ol className="evidence">
           {edge.evidence.map((ev, i) => (
             <li key={`${ev.record ?? "r"}-${i}`}>

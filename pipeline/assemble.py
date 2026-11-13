@@ -15,7 +15,7 @@ from typing import Any, Iterable
 
 import pyarrow.parquet as pq
 
-from .edges import FAMILY, by_year, edge_id, sum_amounts, top_evidence
+from .edges import FAMILY, by_year, edge_id, sum_amounts
 from .util import (BUILD, EDGES_DIR, ORGS_DIR, OUT, PORTRAITS, ROOT, SOURCES_DIR, print_table, read_json, read_jsonl,
                    utc_now, write_json)
 
@@ -25,15 +25,15 @@ EDGE_KEYS = {"type", "family", "basis", "from", "to", "directed", "via", "amount
              "by_year", "evidence", "evidence_total", "stat", "weak", "note"}
 CASE_FAMILIES = ("money", "holding", "people")
 BOARD_EDGES = 12
-# Publication budget: money edges beyond these per-endpoint ranks are published as compact ledger
-# rows without evidence (see the contract's "Publication budget").
-MONEY_EDGES_PER_MEMBER = 10
-MONEY_EDGES_PER_ORG = 0
-ORG_LEDGER = False  # set False (ledger null, totals kept) if the org-side ledger pushes output past ~150 MB
+BOARD_EVIDENCE = 1
+# Publication budget (contract: "Publication budget"). Full Edge objects live only in member files.
+MONEY_EDGES_PER_MEMBER = 15          # largest money edges per member kept as full Edges (plus every Case edge)
+FORMER_MEMBER_LEDGER_ROWS = 100      # ledger rows kept for former members; current members keep all
+MONEY_MEMBERS_PER_ORG = 200          # members listed per org for money ties; the rest is in ledger_totals
 FAMILY_ORDER = {"money": 0, "holding": 1, "people": 2, "context": 3}
 STOCK_ACT_YEAR = 2012
-MEMBER_LEDGER_COLS = ["type", "org", "via", "exact", "low", "high", "count", "first", "last", "note", "dir"]
-ORG_LEDGER_COLS = ["type", "member", "exact", "count", "first", "last", "note"]
+MEMBER_LEDGER_COLS = ["type", "kind", "other", "via", "exact", "low", "high", "count", "first", "last", "note", "dir"]
+ORG_TIE_COLS = ["type", "member", "exact", "low", "high", "count", "first", "last", "edge"]
 
 
 def shard(org_id: str) -> str:
@@ -98,6 +98,7 @@ def merge_edges(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
 def load_edges(members: set[str], orgs: dict[str, Any], sources: set[str]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     merged: dict[tuple[str, str, str, str | None], dict[str, Any]] = {}
     dropped: Counter[str] = Counter()
+    examples: dict[str, list[str]] = defaultdict(list)
     read = Counter()
     for path in sorted(EDGES_DIR.glob("*.jsonl")):
         for e in read_jsonl(path):
@@ -112,7 +113,10 @@ def load_edges(members: set[str], orgs: dict[str, Any], sources: set[str]) -> tu
                 if any(ev["source"] not in sources for ev in e["evidence"]):
                     problem = "evidence source not listed in sources/*.json"
             if problem:
-                dropped[f"{path.name}: {problem}"] += 1
+                key = f"{path.name}: {problem}"
+                dropped[key] += 1
+                if len(examples[key]) < 10:
+                    examples[key].append(f"{e.get('type')} {e.get('from', {}).get('id')} -> {e.get('to', {}).get('id')}")
                 continue
             if not e["directed"] and e["from"]["id"] > e["to"]["id"]:
                 e["from"], e["to"] = e["to"], e["from"]
@@ -126,7 +130,8 @@ def load_edges(members: set[str], orgs: dict[str, Any], sources: set[str]) -> tu
     ids = Counter(e["id"] for e in edges)
     if max(ids.values(), default=1) > 1:
         raise AssertionError("edge id collision")
-    return edges, {"edges_read": dict(read), "edges_after_merge": len(edges), "edges_dropped": dict(dropped)}
+    return edges, {"edges_read": dict(read), "edges_after_merge": len(edges), "edges_dropped": dict(dropped),
+                   "edges_dropped_examples": dict(examples)}
 
 
 def load_sources() -> tuple[dict[str, Any], dict[str, Any], dict[str, str]]:
@@ -180,41 +185,50 @@ def find_cases(edges: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return cases
 
 
-def publishable(edges: list[dict[str, Any]], cases: list[dict[str, Any]]) -> set[str]:
-    """Ids of edges to publish: all non-money edges, case edges, and each endpoint's largest money edges."""
-    keep = {e["id"] for e in edges if e["family"] != "money"} | {eid for c in cases for eid in c["edges"]}
-    ranked: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
-    for e in edges:
-        if e["family"] == "money":
-            for end in {e["from"]["id"]: e["from"], e["to"]["id"]: e["to"]}.values():
-                ranked[(end["kind"], end["id"])].append(e)
-    for (kind, _), es in ranked.items():
-        cap = MONEY_EDGES_PER_MEMBER if kind == "member" else MONEY_EDGES_PER_ORG
-        keep.update(e["id"] for e in sorted(es, key=lambda e: (-edge_size(e), -e["count"], e["id"]))[:cap])
-    return keep
+def rank(edges: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    return sorted(edges, key=lambda e: (-edge_size(e), -e["count"], e["id"]))
+
+
+def split_member_edges(mid: str, edges: list[dict[str, Any]], case_edges: set[str]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """(full, ledger) for one member: every non-money edge and Case edge is full, plus the
+    MONEY_EDGES_PER_MEMBER largest money edges; the remaining money edges become ledger rows."""
+    money = rank(e for e in edges if e["family"] == "money" and e["id"] not in case_edges)
+    full_ids = {e["id"] for e in edges if e["family"] != "money" or e["id"] in case_edges}
+    full_ids |= {e["id"] for e in money[:MONEY_EDGES_PER_MEMBER]}
+    return [e for e in edges if e["id"] in full_ids], money[MONEY_EDGES_PER_MEMBER:]
 
 
 def member_ledger(mid: str, edges: list[dict[str, Any]]) -> dict[str, Any]:
-    """Money ties beyond the budget, largest first. `org` is the other endpoint (an org id, or a bioguide
-    id for member-to-member types); `dir` is "out" when this member is the payer, "in" when the payee,
-    "both" for undirected ties."""
+    """Ledger rows, largest first. `kind`/`other` name the other endpoint; `dir` is "out" when this
+    member is the payer, "in" when the payee, "both" for undirected ties."""
     rows = []
-    for e in sorted(edges, key=lambda e: (-edge_size(e), e["id"])):
+    for e in edges:
         mine_from = e["from"]["id"] == mid
-        other = e["to"]["id"] if mine_from else e["from"]["id"]
+        other = e["to"] if mine_from else e["from"]
         a = e["amount"]
-        rows.append([e["type"], other, (e["via"] or {}).get("id"), num(a["exact"]), num(a["low"]), num(a["high"]),
-                     e["count"], e["first"], e["last"], e["note"],
+        rows.append([e["type"], other["kind"], other["id"], (e["via"] or {}).get("id"), num(a["exact"]), num(a["low"]),
+                     num(a["high"]), e["count"], e["first"], e["last"], e["note"],
                      "both" if not e["directed"] else ("out" if mine_from else "in")])
     return {"cols": MEMBER_LEDGER_COLS, "rows": rows}
 
 
-def org_ledger(edges: list[dict[str, Any]]) -> dict[str, Any]:
-    rows = []
-    for e in sorted(edges, key=lambda e: (-edge_size(e), e["id"])):
-        member = e["to"]["id"] if e["to"]["kind"] == "member" else e["from"]["id"]
-        rows.append([e["type"], member, num(e["amount"]["exact"]), e["count"], e["first"], e["last"], e["note"]])
-    return {"cols": ORG_LEDGER_COLS, "rows": rows}
+def org_ties(edges: list[dict[str, Any]], full_in_member_file: set[tuple[str, str]]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """(ties table, money edges left out). Every non-money tie is listed; money ties only for the
+    MONEY_MEMBERS_PER_ORG members who received or paid the most."""
+    def member_of(e: dict[str, Any]) -> str:
+        return e["to"]["id"] if e["to"]["kind"] == "member" else e["from"]["id"]
+    totals: Counter[str] = Counter()
+    for e in edges:
+        if e["family"] == "money":
+            totals[member_of(e)] += edge_size(e)
+    top = {m for m, _ in sorted(totals.items(), key=lambda kv: (-kv[1], kv[0]))[:MONEY_MEMBERS_PER_ORG]}
+    listed, rest = [], []
+    for e in rank(edges):
+        (listed if e["family"] != "money" or member_of(e) in top else rest).append(e)
+    rows = [[e["type"], member_of(e), num(e["amount"]["exact"]), num(e["amount"]["low"]), num(e["amount"]["high"]),
+             e["count"], e["first"], e["last"], e["id"] if (member_of(e), e["id"]) in full_in_member_file else None]
+            for e in listed]
+    return {"cols": ORG_TIE_COLS, "rows": rows}, rest
 
 
 def ledger_totals(edges: list[dict[str, Any]]) -> dict[str, Any]:
@@ -298,7 +312,7 @@ def run() -> None:
     orgs, org_files = load_orgs()
     edges, edge_report = load_edges(set(spine), orgs, set(sources))
     trades = pq.read_table(BUILD / "trades_resolved.parquet").to_pylist()
-    trades_report = reports.get("hf_trades", {})
+    trades_report = reports["hf_trades"]
     this_year = date.today().year
 
     by_member_trades: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -309,20 +323,21 @@ def run() -> None:
     for e in edges:
         for end in {e["from"]["id"]: e["from"], e["to"]["id"]: e["to"]}.values():
             (member_edges if end["kind"] == "member" else org_edges)[end["id"]].append(e)
-    for o, es in org_edges.items():
-        orgs[o]["degree"] = len({end["id"] for e in es for end in (e["from"], e["to"]) if end["kind"] == "member"})
+    used_orgs = {o: {**orgs[o], "degree": len({end["id"] for e in es for end in (e["from"], e["to"]) if end["kind"] == "member"})}
+                 for o, es in sorted(org_edges.items())}
     cases = find_cases(edges)
-    keep = publishable(edges, cases)
-    used_orgs = {o: orgs[o] for o in sorted(org_edges)}
+    case_edges = {eid for c in cases for eid in c["edges"]}
     member_cases: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for c in cases:
         member_cases[c["member"]].append(c)
-
     failed: dict[str, set[int]] = defaultdict(set)
     for f in trades_report.get("failed_filings", []):
         failed[f["member"]].add(f["year"])
+
     summaries: dict[str, dict[str, Any]] = {}
+    full: dict[str, list[dict[str, Any]]] = {}
     member_files: list[tuple[str, Any]] = []
+    ledger_stats = Counter()
     for mid in sorted(spine):
         m = spine[mid]
         es = member_edges.get(mid, [])
@@ -333,54 +348,64 @@ def run() -> None:
                    "counts": {"trades": len(by_member_trades.get(mid, [])), "orgs": sum(o in orgs for o in others),
                               "members": sum(o in spine for o in others), "cases": len(member_cases.get(mid, []))}}
         summaries[mid] = summary
+        full[mid], rest = split_member_edges(mid, es, case_edges)
+        shown = rest if m["current"] else rest[:FORMER_MEMBER_LEDGER_ROWS]
+        ledger_stats["ledger_ties"] += len(rest)
+        ledger_stats["ledger_rows_published"] += len(shown)
+        ledger_stats["ledger_rows_former_members_cut"] += len(rest) - len(shown)
         ts = sorted(by_member_trades.get(mid, []), key=lambda t: (t["date"] or date.min, t["id"]), reverse=True)
         member_files.append((f"members/{mid}.json", {
             "member": {**summary, "terms": m["terms"], "committees": m["committees"], "fec_ids": m["fec_ids"]},
-            "edges": [e for e in es if e["id"] in keep],
-            "ledger": member_ledger(mid, [e for e in es if e["id"] not in keep]),
-            "ledger_totals": ledger_totals([e for e in es if e["id"] not in keep]),
+            "edges": full[mid], "ledger": member_ledger(mid, shown), "ledger_totals": ledger_totals(rest),
             "trades": {"cols": TRADE_COLUMNS, "rows": [trade_row(t) for t in ts]},
             "filings": {t["doc_id"]: t["url"] for t in ts},
             "cases": member_cases.get(mid, []),
             "coverage": coverage(m, trades_report["coverage"], failed[mid], money_cov, this_year)}))
 
+    full_pairs = {(mid, e["id"]) for mid, es in full.items() for e in es}
     shards: dict[str, dict[str, Any]] = defaultdict(dict)
     for o, es in org_edges.items():
-        rest = [e for e in es if e["id"] not in keep]
-        shards[shard(o)][o] = {"org": used_orgs[o], "edges": [e for e in es if e["id"] in keep],
-                               "ledger": org_ledger(rest) if ORG_LEDGER else None, "ledger_totals": ledger_totals(rest)}
+        ties, rest = org_ties(es, full_pairs)
+        shards[shard(o)][o] = {"org": used_orgs[o], "ties": ties, "ledger_totals": ledger_totals(rest)}
 
-    case_edges = {eid for c in cases for eid in c["edges"]}
     states: dict[str, list[str]] = defaultdict(list)
     current = sorted((s for s in summaries.values() if s["current"]),
                      key=lambda s: (s["state"], s["chamber"] != "sen", s["district"] or 0, s["last"], s["id"]))
     for s in current:
         states[s["state"]].append(s["id"])
-    strings = {s["id"]: sorted((e for e in member_edges.get(s["id"], []) if e["id"] in keep), key=lambda e: board_order(e, case_edges))[:BOARD_EDGES]
+    # Board edges carry only their first evidence item (evidence_total unchanged); the member file has the rest.
+    strings = {s["id"]: [{**e, "evidence": e["evidence"][:BOARD_EVIDENCE]}
+                         for e in sorted(full[s["id"]], key=lambda e: board_order(e, case_edges))[:BOARD_EDGES]]
                for s in current}
     board_nodes = {end["id"]: used_orgs[end["id"]] for es in strings.values() for e in es
                    for end in (e["from"], e["to"]) if end["kind"] == "org"}
-    # Context ties (sits_with, legislates_with) stay in member files and board strings only; on the map they are a hairball.
-    member_ties = [e for e in edges if e["id"] in keep and e["from"]["kind"] == "member" and e["to"]["kind"] == "member" and e["family"] != "context"]
+    # Graph-view ties: member pairs that exist as a full Edge somewhere, without context (committee) ties.
+    full_ids = {eid for _, eid in full_pairs}
+    member_ties = [e for e in edges if e["id"] in full_ids and e["from"]["kind"] == "member" == e["to"]["kind"]
+                   and e["family"] != "context"]
 
     edge_types = Counter(e["type"] for e in edges)
-    published_types = Counter(e["type"] for e in edges if e["id"] in keep)
+    full_types = Counter(e["type"] for e in edges if e["id"] in full_ids)
     meta = {
         "build": {"time": utc_now(), "pipeline_commit": git_commit(), "contract": "docs/data-dictionary.md"},
         "sources": sources, "reports": reports,
         "counts": {"members": len(summaries), "current_members": len(current), "trades": len(trades),
                    "orgs": len(used_orgs), "edges": len(edges), "edges_by_type": dict(sorted(edge_types.items())),
-                   "edges_published": len(keep), "edges_published_by_type": dict(sorted(published_types.items())),
-                   "publication_budget": {"money_edges_per_member": MONEY_EDGES_PER_MEMBER, "money_edges_per_org": MONEY_EDGES_PER_ORG,
-                                          "org_ledger": ORG_LEDGER},
-                   "ledger_rows": len(edges) - len(keep),
-                   "member_ties": len(member_ties), "cases": len(cases), "org_shards": len(shards)},
+                   "edges_full": len(full_ids), "edges_full_by_type": dict(sorted(full_types.items())),
+                   "member_ties": len(member_ties), "cases": len(cases), "org_shards": len(shards), **ledger_stats},
+        "publication_budget": {
+            "money_edges_per_member": MONEY_EDGES_PER_MEMBER, "former_member_ledger_rows": FORMER_MEMBER_LEDGER_ROWS,
+            "money_members_per_org": MONEY_MEMBERS_PER_ORG,
+            "rule": ("Full Edge objects appear only in member files: every non-money edge, every Case edge and the "
+                     f"{MONEY_EDGES_PER_MEMBER} largest money edges per member. Other money ties are ledger rows "
+                     f"(complete for current members, largest {FORMER_MEMBER_LEDGER_ROWS} for former members); "
+                     "ledger_totals always cover all of them. Org files list every non-money tie and money ties for "
+                     f"their {MONEY_MEMBERS_PER_ORG} largest members; ledger_totals cover the rest.")},
         "unmatched": {
             "trades_without_ticker": trades_report.get("null_ticker"),
             "tickers_without_sec_match": reports.get("sec", {}).get("tickers_unmatched"),
             "trades_with_unmatched_ticker": reports.get("sec", {}).get("trades_unmatched_ticker"),
             "edges_dropped_at_assembly": edge_report["edges_dropped"],
-            **{f"{k}:{name}": v for name, r in reports.items() for k, v in r.items() if k.startswith("unmatched")},
         },
         "exclusions": trades_report.get("exclusions", {}),
         "assembly": {**edge_report, "org_files": org_files},
@@ -389,7 +414,7 @@ def run() -> None:
             "earlier House years are marked none (a few late-filed earlier trades still appear).",
             f"Senate trades: filings begin {trades_report['coverage']['sen']['first_filing']} (STOCK Act PTRs began July 2012).",
             f"Latest filings: House {trades_report['coverage']['rep']['last_filing']}, Senate {trades_report['coverage']['sen']['last_filing']}.",
-            "Money coverage is none until a money source (FEC) plug-in declares coverage.",
+            "Money coverage per year comes from the money source plug-ins; it is none where no plug-in declares it.",
             "Committee assignments (sits_with) are the current Congress only.",
         ],
     }
@@ -405,16 +430,19 @@ def run() -> None:
         shutil.rmtree(staging)
     write_tree(staging, files)
     sizes = {p.relative_to(staging).as_posix(): p.stat().st_size for p in staging.rglob("*.json")}
-    meta["files"] = {"count": len(sizes) + 1, "bytes": sum(sizes.values())}
+    meta["files"] = {"count": len(sizes) + 1, "bytes": sum(sizes.values()),
+                     "largest": dict(sorted(sizes.items(), key=lambda kv: -kv[1])[:10])}
     write_json(staging / "meta.json", meta)
     swap_into_place(staging)
 
     total = sum(p.stat().st_size for p in OUT.rglob("*") if p.is_file())
-    groups = Counter()
+    groups: Counter[str] = Counter()
     for rel, size in sizes.items():
         groups[rel.split("/")[0] if "/" in rel else rel] += size
     print(f"edges: {len(edges)} {dict(sorted(edge_types.items()))}; dropped: {edge_report['edges_dropped']}")
-    print(f"published: {len(keep)} {dict(sorted(published_types.items()))}")
-    print(f"orgs with edges: {len(used_orgs)}; cases: {len(cases)}; current members on board: {len(current)}")
+    print(f"full edges: {len(full_ids)} {dict(sorted(full_types.items()))}; {dict(ledger_stats)}")
+    print(f"orgs: {len(used_orgs)}; cases: {len(cases)}; current members on board: {len(current)}")
     print_table("output size", [(k, f"{v / 1e6:.1f} MB") for k, v in groups.most_common()], ("file/dir", "size"))
+    print_table("largest files", [(k, f"{v / 1e6:.1f} MB") for k, v in sorted(sizes.items(), key=lambda kv: -kv[1])[:12]],
+                ("file", "size"))
     print(f"total web/public/data: {total / 1e6:.1f} MB in {sum(1 for p in OUT.rglob('*') if p.is_file())} files")

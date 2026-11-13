@@ -1,0 +1,60 @@
+name: Daily data refresh
+
+on:
+  schedule:
+    - cron: "41 7 * * *"   # 07:41 UTC daily, off the top of the hour
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: data-refresh-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    env:
+      # Optional secrets: empty when not configured, and the pipeline then uses its defaults.
+      FEC_API_KEY: ${{ secrets.FEC_API_KEY }}
+      LDA_API_KEY: ${{ secrets.LDA_API_KEY }}
+      SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+
+      - name: Restore download cache
+        uses: actions/cache@v4
+        with:
+          path: pipeline/.cache
+          key: pipeline-cache-${{ github.run_id }}
+          restore-keys: pipeline-cache-
+
+      - name: Install dependencies
+        run: pip install -r pipeline/requirements.txt
+
+      - name: Unit tests
+        run: python -m pytest -q pipeline/tests
+
+      - name: Run pipeline (all stages, then validation)
+        run: python -m pipeline.run
+
+      - name: Commit data only if file contents changed
+        run: |
+          git add -A web/public/data
+          # meta.json always carries a new build time; commit only when some other file changed.
+          if git diff --cached --quiet -- web/public/data ':(exclude)web/public/data/meta.json'; then
+            echo "No data changes."
+            exit 0
+          fi
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -m "Data refresh $(date -u +%Y-%m-%d)"
+          git push origin "HEAD:${GITHUB_REF_NAME}"

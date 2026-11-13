@@ -7,8 +7,8 @@ import { feature, mesh } from "topojson-client";
 import type { Topology, GeometryCollection } from "topojson-specification";
 import type { Feature, Geometry } from "geojson";
 
-export const MAP_W = 975;
-export const MAP_H = 610;
+import { MAP_H, MAP_W } from "./mapsize";
+export { MAP_H, MAP_W };
 
 export type StateShape = {
   code: string;
@@ -49,7 +49,7 @@ const NUDGE: Record<string, [number, number]> = {
 
 function loadTopology(): Topology | null {
   const candidates = [join(process.cwd(), "public", "geo", "us-states.json"), join(process.cwd(), ".cache", "us-states.json")];
-  for (const p of candidates) if (existsSync(p)) return JSON.parse(readFileSync(p, "utf8")) as Topology;
+  for (const p of candidates) if (existsSync(/*turbopackIgnore: true*/ p)) return JSON.parse(readFileSync(/*turbopackIgnore: true*/ p, "utf8")) as Topology;
   return null;
 }
 

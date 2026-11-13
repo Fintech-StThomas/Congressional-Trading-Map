@@ -108,7 +108,8 @@ def run() -> None:
     write_source_meta(SOURCE_ID, {SOURCE_ID: {
         "name": "unitedstates/congress-legislators", "url": REPO, "revision": sha,
         "retrieved": min(m["retrieved"] for m in metas.values()), "licence": "CC0-1.0 (public domain)",
-        "files": [{"path": f, "bytes": m["bytes"], "sha256": m["sha256"], "url": m["url"]} for f, m in metas.items()],
+        "files": [{"path": f, "bytes": m["bytes"], "sha256": m["sha256"], "url": m["url"],
+                   "last_modified": m["last_modified"]} for f, m in metas.items()],
     }}, {
         "people_kept": len(spine), "people_current": n_current, "people_dropped_before_cutoff": dropped,
         "committees": len(table), "committee_rows_unknown_member": unknown,

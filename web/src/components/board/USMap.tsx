@@ -2,7 +2,7 @@
 
 import { memo } from "react";
 import type { MapGeometry } from "@/lib/geo";
-import { MAP_H, MAP_W } from "@/lib/geo";
+import { MAP_H, MAP_W } from "@/lib/mapsize";
 
 type Props = {
   geo: MapGeometry;

@@ -6,8 +6,8 @@ import type { Edge, EdgeType, NodeRef, OrgFileWire, OrgSummary } from "@/lib/typ
 import type { MapGeometry } from "@/lib/geo";
 import { FAMILIES, FAMILY_HINT, FAMILY_LABEL, TYPE_LABEL, inYears, sortEdges, type Family } from "@/lib/edges";
 import { date, plural, seat, stateName, TERRITORIES } from "@/lib/format";
-import { dataUrl, getJSON, loadSearchIndex, memberHref, orgHref, type BoardMember, type NameBook } from "@/lib/client";
-import { ledgerSize } from "@/lib/decode";
+import { dataUrl, getJSON, loadSearchIndex, memberHref, orgHref, resolveTie, type BoardMember, type NameBook } from "@/lib/client";
+import { decodeOrgTies, type TieEdge } from "@/lib/decode";
 import { orgShard } from "@/lib/hash";
 import { YEAR_MAX, YEAR_MIN } from "@/lib/site";
 import { Print, PartyTag } from "../Print";
@@ -91,7 +91,7 @@ export function BoardApp(props: Props) {
   const [chunks, setChunks] = useState<Record<string, StateChunk>>(props.initialChunks);
   const [memberBook, setMemberBook] = useState<Record<string, BoardMember>>(props.members);
   const [orgBook, setOrgBook] = useState<Record<string, OrgSummary>>(() => Object.assign({}, ...Object.values(props.initialChunks).map((c) => c.nodes)));
-  const [orgFiles, setOrgFiles] = useState<Record<string, OrgFileWire>>({});
+  const [orgFiles, setOrgFiles] = useState<Record<string, { org: OrgSummary; ties: TieEdge[]; total: number }>>({});
   const [memberFiles, setMemberFiles] = useState<Record<string, { edges: Edge[]; more: number }>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -188,9 +188,12 @@ export function BoardApp(props: Props) {
           const file = body[sel.o];
           if (!live) return;
           if (!file) throw new Error("not-found");
-          setOrgFiles((f) => ({ ...f, [sel.o!]: file }));
+          const ties = decodeOrgTies(file);
+          // ledger_totals counts every tie, including those past the top rows shipped.
+          const totals = Object.values(file.ledger_totals ?? {}).reduce((n, t) => n + (t?.edges ?? 0), 0);
+          setOrgFiles((f) => ({ ...f, [sel.o!]: { org: file.org, ties, total: Math.max(ties.length, totals) } }));
           setOrgBook((b) => ({ ...b, [file.org.id]: file.org }));
-          await ensureMembers(file.edges.flatMap((e) => [e.from, e.to]).filter((n) => n.kind === "member").map((n) => n.id));
+          await ensureMembers(ties.slice(0, 60).map((e) => (e.from.kind === "member" ? e.from.id : e.to.id)));
         }
       } catch (err) {
         if (live) setError(err instanceof Error && err.message === "not-found" ? "That organisation is not in this build." : "The records for this view failed to load. Check your connection and try again.");
@@ -213,7 +216,7 @@ export function BoardApp(props: Props) {
     }
     if (sel.o && orgFiles[sel.o]) {
       const f = orgFiles[sel.o];
-      return { kind: "org", org: f.org, total: f.edges.length + ledgerSize(f) };
+      return { kind: "org", org: f.org, total: f.total };
     }
     return null;
   }, [sel.m, sel.o, centerMember, chunks, memberFiles, orgFiles, current]);
@@ -224,7 +227,7 @@ export function BoardApp(props: Props) {
       const id = center.member.id;
       return (current.has(id) ? chunks[center.member.state]?.strings[id] : memberFiles[id]?.edges) ?? [];
     }
-    return orgFiles[center.org.id]?.edges ?? [];
+    return orgFiles[center.org.id]?.ties ?? [];
   }, [center, chunks, memberFiles, orgFiles, current]);
 
   const visible = useMemo(() => {
@@ -261,9 +264,19 @@ export function BoardApp(props: Props) {
   const drawKey = `${center?.kind ?? "none"}-${center ? (center.kind === "member" ? center.member.id : center.org.id) : ""}`;
   const selfId = center?.kind === "member" ? center.member.id : center?.kind === "org" ? center.org.id : "";
 
+  const [resolving, setResolving] = useState(false);
   const openEdge = useCallback((e: Edge, el: Element) => {
     trigger.current = el;
     setOpen(e);
+    const tie = (e as TieEdge)._tie;
+    if (tie?.edge) {
+      // Org ties carry no evidence; the full record is in the member's file.
+      setResolving(true);
+      resolveTie(e as TieEdge)
+        .then((full) => setOpen((cur) => (cur?.id === e.id ? full : cur)))
+        .catch(() => undefined)
+        .finally(() => setResolving(false));
+    }
   }, []);
   const closeEdge = useCallback(() => {
     setOpen(null);
@@ -453,7 +466,7 @@ export function BoardApp(props: Props) {
         </aside>
       </div>
 
-      <EvidenceDrawer edge={open} book={book} sources={sources} range={range} onClose={closeEdge} />
+      <EvidenceDrawer edge={open} book={book} sources={sources} range={range} onClose={closeEdge} loading={resolving} />
     </div>
   );
 }

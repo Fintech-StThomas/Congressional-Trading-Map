@@ -161,7 +161,12 @@ export type MemberFileWire = Omit<MemberFile, "trades"> & {
   ledger_totals?: LedgerTotals;
 };
 
-export type OrgFileWire = OrgFile & { ledger?: Columnar; ledger_totals?: LedgerTotals };
+export type OrgFileWire = Omit<OrgFile, "edges"> & {
+  edges?: Edge[];
+  ties?: Columnar;
+  ledger?: Columnar;
+  ledger_totals?: LedgerTotals;
+};
 
 // ---------------------------------------------------------------------------
 // Not in the contract. meta.json has no published type in the data dictionary,

@@ -7,10 +7,19 @@ from typing import Callable
 
 from . import assemble, companies, edges_committees, edges_trades, spine, trades, validate
 
+
+def fec() -> None:
+    """The FEC module (pipeline/fec/, maintained separately) writes its plug-in files into pipeline/build."""
+    from .fec import run as fec_run
+    if fec_run.main([]) != 0:
+        raise SystemExit("fec stage failed")
+
+
 STAGES: dict[str, Callable[[], None]] = {
     "spine": spine.run,
     "trades": trades.run,
     "companies": companies.run,
+    "fec": fec,
     "edges_trades": edges_trades.run,
     "edges_committees": edges_committees.run,
     "assemble": assemble.run,

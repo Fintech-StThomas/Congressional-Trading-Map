@@ -10,6 +10,9 @@ const hasRealData = existsSync(join(process.cwd(), "public", "data", "members.js
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // Every page is prerendered from the JSON at build time; nothing reads the
+  // data at request time, so keep it out of any server bundle.
+  outputFileTracingExcludes: { "*": ["public/**", "fixtures/**", ".cache/**"] },
   env: {
     NEXT_PUBLIC_DATA_BASE: hasRealData ? "/data" : "/sample-data",
     NEXT_PUBLIC_SAMPLE: hasRealData ? "0" : "1",
