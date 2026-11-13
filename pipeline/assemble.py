@@ -46,6 +46,9 @@ WALL_COLS = ["id", "name", "last", "party", "state", "chamber", "district", "cur
 ORG_INDEX_COLS = ["id", "name", "kind", "ticker", "members_D", "members_I", "members_R", "dollars_D", "dollars_I",
                   "dollars_R", "degree"]
 ORG_INDEX_TOP = 300
+# Wall by year (contract: WallYears). Members serving each year, with sparse per-year measures.
+WALL_YEARS_COLS = ["id", "terms", "cases", "trades", "pac", "oppose"]
+WALL_YEAR_MIN = 2000
 
 
 def shard(org_id: str) -> str:
@@ -317,6 +320,57 @@ def wall_rows(summaries: dict[str, dict[str, Any]], member_edges: dict[str, list
     return {"cols": WALL_COLS, "rows": rows}
 
 
+def served_years(t: dict[str, Any]) -> tuple[int, int]:
+    """Calendar years a term covers under the coverage rule (a term ending on 3 January does not count that year)."""
+    end_y = int(t["end"][:4])
+    return int(t["start"][:4]), end_y if t["end"] > f"{end_y}-01-03" else end_y - 1
+
+
+def wall_years(spine: dict[str, dict[str, Any]], member_edges: dict[str, list[dict[str, Any]]],
+               member_cases: dict[str, list[dict[str, Any]]], trades: dict[str, list[dict[str, Any]]],
+               this_year: int, trade_first: dict[str, int]) -> dict[str, Any]:
+    """wall-years.json: per member, merged terms [start year, end year, chamber, party, state] and sparse flat
+    [year, value, year, value, ...] arrays for cases active, household trades, PAC dollars received and outside
+    spending against, so the wall can be redrawn for any year with one fetch."""
+    rows = []
+    for mid in sorted(spine):
+        terms: list[list[Any]] = []
+        for t in sorted(spine[mid]["terms"], key=lambda t: t["start"]):
+            a, b = served_years(t)
+            if b < max(a, WALL_YEAR_MIN):
+                continue
+            a = max(a, WALL_YEAR_MIN)
+            last = terms[-1] if terms else None
+            if last and last[2:] == [t["chamber"], t["party"], t["state"]] and a <= last[1] + 1:
+                last[1] = max(last[1], b)
+            else:
+                terms.append([a, b, t["chamber"], t["party"], t["state"]])
+        cases: Counter[int] = Counter()
+        for c in member_cases.get(mid, []):
+            for y in range(c["years"][0], c["years"][1] + 1):
+                cases[y] += 1
+        tr: Counter[int] = Counter()
+        for t in trades.get(mid, []):
+            d = t["date"] or t["available"]
+            if d:
+                tr[d.year] += 1
+        pac: Counter[int] = Counter()
+        opp: Counter[int] = Counter()
+        for e in member_edges.get(mid, []):
+            if e["to"]["id"] != mid:
+                continue
+            into = pac if e["type"] == "pac_money" else opp if e["type"] == "outside_spending" and e["note"] == "oppose" else None
+            if into is not None:
+                for b in e["by_year"]:
+                    into[b["y"]] += b["exact"] or b["high"] or b["low"] or 0
+
+        def flat(c: Counter[int]) -> list[int]:
+            return [v for y in sorted(c) if round(c[y]) for v in (y, int(round(c[y])))]
+        rows.append([mid, terms, flat(cases), flat(tr), flat(pac), flat(opp)])
+    return {"years": [WALL_YEAR_MIN, this_year], "cols": WALL_YEARS_COLS, "rows": rows,
+            "first": {"trades": trade_first, "cases": STOCK_ACT_YEAR, "money": WALL_YEAR_MIN - 1}}
+
+
 def org_index(used_orgs: dict[str, dict[str, Any]], org_edges: dict[str, list[dict[str, Any]]],
               spine: dict[str, Any]) -> dict[str, Any]:
     """Top organisations by distinct current members tied by money (pac_money or outside_spending) and by
@@ -546,6 +600,8 @@ def run() -> None:
         ("board.json", {"states": dict(sorted(states.items()))}),
         ("member-ties.json", member_ties), ("cases.json", cases),
         ("wall.json", wall_rows(summaries, member_edges)), ("org-index.json", org_index(used_orgs, org_edges, spine)),
+        ("wall-years.json", wall_years(spine, member_edges, member_cases, by_member_trades, this_year,
+                                       {ch: int(str(trades_report["coverage"][ch]["first_filing"])[:4]) for ch in ("rep", "sen")})),
         *member_files, *((f"orgs/{k}.json", dict(sorted(v.items()))) for k, v in sorted(shards.items())),
     ]
     staging = OUT.with_name(OUT.name + ".staging")

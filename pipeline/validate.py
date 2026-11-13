@@ -16,7 +16,7 @@ from typing import Any, Callable
 import pyarrow.parquet as pq
 
 from .assemble import (FORMER_MEMBER_LEDGER_ROWS, LEDGER_ONLY_TYPES, MEMBER_LEDGER_COLS, ORG_INDEX_COLS, ORG_INDEX_TOP,
-                       ORG_TIE_COLS, PARTIES, SPLIT_MEASURES, TRADE_COLUMNS, WALL_COLS, shard)
+                       ORG_TIE_COLS, PARTIES, SPLIT_MEASURES, TRADE_COLUMNS, WALL_COLS, WALL_YEARS_COLS, shard)
 from .edges import FAMILY, MAX_EVIDENCE, edge_id, sum_amounts
 from .util import BUILD, OUT, read_json
 
@@ -124,6 +124,39 @@ def check_wall(c: Checker, wall: Any, members_list: list[dict[str, Any]]) -> Non
                 and r["cases"] == m["counts"]["cases"] and r["trades"] == m["counts"]["trades"]
                 and r["orgs"] == m["counts"]["orgs"], "wall.json rows match members.json", r["id"])
         c.check(all(is_num(r[k]) and r[k] >= 0 for k in ("pac", "support", "oppose")), "schema", f"wall:{r['id']} dollars")
+
+
+def check_wall_years(c: Checker, wy: Any, wall: Any, cases: list[dict[str, Any]]) -> None:
+    """wall-years.json: one row per wall row; per-year sums equal wall.json's all-time totals (trades, PAC dollars,
+    outside spending against); cases active in a year never exceed the member's cases, and each case's window is
+    counted in every year of it."""
+    ok = isinstance(wy, dict) and wy.get("cols") == WALL_YEARS_COLS and isinstance(wy.get("rows"), list)
+    c.check(ok, "schema", "wall-years.json columnar")
+    if not ok or not isinstance(wall, dict):
+        return
+    lo, hi = wy["years"]
+    walls = {r[0]: dict(zip(WALL_COLS, r)) for r in wall["rows"]}
+    c.check([r[0] for r in wy["rows"]] == sorted(walls), "wall-years.json: one row per wall row, by id", "")
+    span: Counter[tuple[str, int]] = Counter()
+    for k in cases:
+        for y in range(k["years"][0], k["years"][1] + 1):
+            span[(k["member"], y)] += 1
+    for r in wy["rows"]:
+        row = dict(zip(WALL_YEARS_COLS, r))
+        w = walls.get(row["id"])
+        if w is None:
+            continue
+        where = f"wall-years:{row['id']}"
+        c.check(all(isinstance(t, list) and len(t) == 5 and lo <= t[0] <= t[1] and t[2] in ("sen", "rep") and t[3] in PARTIES
+                    for t in row["terms"]), "schema", f"{where} terms")
+        pairs = {k: list(zip(row[k][::2], row[k][1::2])) for k in ("cases", "trades", "pac", "oppose")}
+        c.check(all(len(row[k]) % 2 == 0 and all(v > 0 for _, v in pairs[k]) and [y for y, _ in pairs[k]] == sorted({y for y, _ in pairs[k]})
+                    for k in pairs), "schema", f"{where} sparse year arrays")
+        c.check(sum(v for _, v in pairs["trades"]) == w["trades"], "wall-years trades by year sum to wall.json", where)
+        for k in ("pac", "oppose"):
+            got = sum(v for _, v in pairs[k])
+            c.check(abs(got - w[k]) <= 0.5 * max(1, len(pairs[k])), f"wall-years {k} by year sum to wall.json", f"{where} {got} vs {w[k]}")
+        c.check(all(v <= w["cases"] and v == span[(row["id"], y)] for y, v in pairs["cases"]), "wall-years cases match cases.json windows", where)
 
 
 def check_org_index(c: Checker, idx: Any, orgs_by_id: dict[str, dict[str, Any]]) -> None:
@@ -280,6 +313,7 @@ def main() -> int:
     check_wall(c, read_json(OUT / "wall.json"), members_list)
     check_org_index(c, read_json(OUT / "org-index.json"), orgs_by_id)
     cases = read_json(OUT / "cases.json")
+    check_wall_years(c, read_json(OUT / "wall-years.json"), read_json(OUT / "wall.json"), cases)
     for k in cases:
         shape(c, k, CASE, f"cases.json:{k.get('id')}")
 
