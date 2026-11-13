@@ -38,6 +38,6 @@ def run() -> None:
             "sits_with", node("member", a), node("member", b), directed=False, basis="filed",
             years=[{"y": int(as_of[:4]), "n": len(cids), "low": None, "high": None, "exact": None}],
             first=as_of, last=as_of, evidence=evidence, evidence_total=len(cids),
-            note="Shared committees: " + "; ".join(committees[c]["name"] for c in cids)))
+            note="; ".join(committees[c]["name"] for c in cids)))
     n = write_jsonl(EDGES_DIR / "committees.jsonl", edges)
     print(f"sits_with edges: {n} member pairs across {sum(c['parent'] is None for c in committees.values())} full committees")
