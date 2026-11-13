@@ -1,0 +1,4 @@
+duckdb==2.0.0
+pyarrow==26.0.1
+requests==2.34.2
+pytest==9.2.0
