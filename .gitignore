@@ -11,3 +11,6 @@ __pycache__/
 pipeline/.cache/
 pipeline/build/
 .DS_Store
+
+# Generated data: ignored until the pipeline regenerates it at the capped size. Remove this line then.
+web/public/data/
