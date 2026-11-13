@@ -9,19 +9,19 @@ export function Legend() {
       </h2>
       <ul>
         <li>
-          <LineSample style="filed" width={34} />
+          <LineSample style="filed" width={30} scale={1.6} />
           <span>
             <b>Red yarn</b>: a filed record names both ends
           </span>
         </li>
         <li>
-          <LineSample style="derived" width={34} />
+          <LineSample style="derived" width={30} scale={1.6} />
           <span>
             <b>Frayed</b>: statistical, not filed (derived by a published rule)
           </span>
         </li>
         <li>
-          <LineSample style="weak" width={34} />
+          <LineSample style="weak" width={30} scale={1.6} />
           <span>
             <b>Frayed</b>: thin evidence, the filing is incomplete
           </span>
@@ -37,7 +37,7 @@ export function Legend() {
           </span>
         </li>
         <li>
-          <LineSample style="context" width={34} />
+          <LineSample style="context" width={30} scale={1.6} />
           <span>
             <b>Thin grey</b>: context, such as a shared committee. Off by default
           </span>

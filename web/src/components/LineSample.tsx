@@ -5,14 +5,14 @@ import type { StringStyle } from "@/lib/edges";
  * twisted plies, or frayed (thinner, broken, loose fibres) for derived and weak
  * strings. Used in the legend, chips and drawer. Static: no filters.
  */
-export function LineSample({ style, width = 28 }: { style: StringStyle; width?: number }) {
+export function LineSample({ style, width = 28, scale = 1 }: { style: StringStyle; width?: number; scale?: number }) {
   const w = width;
   const d = `M2 4 Q${w / 2} 9 ${w - 2} 4`;
   const frayed = style === "derived" || style === "weak";
   // Two breaks in the frayed core, at fixed fractions of the length.
   const gap: { strokeDasharray?: string; pathLength?: number } = frayed ? { strokeDasharray: style === "weak" ? "34 7 59" : "56 8 36", pathLength: 100 } : {};
   return (
-    <svg className={`linesample linesample--${style}`} viewBox={`0 0 ${w} 12`} width={w} height={12} aria-hidden="true">
+    <svg className={`linesample linesample--${style}`} viewBox={`0 0 ${w} 12`} width={w * scale} height={12 * scale} aria-hidden="true">
       <path className="linesample__shadow" d={d} transform="translate(0.4 1.4)" {...gap} />
       <path className="linesample__core" d={d} {...gap} />
       {style !== "context" && <path className="linesample__ply" d={d} {...gap} strokeDasharray={frayed ? gap.strokeDasharray : "1.3 2.2"} />}

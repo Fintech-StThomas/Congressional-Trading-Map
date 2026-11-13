@@ -178,34 +178,36 @@ function surname(name: string): string {
  * "gave $2K to Rooney", "spent $238 opposing Rooney", "received $5K from its PAC".
  * `centre` is the name of the board's centre (member or organisation).
  */
-export function tiePhrase(e: Edge, cardId: string, centre: string, range?: [number, number]): string {
+export function tiePhrase(e: Edge, cardId: string, centre: string, range?: [number, number], full = false): string {
   const amt = amountText(filteredAmount(e, range), true);
   const $ = amt ? ` ${amt}` : "";
   const cardIsFrom = e.from.id === cardId;
   const cardIsOrg = (cardIsFrom ? e.from : e.to).kind === "org";
-  const c = cardIsOrg ? surname(centre) : "this member";
+  // On a card the centre is implied by the string; spoken labels name it.
+  const to = full ? ` to ${surname(centre)}` : "";
+  const of = full ? ` ${surname(centre)}` : "";
   switch (e.type) {
     case "funds":
       return cardIsFrom ? `gave${$} to ${surname(centre)}` : `received${$} from ${surname(centre)}`;
     case "outside_spending": {
       const side = spendingSideOf(e);
-      const verb = side === "oppose" ? "opposing" : side === "support" ? "supporting" : "on the race of";
-      return cardIsOrg ? `spent${$} ${verb} ${c}` : `${amt ?? "money"} spent ${side === "oppose" ? "against" : "for"} them`;
+      if (!cardIsOrg) return `${amt ?? "money"} spent ${side === "oppose" ? "opposing" : "supporting"} them`;
+      return `spent${$} ${side === "oppose" ? "opposing" : side === "support" ? "supporting" : "in the race of"}${of}`;
     }
     case "pac_money":
-      return cardIsOrg ? `PAC gave${$} to ${c}` : `received${$} from its PAC`;
+      return cardIsOrg ? `PAC gave${$}${to}` : `received${$} from its PAC`;
     case "employee_money":
-      return cardIsOrg ? `employees gave${$} to ${c}` : `received${$} from its employees`;
+      return cardIsOrg ? `employees gave${$}${to}` : `received${$} from its employees`;
     case "lobbyist_money":
-      return cardIsOrg ? `lobbyists gave${$} to ${c}` : `received${$} from its lobbyists`;
+      return cardIsOrg ? `lobbyists gave${$}${to}` : `received${$} from its lobbyists`;
     case "paid_travel":
-      return cardIsOrg ? `paid${$} for ${c}'s travel` : `travel paid${$}`;
+      return cardIsOrg ? `paid${$} for travel` : `travel paid${$}`;
     case "traded":
-      return cardIsOrg ? `stock traded by ${c}'s household${amt ? `, ${amt}` : ""}` : `household traded this stock${amt ? `, ${amt}` : ""}`;
+      return `household traded the stock${amt ? `, ${amt}` : ""}`;
     case "owns":
-      return cardIsOrg ? `held by ${c}${amt ? `, ${amt}` : ""}` : `holds this stock${amt ? `, ${amt}` : ""}`;
+      return `holding${amt ? `, ${amt}` : ""}`;
     case "traded_together":
-      return `traded the same stocks close in time (statistical)`;
+      return `traded the same stocks (statistical)`;
     case "shared_donors":
       return `shares donors (statistical)`;
     case "fundraises_with":

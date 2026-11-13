@@ -74,23 +74,29 @@ const SAG_TIMES = "0;0.38;0.64;0.84;1";
 const SAG_SPLINES = "0.2 0.6 0.35 1;0.45 0 0.55 1;0.45 0 0.55 1;0.45 0 0.55 1";
 
 /** Breaks in a frayed string, as a dash pattern in pathLength=100 units. */
+const GAP = 5.5;
 function breaksFor(e: Edge, long: boolean): { dash: string; at: number } {
   const h = fnv1a(e.id);
-  const a = 28 + (h % 23); // first break between 28% and 50% of the way
-  if (!long) return { dash: `${a} 3.2 100`, at: a };
-  const b = a + 22 + ((h >>> 8) % 14);
-  return { dash: `${a} 3.2 ${b - a - 3.2} 2.4 100`, at: a };
+  const a = 26 + (h % 22); // first break between 26% and 48% of the way
+  if (!long) return { dash: `${a} ${GAP} 100`, at: a };
+  const b = a + GAP + 18 + ((h >>> 8) % 14);
+  return { dash: `${a} ${GAP} ${b - a - GAP} 3 100`, at: a };
 }
 
-/** A loose, partly unravelled ply peeling off just before the first break. */
-function strandAt(y: Yarn, at: number, w: number, k: number, flip: number): string {
-  const t0 = Math.max(0.02, at / 100 - 0.12), t1 = at / 100 + 0.004;
+/**
+ * A loose, partly unravelled ply peeling off one side of the first break:
+ * `side` -1 is the end before the gap, 1 the end after it.
+ */
+function strandAt(y: Yarn, at: number, w: number, k: number, flip: number, side: -1 | 1): string {
+  const edge = side < 0 ? at / 100 : (at + GAP) / 100;
+  const span = side < 0 ? 0.11 : 0.07;
   const pts: string[] = [];
   const N = 9;
   for (let i = 0; i <= N; i++) {
-    const t = t0 + ((t1 - t0) * i) / N;
-    const p = yarnPoint(y, t, k);
-    const lift = Math.pow(i / N, 1.8) * (3.2 + w) * flip + Math.sin(i * 1.7) * 0.5;
+    const f = i / N; // 0 = attached to the yarn, 1 = loose tip in the gap
+    const t = edge - side * span * (1 - f) + side * 0.012 * f;
+    const p = yarnPoint(y, Math.min(0.99, Math.max(0.01, t)), k);
+    const lift = Math.pow(f, 1.6) * (4.5 + w * 1.2) * flip * (side < 0 ? 1 : -0.8) + Math.sin(i * 1.9) * 0.45;
     pts.push(`${Math.round((p.x + p.nx * lift) * 10) / 10} ${Math.round((p.y + p.ny * lift) * 10) / 10}`);
   }
   return `M${pts[0]}L${pts.slice(1).join(" ")}`;
@@ -185,8 +191,8 @@ export function BoardCanvas(props: Props) {
   const layout = useMemo(() => {
     if (!size || !center) return null;
     const { W, H } = size;
-    const compact = W < 940;
-    const cw = compact ? 160 : 188, ch = compact ? 72 : 78;
+    const compact = W < 1000 || H < 620;
+    const cw = compact ? 176 : 190, ch = compact ? 80 : 88;
     const centerRect: Rect =
       center.kind === "member"
         ? (() => {
@@ -233,7 +239,8 @@ export function BoardCanvas(props: Props) {
     const t = window.setTimeout(() => setSettled(drawKey), LEAD + (nStrings - 1) * STAGGER + SETTLE + 40);
     return () => window.clearTimeout(t);
   }, [drawKey, nStrings, still]);
-  const fuzz = rich && (still || settled === drawKey);
+  const done = still || settled === drawKey;
+  const fuzz = rich && done;
 
   const nearest = useCallback(
     (clientX: number, clientY: number) => {
@@ -261,7 +268,7 @@ export function BoardCanvas(props: Props) {
   const groupOf = (n: NodeCard) => n.edges;
 
   return (
-    <div className={`canvas${center ? " has-center" : ""}`} ref={box} data-testid="board-canvas">
+    <div className={`canvas${center ? " has-center" : ""}${layout?.compact ? " is-compact" : ""}`} ref={box} data-testid="board-canvas">
       <USMap geo={geo} counts={counts} selected={selectedState} backdrop={backdrop} onSelect={onSelectState} />
       <div className="canvas__light" aria-hidden="true" />
       {!geo.states.length && <p className="canvas__nomap">State outlines are unavailable in this build. Use the state list beside the board.</p>}
@@ -293,8 +300,9 @@ export function BoardCanvas(props: Props) {
             const o = n.ref.kind === "org" ? book.orgs[n.ref.id] : null;
             const name = nodeName(n.ref, book);
             const says = n.edges.map((e) => tiePhrase(e, n.ref.id, centreName, range));
+            const saysFull = n.edges.map((e) => tiePhrase(e, n.ref.id, centreName, range, true));
             const k = n.edges.length;
-            const openLabel = `${name}${o ? `, ${ORG_KIND_LABEL[o.kind]}` : m ? `, ${seat(m)}` : ""}: ${says.join("; ")}.${isCase ? " Case: traded the stock and received PAC money in the same years." : ""} Open the evidence${k > 1 ? ` for ${k} strings` : ""}.`;
+            const openLabel = `${name}${o ? `, ${ORG_KIND_LABEL[o.kind]}` : m ? `, ${seat(m)}` : ""}: ${saysFull.join("; ")}.${isCase ? " Case: traded the stock and received PAC money in the same years." : ""} Open the evidence${k > 1 ? ` for ${k} strings` : ""}.`;
             const light = layout.lights.get(p.id)!;
             return (
               <div
@@ -320,6 +328,7 @@ export function BoardCanvas(props: Props) {
                         <span className="bcard__name">{m.name}</span>
                         <span className="bcard__kind">
                           <PartyTag party={m.party} /> {seat(m, false)}
+                          {isCase && <span className="tag tag--inline">Case</span>}
                         </span>
                       </>
                     ) : (
@@ -327,6 +336,7 @@ export function BoardCanvas(props: Props) {
                         <span className="bcard__kind">
                           {o ? ORG_KIND_LABEL[o.kind] : "Organisation"}
                           {o?.ticker ? ` · ${o.ticker}` : ""}
+                          {isCase && <span className="tag tag--inline">Case</span>}
                         </span>
                         <span className="bcard__name">{name}</span>
                       </>
@@ -344,7 +354,6 @@ export function BoardCanvas(props: Props) {
                     <path d="M8 0.8v2.6M8 12.6v2.6M0.8 8h2.6M12.6 8h2.6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
                   </svg>
                 </button>
-                {isCase && <span className="tag">Case</span>}
               </div>
             );
           })}
@@ -354,20 +363,22 @@ export function BoardCanvas(props: Props) {
               {layout.strings.map(({ e, y }, i) => {
                 const frayed = isFrayed(e);
                 const b = boxOf(y, 26);
+                // Masks cover only this string (plus sway room), never the whole board.
+                const m = boxOf(y, 44);
                 return (
                   <g key={`${drawKey}-${e.id}`}>
-                    <mask id={`reveal-${drawKey}-${e.id}`} maskUnits="userSpaceOnUse" x="0" y="0" width={layout.W} height={layout.H}>
+                    <mask id={`reveal-${drawKey}-${e.id}`} maskUnits="userSpaceOnUse" x={m.x} y={m.y} width={m.w} height={m.h}>
                       <path d={y.d} pathLength={1} className="yarn__reveal" style={{ "--i": i } as React.CSSProperties} />
                     </mask>
                     {frayed && (
-                      <mask id={`brk-${drawKey}-${e.id}`} maskUnits="userSpaceOnUse" x="0" y="0" width={layout.W} height={layout.H}>
-                        <path d={y.d} pathLength={100} className="yarn__breaks" strokeDasharray={breaksFor(e, y.length > 220).dash} />
+                      <mask id={`brk-${drawKey}-${e.id}`} maskUnits="userSpaceOnUse" x={m.x} y={m.y} width={m.w} height={m.h}>
+                        <path d={y.d} pathLength={100} className="yarn__breaks" strokeDasharray={breaksFor(e, y.length > 150).dash} />
                       </mask>
                     )}
                     {fuzz && (
                       <filter id={`fz-${drawKey}-${e.id}`} filterUnits="userSpaceOnUse" x={b.x} y={b.y} width={b.w} height={b.h} colorInterpolationFilters="sRGB">
-                        <feTurbulence type="fractalNoise" baseFrequency={frayed ? "0.55" : "0.75"} numOctaves={2} seed={fnv1a(e.id) % 97} result="n" />
-                        <feDisplacementMap in="SourceGraphic" in2="n" scale={frayed ? 8 : 4.5} xChannelSelector="R" yChannelSelector="G" />
+                        <feTurbulence type="fractalNoise" baseFrequency={frayed ? "0.5" : "0.9"} numOctaves={2} seed={fnv1a(e.id) % 97} result="n" />
+                        <feDisplacementMap in="SourceGraphic" in2="n" scale={frayed ? 9 : 5.5} xChannelSelector="R" yChannelSelector="G" />
                       </filter>
                     )}
                   </g>
@@ -379,10 +390,10 @@ export function BoardCanvas(props: Props) {
               const style = stringStyle(e);
               const frayed = isFrayed(e);
               const base = strokeWidth(e, range);
-              const w = frayed ? Math.max(1.1, Math.round(base * 0.62 * 10) / 10) : base;
+              const w = frayed ? Math.max(1.1, Math.round(base * 0.55 * 10) / 10) : base;
               const nodeKey = `${node.ref.kind}:${node.ref.id}`;
               const hot = hover === e.id || focused === e.id || activeEdge === e.id || hoverNode === nodeKey;
-              const brk = frayed ? breaksFor(e, y.length > 220) : null;
+              const brk = frayed ? breaksFor(e, y.length > 150) : null;
               const flip = fnv1a(e.id) % 2 ? 1 : -1;
               const anim = !still;
               const begin = `${LEAD + i * STAGGER}ms`;
@@ -405,13 +416,13 @@ export function BoardCanvas(props: Props) {
                   aria-hidden="true"
                   data-edge-vis={e.id}
                 >
-                  <g mask={`url(#reveal-${drawKey}-${e.id})`}>
+                  <g mask={done ? undefined : `url(#reveal-${drawKey}-${e.id})`}>
                     {P("yv__halo", { style: { strokeWidth: w + 8 } })}
                     <g mask={brk ? `url(#brk-${drawKey}-${e.id})` : undefined}>
                       {P("yv__shadow-soft", { style: { strokeWidth: w + 4.5 } })}
                       {P("yv__shadow", { style: { strokeWidth: w + 0.6 } })}
                       <g className="yv__lift">
-                        {fuzz && style !== "context" && P("yv__fuzz", { style: { strokeWidth: w + (frayed ? 3.2 : 2.2) }, filter: `url(#fz-${drawKey}-${e.id})` })}
+                        {fuzz && style !== "context" && P("yv__fuzz", { style: { strokeWidth: w + (frayed ? 3 : 2) }, filter: `url(#fz-${drawKey}-${e.id})` })}
                         {P("yv__core", { style: { strokeWidth: w } })}
                         {style !== "context" && (
                           <>
@@ -421,11 +432,12 @@ export function BoardCanvas(props: Props) {
                         )}
                       </g>
                     </g>
-                    {brk && (
-                      <path className="yv__strand" d={strandAt(y, brk.at, w, 1, flip)}>
-                        {sway(anim ? SAG_KEYS.map((k) => strandAt(y, brk.at, w, k, flip)).join(";") : "")}
-                      </path>
-                    )}
+                    {brk &&
+                      ([-1, 1] as const).map((side) => (
+                        <path key={side} className={`yv__strand yv__strand--${side < 0 ? "a" : "b"}`} d={strandAt(y, brk.at, w, 1, flip, side)}>
+                          {sway(anim ? SAG_KEYS.map((k) => strandAt(y, brk.at, w, k, flip, side)).join(";") : "")}
+                        </path>
+                      ))}
                   </g>
                 </g>
               );
@@ -458,7 +470,7 @@ export function BoardCanvas(props: Props) {
                     d={y.d}
                     tabIndex={0}
                     role="button"
-                    aria-label={`${name} ${tiePhrase(e, node.ref.id, centreName, range)}. ${typeLabel(e)}: ${amt ?? "no amount disclosed"}, ${nrec} ${nrec === 1 ? "record" : "records"}${cue ? `, ${cue}` : ""}. Open the evidence.`}
+                    aria-label={`${name} ${tiePhrase(e, node.ref.id, centreName, range, true)}. ${typeLabel(e)}: ${amt ?? "no amount disclosed"}, ${nrec} ${nrec === 1 ? "record" : "records"}${cue ? `, ${cue}` : ""}. Open the evidence.`}
                     data-edge={e.id}
                     onPointerMove={(ev) => {
                       const id = pick(ev).id;
@@ -492,7 +504,7 @@ export function BoardCanvas(props: Props) {
               }}
             >
               <span className="yarnlabel__line">
-                <span className="yarnlabel__who">{nodeName(hovered.node.ref, book)}</span> {tiePhrase(hovered.e, hovered.node.ref.id, centreName, range)}
+                <span className="yarnlabel__who">{nodeName(hovered.node.ref, book)}</span> {tiePhrase(hovered.e, hovered.node.ref.id, centreName, range, true)}
               </span>
               <span className="yarnlabel__meta">
                 <span className="yarnlabel__type">{typeLabel(hovered.e)}</span>
