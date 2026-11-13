@@ -149,7 +149,7 @@ export default function MethodPage() {
         <p>A string is marked thin (short dashes) when its records are incomplete: a missing date, an amount not disclosed, or a single record.</p>
         <h3 className="method__h3">Cases</h3>
         <p>
-          A case is a member and an organisation with at least three distinct kinds of filed tie whose dates overlap. Context ties (same committee, co-sponsored bills) never count. Cases are ranked by the
+          A case is a member and an organisation with at least two distinct kinds of filed tie in the same years: one holding tie (the household traded its stock) and one money or people tie (for example, its PAC gave the member money). Context ties (same committee, co-sponsored bills) never count. Cases are ranked by the
           number of kinds, then by money, as a reading aid.
         </p>
         <h3 className="method__h3">Amounts</h3>
