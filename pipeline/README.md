@@ -33,6 +33,7 @@ the branch only when validation passes and some file other than `meta.json` chan
 | `fec` | `fec/` (maintained separately) | `edges/fec_*.jsonl`, `orgs/fec.jsonl`, `sources/fec.json` |
 | `edges_trades` | `edges_trades.py` | `trades_resolved.parquet`, `edges/trades.jsonl` (`traded`, `traded_together`), `orgs/trades.jsonl` |
 | `edges_committees` | `edges_committees.py` | `edges/committees.jsonl` (`sits_with`) |
+| `lda` | `lda/` (LDA API; `python -m pipeline.lda.download` for the resumable pull, skipped without key or cache) | `edges/lda.jsonl` (`lobbyist_money`, `revolving_door`), `orgs/lda.jsonl`, `sources/lda.json`, `docs/validation/lda-sample.csv` |
 | `assemble` | `assemble.py` | every file in `web/public/data/`, built in a staging directory and swapped in |
 | `validate` | `validate.py` | checks the output; writes `validation_sample.csv` (25 trades, fixed seed, with filing URLs) |
 
@@ -50,6 +51,7 @@ reviewed_on`). `companies.py` applies rows with `source = ticker`, and a row wit
 | `hf_trades` | [austin-starks/congressional-stock-trades](https://huggingface.co/datasets/austin-starks/congressional-stock-trades) on Hugging Face: House Clerk and Senate eFD periodic transaction reports | dataset commit SHA, `snapshot.json` time, each parquet file's SHA-256 (checked against `snapshot.json`) | Public records with a statutory use restriction (below) |
 | `sec` | SEC `company_tickers_exchange.json` and the Financial Statement Data Sets (`sub.txt`, for SIC codes) | Last-Modified, SHA-256, quarters used | U.S. government work |
 | `fec` | FEC bulk data (see `pipeline/fec/`) | per-file Last-Modified and SHA-256 | U.S. government work |
+| `lda` | [LDA REST API](https://lda.gov/api/) (LD-203 contribution reports, LD-2 filings with covered positions); the Senate Office of Public Records cannot vouch for the data | posting cutoff dates and a SHA-256 manifest of cached slices | Public records; [LDA API terms](https://lda.gov/api/tos/) |
 
 **Use restriction (from the trades dataset's LICENSE_DATA.md).** The trade data is derived from financial disclosure
 reports made public by the Clerk of the House and the Secretary of the Senate. It is not under an open licence. Under

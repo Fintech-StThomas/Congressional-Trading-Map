@@ -15,6 +15,21 @@ def fec() -> None:
         raise SystemExit("fec stage failed")
 
 
+def lda() -> None:
+    """The LDA module (pipeline/lda/) writes lobbyist_money and revolving_door plug-in files. It downloads only when
+    LDA_API_KEY is set, falls back to cached pages on an outage, and is skipped when there is neither."""
+    import os
+    from .lda import download as lda_dl, run as lda_run
+    if not os.environ.get("LDA_API_KEY") and not lda_dl.windows():
+        print("  lda: skipped (no LDA_API_KEY and no cached pages in pipeline/.cache/lda)")
+        return
+    try:
+        # with a key: fetch what is missing plus a new posting window, for at most 45 minutes (resumes next run)
+        lda_run.main(["--download", "--new-window", "--max-minutes", "45"] if os.environ.get("LDA_API_KEY") else [])
+    except Exception as e:  # noqa: BLE001 - lobbying data is optional; never fail the whole pipeline
+        print(f"  lda: failed ({type(e).__name__}: {e}); previous plug-in files left in place")
+
+
 STAGES: dict[str, Callable[[], None]] = {
     "spine": spine.run,
     "trades": trades.run,
@@ -22,6 +37,7 @@ STAGES: dict[str, Callable[[], None]] = {
     "fec": fec,
     "edges_trades": edges_trades.run,
     "edges_committees": edges_committees.run,
+    "lda": lda,
     "assemble": assemble.run,
 }
 
