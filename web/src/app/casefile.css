@@ -27,6 +27,9 @@
       content: none;
     }
   }
+  :root {
+    color-scheme: light !important;
+  }
   html,
   body {
     background: #fff !important;

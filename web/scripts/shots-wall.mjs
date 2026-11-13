@@ -54,7 +54,7 @@ const fray = (pad) => async (p) => {
   const b = boxes.sort((a, c) => Math.hypot(c.width, c.height) - Math.hypot(a.width, a.height))[0];
   return { x: Math.max(0, b.x - pad), y: Math.max(0, b.y - pad), width: Math.min(b.width + pad * 2, 900), height: Math.min(b.height + pad * 2, 600) };
 };
-const frayUrl = process.env.FRAY_URL ?? "/?s=PA&m=K000376";
+const frayUrl = process.env.FRAY_URL ?? "/?s=CA&m=K000389";
 await shot("frayed-normal-1440", frayUrl, { clip: fray(40) });
 await shot("frayed-closeup-2x", frayUrl, { scale: 2, clip: fray(12) });
 await shot("frayed-closeup-4x", frayUrl, { scale: 4, clip: fray(8) });
