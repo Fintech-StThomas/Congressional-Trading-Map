@@ -452,7 +452,7 @@ button.crumb:hover {
   width: 100%;
   height: 100%;
   min-height: 44px;
-  padding: 12px 34px 16px 11px;
+  padding: 12px 34px 16px 15px;
   background: none;
   color: inherit;
   border: 0;
@@ -513,7 +513,8 @@ button.crumb:hover {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.bcard--member .bcard__says {
+.bcard--member .bcard__says,
+.bcard--short .bcard__says {
   white-space: normal;
   display: -webkit-box;
   -webkit-line-clamp: 2;

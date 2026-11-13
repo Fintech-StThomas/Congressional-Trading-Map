@@ -85,6 +85,21 @@ test("a string opens the evidence drawer with links to records", async () => {
   await p.close();
 });
 
+test("a card opens its evidence, and its separate control re-centres the board", async () => {
+  const p = await page();
+  await p.goto(base + "/");
+  await p.waitForSelector(".bcard__open");
+  await p.locator(".bcard__open").first().click();
+  const drawer = p.getByTestId("evidence-drawer");
+  await drawer.waitFor();
+  assert.match(await drawer.innerText(), /A tie is not a finding/);
+  await p.keyboard.press("Escape");
+  await drawer.waitFor({ state: "detached" });
+  await p.locator(".bcard__recentre").first().click();
+  await p.waitForURL(/[?&](m|o)=/);
+  await p.close();
+});
+
 test("table view lists the same ties", async () => {
   const p = await page();
   await p.goto(base + "/");

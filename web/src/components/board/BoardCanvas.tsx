@@ -205,7 +205,7 @@ export function BoardCanvas(props: Props) {
     const pos = new Map(placed.map((p) => [p.id, p]));
     const strings = nodes.flatMap((n) => {
       const p = pos.get(`${n.ref.kind}:${n.ref.id}`)!;
-      // Pin on the edge facing the centre so yarn never crosses the card's text.
+      // Pin on the edge facing the centre, clear of the text and the re-centre control.
       const ccx = centerRect.x + centerRect.w / 2;
       const pin =
         p.y + p.h < centerRect.y + 10
@@ -213,8 +213,8 @@ export function BoardCanvas(props: Props) {
           : p.y > centerRect.y + centerRect.h - 10
             ? { x: p.x + p.w / 2, y: p.y + 7 }
             : p.x + p.w / 2 < ccx
-              ? { x: p.x + p.w - 11, y: p.y + 8 }
-              : { x: p.x + 11, y: p.y + 8 };
+              ? { x: p.x + p.w - 6, y: p.y + Math.round(p.h * 0.42) }
+              : { x: p.x + 6, y: p.y + Math.round(p.h * 0.42) };
       return n.edges.map((e, j) => {
         const k = n.edges.length;
         const slack = 1 + (j - (k - 1) / 2) * 0.42;
@@ -307,7 +307,7 @@ export function BoardCanvas(props: Props) {
             return (
               <div
                 key={`${drawKey}-${p.id}`}
-                className={`bcard bcard--${n.ref.kind}${n.ref.id === focusNode ? " is-focus" : ""}${hoverNode === p.id ? " is-hot" : ""}`}
+                className={`bcard bcard--${n.ref.kind}${name.length <= 22 ? " bcard--short" : ""}${n.ref.id === focusNode ? " is-focus" : ""}${hoverNode === p.id ? " is-hot" : ""}`}
                 style={{ left: p.x, top: p.y, width: p.w, height: p.h, "--tilt": `${tiltFor(n.ref.id, 1.4)}deg`, "--i": i, ...lightVars(light) } as React.CSSProperties}
                 onMouseEnter={() => setHoverNode(p.id)}
                 onMouseLeave={() => setHoverNode(null)}

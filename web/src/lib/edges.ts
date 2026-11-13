@@ -207,9 +207,9 @@ export function tiePhrase(e: Edge, cardId: string, centre: string, range?: [numb
     case "owns":
       return `holding${amt ? `, ${amt}` : ""}`;
     case "traded_together":
-      return `traded the same stocks (statistical)`;
+      return `statistical co-trading`;
     case "shared_donors":
-      return `shares donors (statistical)`;
+      return `statistical: shared donors`;
     case "fundraises_with":
       return `joint fundraising committee`;
     default:
