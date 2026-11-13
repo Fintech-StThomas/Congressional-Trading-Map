@@ -536,8 +536,10 @@ def run() -> None:
                 "type": "owns", "family": "holding", "basis": "filed", "from": {"kind": "member", "id": mid},
                 "to": {"kind": "org", "id": org}, "directed": True, "via": None,
                 "amount": {"low": s["low"] if s["n"] > s["unvalued"] else None, "high": s["high"], "exact": None},
-                "count": len(rs), "first": used[(mid, min(by_y))]["filing_date"].isoformat(),
-                "last": used[(mid, ly2)]["filing_date"].isoformat(),
+                "count": len(rs),
+                # Filing dates, not report years: an earlier year's report can be filed after a later one.
+                "first": min(used[(mid, y)]["filing_date"] for y in by_y).isoformat(),
+                "last": max(used[(mid, y)]["filing_date"] for y in by_y).isoformat(),
                 "by_year": [{"y": ly2, "n": len(rs), "low": s["low"] if s["n"] > s["unvalued"] else None, "high": s["high"], "exact": None}],
                 "evidence": evidence, "evidence_total": len(by_y), "stat": None,
                 "weak": s["high"] is None, "note": f"position as of report year {ly2}; reported in "
