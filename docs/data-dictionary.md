@@ -293,6 +293,55 @@ no shuffle produced one) and `p` is (shuffles with at least the observed count +
 pair has at least 3 distinct tickers or 5 occasions, observed >= 5 and observed >= 3 x expected. It is `weak` when
 p > 0.05 or fewer than 3 distinct tickers are involved.
 
+### Lobbying (`pipeline/lda/`, source `lda`)
+
+Source: the Lobbying Disclosure Act REST API (`https://lda.gov/api/v1/`), cited with its access date. The Senate
+Office of Public Records cannot vouch for the data; `sources/lda.json` carries that disclaimer verbatim.
+
+**Org ids.** A registrant (lobbying firm or in-house organisation) or a client resolves to a company only by exact
+normalised name through `company_names.json`, or through `org_overrides.csv` rows with source `lda_registrant` /
+`lda_client` (`source_id_or_name` = LDA id or name). Otherwise: `lda:registrant-<LDA registrant id>` (kind `lobby`)
+and `lda:client-<LDA client id>` (kind `other`). A lobbyist named in `via` is `lda:lobbyist-<LDA lobbyist id>`.
+
+**Member identification** (shared by both edge types; nothing is fuzzy):
+- *Person name key*: accents removed, uppercase, periods and apostrophes deleted, parenthesised text removed (`(R-SD)`),
+  hyphens and other punctuation become spaces. A member's keys are their official name, `first last` from the spine
+  and each FEC candidate name of theirs (`LAST, FIRST M` reordered), each with and without a filed suffix (Jr., III).
+- *Honoree rule*: leading titles are stripped (Sen., Senator, Rep., Representative, Congressman, Congresswoman, Hon.,
+  The Honorable, Del., Speaker, Leader, Chairman, Whip, Mr./Ms./Dr. ...); the rest (or a single-comma `Last, First`
+  reordered) must equal a key of exactly one member serving in the contribution's calendar year (spine terms; a term
+  ending on 3 January does not count). Fewer than two words (surname only) or two serving members with the key: no match.
+- *Payee rule*: the payee's normalised name (the org normalisation above) equals the name, in any FEC cycle, of a
+  committee authorised by or a leadership PAC sponsored by exactly one member (FEC module's cache, read-only).
+- Order: payee rule; if the payee is another FEC committee (party, joint fundraising, super PAC) the item is not
+  attributed; else the honoree rule; else the payee read as a person name. Payee and honoree naming different members:
+  unmatched (`conflict`). The rule used is in each evidence label (`[match: ...]`) and counted in the report.
+
+**`lobbyist_money`** (org -> member, money, filed, directed): LD-203 items of type FECA, honorary expense and meeting
+expense; presidential library and inaugural items are excluded and counted. One edge per registrant, member and
+`via` (the individual lobbyist whose own report lists the item; null for the registrant's report). `exact = low =
+high` = sum of items; `by_year` by contribution date. `weak` when the edge has no FECA item, or has a FECA item over
+$10,000 (above any contribution limit; kept as filed, listed in the report as a probable filer error).
+Amendments: per filer (registrant, lobbyist or none), year and period only the latest-posted report is used.
+Double reporting: within a registrant and period an identical item (contributor, payee, honoree, type, amount, date)
+on several reports is kept once (the registrant's own report first, else the lowest lobbyist id); a lobbyist's
+identical item under two registrants is kept once. Removed counts are in `report.contributions.duplicates_removed`.
+Evidence: label (payer, amount, type, payee, honoree, date, filer, match rule), the report's official document URL,
+`record` = filing uuid.
+
+**`revolving_door`** (member <-> org, people, filed, undirected; `from` is the member): a lobbyist on an LD-2 filing
+whose covered-position text names a member's office, to the filing's CLIENT; `via` = lobbyist and registrant(s).
+The text is split on `;` `,` `/` ` - ` `and` `for` `to`; a segment mentioning a committee, subcommittee, caucus,
+conference or commission is never attributed. In each other segment, the words after the last office title (Sen.,
+Rep., Congressman, Congresswoman, Delegate, Office of, Leader, Speaker, Whip) or the whole segment, with year tokens
+removed, must be one key of exactly one member who served in any year up to the filing year. `weak` when no matched
+segment carried an office title. Amendments: latest-posted filing per registrant, client, year and period. Evidence:
+up to 5 filings listing that lobbyist for that client, with the position text quoted; `by_year` by filing year.
+
+**Coverage.** `sources/lda.json` has `coverage.lobbying.contributions` and `coverage.lobbying.revolving_door`:
+`{ "<filing year>": "full" | "partial" }`, `full` when every cached slice of that year is complete. Years not listed
+were not loaded. `report.cache.stale_days` is the age of the newest posting cutoff.
+
 ## Intermediate plug-in format
 
 Each source module writes, under `pipeline/build/`:
@@ -302,6 +351,7 @@ Each source module writes, under `pipeline/build/`:
 - `sources/<source>.json`: `{ "sources": { "<source id>": { "name", "url", "revision", "retrieved", "licence", "files"?: [...] } }, "report": { ... }, "coverage"?: { "money": { "rep" | "sen": { "<year>": "full" | "partial" } } } }`.
   Every `Evidence.source` must be a key of some `sources` object. `report` is free-form (row counts, unmatched records,
   exclusions) and is copied to `meta.json.reports.<file stem>`. `coverage.money` applies to members with an FEC id.
+  `coverage.lobbying` (LDA module) is `{ "contributions" | "revolving_door": { "<year>": "full" | "partial" } }`.
 
 ### Org overrides (`pipeline/crosswalk/org_overrides.csv`)
 
