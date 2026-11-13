@@ -8,6 +8,7 @@ import { typeLabel, amountLabel, filteredAmount, otherEnd, stringStyle, strokeWi
 import { count, seat } from "@/lib/format";
 import { nodeName, ORG_KIND_LABEL, type BoardMember, type NameBook } from "@/lib/client";
 import { fnv1a, tiltFor } from "@/lib/hash";
+import { frayed as fray } from "@/lib/fray";
 import { Print, PartyTag } from "../Print";
 import { USMap } from "./USMap";
 
@@ -25,6 +26,8 @@ type Props = {
   edges: Edge[];
   book: NameBook;
   caseNodes: Set<string>;
+  /** Edge ids the assumption switches exclude: drawn faded, not removed. */
+  excluded?: Set<string>;
   focusNode: string | null;
   drawKey: string;
   range: [number, number];
@@ -73,35 +76,6 @@ const SAG_KEYS = [0.55, 1.12, 0.95, 1.02, 1];
 const SAG_TIMES = "0;0.38;0.64;0.84;1";
 const SAG_SPLINES = "0.2 0.6 0.35 1;0.45 0 0.55 1;0.45 0 0.55 1;0.45 0 0.55 1";
 
-/** Breaks in a frayed string, as a dash pattern in pathLength=100 units. */
-const GAP = 5.5;
-function breaksFor(e: Edge, long: boolean): { dash: string; at: number } {
-  const h = fnv1a(e.id);
-  const a = 26 + (h % 22); // first break between 26% and 48% of the way
-  if (!long) return { dash: `${a} ${GAP} 100`, at: a };
-  const b = a + GAP + 18 + ((h >>> 8) % 14);
-  return { dash: `${a} ${GAP} ${b - a - GAP} 3 100`, at: a };
-}
-
-/**
- * A loose, partly unravelled ply peeling off one side of the first break:
- * `side` -1 is the end before the gap, 1 the end after it.
- */
-function strandAt(y: Yarn, at: number, w: number, k: number, flip: number, side: -1 | 1): string {
-  const edge = side < 0 ? at / 100 : (at + GAP) / 100;
-  const span = side < 0 ? 0.11 : 0.07;
-  const pts: string[] = [];
-  const N = 9;
-  for (let i = 0; i <= N; i++) {
-    const f = i / N; // 0 = attached to the yarn, 1 = loose tip in the gap
-    const t = edge - side * span * (1 - f) + side * 0.012 * f;
-    const p = yarnPoint(y, Math.min(0.99, Math.max(0.01, t)), k);
-    const lift = Math.pow(f, 1.6) * (4.5 + w * 1.2) * flip * (side < 0 ? 1 : -0.8) + Math.sin(i * 1.9) * 0.45;
-    pts.push(`${Math.round((p.x + p.nx * lift) * 10) / 10} ${Math.round((p.y + p.ny * lift) * 10) / 10}`);
-  }
-  return `M${pts[0]}L${pts.slice(1).join(" ")}`;
-}
-
 /** Bounding box of a yarn (control hull) padded for fibres and sway. */
 function boxOf(y: Yarn, pad: number) {
   const xs = [y.p0.x, y.c.x, y.p1.x], ys = [y.p0.y, y.c.y, y.p1.y];
@@ -117,6 +91,36 @@ function distTo(y: Yarn, px: number, py: number): number {
     best = Math.min(best, Math.hypot(p.x - px, p.y - py));
   }
   return best;
+}
+
+/**
+ * A weak or statistical string as worn yarn: the strand pinches at two or three
+ * worn spots where its plies part into finer threads (one spot may hang by a
+ * single thread), with loose fibres added once the board has settled.
+ */
+function FrayedYarn({ id, y, w, anim, begin, fibres, px, py }: { id: string; y: Yarn; w: number; anim: boolean; begin: string; fibres: number; px: number; py: number }) {
+  const rest = useMemo(() => fray(id, y, w, 1, fibres), [id, y, w, fibres]);
+  const keys = useMemo(() => (anim ? SAG_KEYS.map((k) => fray(id, y, w, k, 0)) : null), [anim, id, y, w]);
+  const A = (pick: (f: ReturnType<typeof fray>) => string) =>
+    keys ? <animate attributeName="d" values={keys.map(pick).join(";")} keyTimes={SAG_TIMES} calcMode="spline" keySplines={SAG_SPLINES} dur={`${SETTLE}ms`} begin={begin} fill="freeze" /> : null;
+  return (
+    <>
+      <path className="yv__shadow yv__shadow--fill" d={rest.core}>{A((f) => f.core)}</path>
+      <path className="yv__shadow yv__shadow--thread" d={rest.threads}>{A((f) => f.threads)}</path>
+      <g className="yv__lift">
+        <path className="yv__corefill" d={rest.core}>{A((f) => f.core)}</path>
+        <path className="yv__ply yv__ply--dark" d={rest.plies} style={{ strokeWidth: Math.max(0.45, w * 0.45) }} transform={`translate(${px} ${py})`}>{A((f) => f.plies)}</path>
+        <path className="yv__ply yv__ply--lite" d={rest.plies} style={{ strokeWidth: Math.max(0.4, w * 0.35) }} transform={`translate(${-px} ${-py})`}>{A((f) => f.plies)}</path>
+        <path className="yv__thread" d={rest.threads}>{A((f) => f.threads)}</path>
+        {fibres !== 0 && (
+          <>
+            <path className="yv__fibre" d={rest.fibres} />
+            <path className="yv__fibre yv__fibre--fine" d={rest.fibresFine} />
+          </>
+        )}
+      </g>
+    </>
+  );
 }
 
 /** Renders the fuzz (displacement) only on capable, fine-pointer, wide screens. */
@@ -140,7 +144,7 @@ function useRichYarn(): { rich: boolean; still: boolean } {
 }
 
 export function BoardCanvas(props: Props) {
-  const { geo, counts, selectedState, onSelectState, center, edges, book, caseNodes, focusNode, drawKey, range, activeEdge, onOpenEdge, onRecenter, slip, loading } = props;
+  const { geo, counts, selectedState, onSelectState, center, edges, book, caseNodes, excluded, focusNode, drawKey, range, activeEdge, onOpenEdge, onRecenter, slip, loading } = props;
   const box = useRef<HTMLDivElement>(null);
   const slipRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<{ W: number; H: number } | null>(null);
@@ -307,7 +311,7 @@ export function BoardCanvas(props: Props) {
             return (
               <div
                 key={`${drawKey}-${p.id}`}
-                className={`bcard bcard--${n.ref.kind}${name.length <= 22 ? " bcard--short" : ""}${n.ref.id === focusNode ? " is-focus" : ""}${hoverNode === p.id ? " is-hot" : ""}`}
+                className={`bcard bcard--${n.ref.kind}${name.length <= 22 ? " bcard--short" : ""}${n.ref.id === focusNode ? " is-focus" : ""}${hoverNode === p.id ? " is-hot" : ""}${excluded && n.edges.every((e) => excluded.has(e.id)) ? " is-excluded" : ""}`}
                 style={{ left: p.x, top: p.y, width: p.w, height: p.h, "--tilt": `${tiltFor(n.ref.id, 1.4)}deg`, "--i": i, ...lightVars(light) } as React.CSSProperties}
                 onMouseEnter={() => setHoverNode(p.id)}
                 onMouseLeave={() => setHoverNode(null)}
@@ -370,12 +374,7 @@ export function BoardCanvas(props: Props) {
                     <mask id={`reveal-${drawKey}-${e.id}`} maskUnits="userSpaceOnUse" x={m.x} y={m.y} width={m.w} height={m.h}>
                       <path d={y.d} pathLength={1} className="yarn__reveal" style={{ "--i": i } as React.CSSProperties} />
                     </mask>
-                    {frayed && (
-                      <mask id={`brk-${drawKey}-${e.id}`} maskUnits="userSpaceOnUse" x={m.x} y={m.y} width={m.w} height={m.h}>
-                        <path d={y.d} pathLength={100} className="yarn__breaks" strokeDasharray={breaksFor(e, y.length > 150).dash} />
-                      </mask>
-                    )}
-                    {fuzz && (
+                    {fuzz && !frayed && (
                       <filter id={`fz-${drawKey}-${e.id}`} filterUnits="userSpaceOnUse" x={b.x} y={b.y} width={b.w} height={b.h} colorInterpolationFilters="sRGB">
                         <feTurbulence type="fractalNoise" baseFrequency={frayed ? "0.5" : "0.9"} numOctaves={2} seed={fnv1a(e.id) % 97} result="n" />
                         <feDisplacementMap in="SourceGraphic" in2="n" scale={frayed ? 9 : 5.5} xChannelSelector="R" yChannelSelector="G" />
@@ -393,8 +392,6 @@ export function BoardCanvas(props: Props) {
               const w = frayed ? Math.max(1.1, Math.round(base * 0.55 * 10) / 10) : base;
               const nodeKey = `${node.ref.kind}:${node.ref.id}`;
               const hot = hover === e.id || focused === e.id || activeEdge === e.id || hoverNode === nodeKey;
-              const brk = frayed ? breaksFor(e, y.length > 150) : null;
-              const flip = fnv1a(e.id) % 2 ? 1 : -1;
               const anim = !still;
               const begin = `${LEAD + i * STAGGER}ms`;
               const sway = (vals: string) =>
@@ -411,33 +408,31 @@ export function BoardCanvas(props: Props) {
               return (
                 <g
                   key={`${drawKey}-${e.id}`}
-                  className={`yv yv--${style}${frayed ? " yv--frayed" : ""}${hot ? " is-hot" : ""}${anyHot && !hot ? " is-dim" : ""}${focused === e.id ? " is-focus" : ""}`}
+                  className={`yv yv--${style}${frayed ? " yv--frayed" : ""}${excluded?.has(e.id) ? " is-excluded" : ""}${hot ? " is-hot" : ""}${anyHot && !hot ? " is-dim" : ""}${focused === e.id ? " is-focus" : ""}`}
                   style={{ "--sx": light.sx, "--sy": light.sy, "--w": w } as React.CSSProperties}
                   aria-hidden="true"
                   data-edge-vis={e.id}
                 >
                   <g mask={done ? undefined : `url(#reveal-${drawKey}-${e.id})`}>
                     {P("yv__halo", { style: { strokeWidth: w + 8 } })}
-                    <g mask={brk ? `url(#brk-${drawKey}-${e.id})` : undefined}>
-                      {P("yv__shadow-soft", { style: { strokeWidth: w + 4.5 } })}
-                      {P("yv__shadow", { style: { strokeWidth: w + 0.6 } })}
-                      <g className="yv__lift">
-                        {fuzz && style !== "context" && P("yv__fuzz", { style: { strokeWidth: w + (frayed ? 3 : 2) }, filter: `url(#fz-${drawKey}-${e.id})` })}
-                        {P("yv__core", { style: { strokeWidth: w } })}
-                        {style !== "context" && (
-                          <>
-                            {P("yv__ply yv__ply--dark", { style: { strokeWidth: Math.max(0.5, w * 0.5) }, transform: `translate(${px} ${py})` })}
-                            {P("yv__ply yv__ply--lite", { style: { strokeWidth: Math.max(0.45, w * 0.4) }, transform: `translate(${-px} ${-py})` })}
-                          </>
-                        )}
-                      </g>
-                    </g>
-                    {brk &&
-                      ([-1, 1] as const).map((side) => (
-                        <path key={side} className={`yv__strand yv__strand--${side < 0 ? "a" : "b"}`} d={strandAt(y, brk.at, w, 1, flip, side)}>
-                          {sway(anim ? SAG_KEYS.map((k) => strandAt(y, brk.at, w, k, flip, side)).join(";") : "")}
-                        </path>
-                      ))}
+                    {frayed ? (
+                      <FrayedYarn id={e.id} y={y} w={w} anim={anim} begin={begin} fibres={done ? (rich ? -1 : Math.round(y.length / 20) + 4) : 0} px={px} py={py} />
+                    ) : (
+                      <>
+                        {P("yv__shadow-soft", { style: { strokeWidth: w + 4.5 } })}
+                        {P("yv__shadow", { style: { strokeWidth: w + 0.6 } })}
+                        <g className="yv__lift">
+                          {fuzz && style !== "context" && P("yv__fuzz", { style: { strokeWidth: w + 2 }, filter: `url(#fz-${drawKey}-${e.id})` })}
+                          {P("yv__core", { style: { strokeWidth: w } })}
+                          {style !== "context" && (
+                            <>
+                              {P("yv__ply yv__ply--dark", { style: { strokeWidth: Math.max(0.5, w * 0.5) }, transform: `translate(${px} ${py})` })}
+                              {P("yv__ply yv__ply--lite", { style: { strokeWidth: Math.max(0.45, w * 0.4) }, transform: `translate(${-px} ${-py})` })}
+                            </>
+                          )}
+                        </g>
+                      </>
+                    )}
                   </g>
                 </g>
               );

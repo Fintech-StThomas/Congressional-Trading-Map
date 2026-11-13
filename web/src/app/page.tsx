@@ -4,6 +4,7 @@ import { sourceNames } from "@/lib/meta";
 import { toBoardMember, type BoardMember } from "@/lib/client";
 import { BoardApp, type CaseLite, type Featured, type StateChunk } from "@/components/board/BoardApp";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { featuredReason, rankFeatured } from "@/lib/featured";
 
 export default function BoardPage() {
   const board = getBoard();
@@ -25,19 +26,15 @@ export default function BoardPage() {
     id: c.id, member: c.member, org: c.org, orgName: orgName(c.org), types: c.types, years: c.years, money: c.money ?? 0, trades: c.trades ?? 0,
   });
 
-  // Featured example: the strongest case whose member is serving, else the
-  // current member with the most organisations tied.
-  const top = allCases.find((c) => current.has(c.member) && book[c.member]);
-  let featured: Featured = null;
-  if (top) featured = { kind: "case", c: lite(top) };
-  else {
-    let best: string | null = null;
-    for (const id of current) if (!best || (members.get(id)?.counts.orgs ?? 0) > (members.get(best)?.counts.orgs ?? 0)) best = id;
-    if (best) featured = { kind: "member", member: best };
-  }
+  // Featured example: the current member whose drawn board has the widest mix
+  // of tie kinds (ties: more records, then id), plus the next few for "Show another".
+  const ranked = rankFeatured([...current].filter((id) => book[id]).sort().map((id) => ({ member: id, picked: memberBoard(id).edges })));
+  const featured: Featured = ranked.length
+    ? { picks: ranked.map((f, i) => ({ member: f.member, reason: featuredReason(f.kinds, i === 0), kinds: f.kinds.length })) }
+    : null;
 
   const initialChunks: Record<string, StateChunk> = {};
-  const fm = featured ? (featured.kind === "case" ? featured.c.member : featured.member) : null;
+  const fm = featured?.picks[0].member ?? null;
   if (fm && book[fm]) {
     const b = memberBoard(fm);
     Object.assign(book, b.members);

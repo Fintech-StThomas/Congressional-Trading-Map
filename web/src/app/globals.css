@@ -34,6 +34,7 @@
   --yarn-ply-lite: oklch(0.8 0.12 38 / 0.75);
   --yarn-ply-dark: oklch(0.36 0.13 26 / 0.75);
   --yarn-fibre: oklch(0.72 0.15 34);
+  --yarn-worn: oklch(0.64 0.09 32);
   --context: oklch(0.6 0.006 80);
   --context-under: oklch(0.28 0.004 70);
 
@@ -566,9 +567,21 @@ input[type="checkbox"] {
   opacity: 0.7;
 }
 .linesample__fibre {
-  stroke: var(--red);
-  stroke-width: 0.6;
+  stroke: var(--yarn-fibre);
+  stroke-width: 0.4;
   opacity: 0.9;
+}
+.linesample path.linesample__corefill {
+  fill: color-mix(in oklch, var(--red) 86%, var(--felt));
+  stroke: none;
+}
+.linesample path.linesample__shadowfill {
+  fill: oklch(0 0 0 / 0.45);
+  stroke: none;
+}
+.linesample__thread {
+  stroke: var(--yarn-worn);
+  stroke-width: 0.45;
 }
 .linesample--context .linesample__core {
   stroke: var(--context);

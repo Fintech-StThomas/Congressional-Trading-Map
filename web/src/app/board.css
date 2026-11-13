@@ -672,23 +672,40 @@ button.crumb:hover {
   stroke-dashoffset: calc(var(--w) * 0.85px);
   transition: stroke 160ms ease-out;
 }
-.yv--frayed .yv__core {
-  stroke: color-mix(in oklch, var(--red) 80%, var(--felt));
+/* Frayed (weak or statistical): worn yarn drawn as geometry (lib/fray.ts). */
+.yarns .yv__corefill {
+  fill: color-mix(in oklch, var(--red) 86%, var(--felt));
+  stroke: none;
+  transition: fill 160ms ease-out;
 }
-.yarns .yv--frayed .yv__ply--lite {
+.yarns .yv__shadow--fill {
+  fill: oklch(0.04 0.01 30 / 0.5);
+  stroke: none;
+}
+.yarns .yv__shadow--thread {
+  stroke: oklch(0.04 0.01 30 / 0.4);
+  stroke-width: 0.9px;
+}
+.yarns .yv__thread {
+  stroke: var(--yarn-worn);
+  stroke-width: 0.75px;
+}
+.yarns .yv__fibre {
+  stroke: var(--yarn-fibre);
+  stroke-width: 0.45px;
+  stroke-linecap: round;
   opacity: 0.7;
 }
-.yarns .yv--frayed .yv__fuzz {
-  stroke-dasharray: 0.5 1.4;
+.yarns .yv__fibre--fine {
+  stroke: var(--yarn-worn);
+  stroke-width: 0.35px;
   opacity: 0.9;
 }
-.yv__strand {
-  stroke: var(--yarn-fibre);
-  stroke-width: 0.8px;
-  opacity: 0.95;
+.yv.is-hot .yv__corefill {
+  fill: var(--red-hot);
 }
-.yv__strand--b {
-  stroke-width: 0.6px;
+.yv.is-hot .yv__thread {
+  stroke: color-mix(in oklch, var(--red-hot) 70%, var(--text-3));
 }
 .yarns .yarn__breaks {
   stroke: white;
@@ -1167,6 +1184,14 @@ button.crumb:hover {
 .drawer__tab .linesample__fibre {
   stroke: var(--red-ink);
 }
+.drawer__tab .linesample path.linesample__corefill,
+.marks .linesample path.linesample__corefill {
+  fill: var(--red-ink);
+}
+.drawer__tab .linesample__thread,
+.marks .linesample__thread {
+  stroke: color-mix(in oklch, var(--red-ink) 60%, var(--ink-3));
+}
 .drawer__tab .linesample__shadow {
   stroke: oklch(0 0 0 / 0.15);
 }
@@ -1464,4 +1489,107 @@ button.crumb:hover {
 
 .canvas__center .print__blank span {
   font-size: 36px;
+}
+
+/* Featured example: why this board, and a way to the next one. */
+.slip__why {
+  margin: 6px 0 4px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+.slip__next {
+  white-space: nowrap;
+}
+.slip__next .mono {
+  color: var(--ink-3);
+  margin-left: 3px;
+}
+
+/* Assumption switches: excluded strings and cards fade rather than vanish. */
+.yv.is-excluded,
+.bcard.is-excluded {
+  opacity: 0.16;
+  transition: opacity 420ms ease-out;
+}
+.board__assume {
+  margin: 0 0 10px;
+}
+.assume {
+  font-size: 13px;
+  color: var(--text-2);
+}
+.assume summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  cursor: pointer;
+  list-style: none;
+}
+.assume summary::-webkit-details-marker {
+  display: none;
+}
+.assume summary:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.assume__k {
+  color: var(--text-3);
+}
+.assume__v {
+  color: var(--text);
+  font-weight: 550;
+}
+.assume.is-active summary {
+  border-color: var(--text-3);
+  background: var(--surface-2);
+}
+.assume__body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+.assume__note {
+  flex-basis: 100%;
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  color: var(--text-3);
+  max-width: 80ch;
+}
+.assume__line {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--text);
+}
+.assume:not(.is-active):not([open]) .assume__line {
+  display: none;
+}
+.assume__of {
+  color: var(--text-3);
+  font-size: 0.7em;
+}
+li.is-excluded {
+  opacity: 0.45;
+  transition: opacity 420ms ease-out;
+}
+li.is-excluded .tag {
+  visibility: hidden;
+}
+.assume__gone {
+  display: block;
+  font-size: 12px;
+  color: var(--text-3);
+}
+tr.is-excluded td {
+  opacity: 0.4;
+  transition: opacity 420ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .yv.is-excluded, .bcard.is-excluded, li.is-excluded, tr.is-excluded td { transition: none; }
 }

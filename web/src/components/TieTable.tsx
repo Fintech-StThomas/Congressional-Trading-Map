@@ -6,6 +6,7 @@ import { FAMILY_LABEL, typeLabel, amountLabel, filteredAmount, otherEnd, stringS
 import { count, NOT_DISCLOSED, seat, yearSpan } from "@/lib/format";
 import { memberHref, nodeName, orgHref, ORG_KIND_LABEL, type NameBook } from "@/lib/client";
 import { LineSample } from "./LineSample";
+import { useAssumptionContext } from "./assume/Assume";
 
 type Props = {
   edges: Edge[];
@@ -18,11 +19,15 @@ type Props = {
   caption: string;
   groupBy?: "family" | null;
   emptyText?: string;
+  /** Edge ids excluded by the assumption switches (they fade). Defaults to the page's assumption context. */
+  excluded?: Set<string>;
 };
 
 const NO_VALUE_TYPES = new Set(["oversees", "revolving_door", "sits_with", "legislates_with", "shared_staff", "position", "shared_donors", "traded_together"]);
 
-export function TieTable({ edges, selfId, book, range, onOpen, activeId, caseEdges, caption, groupBy = null, emptyText }: Props) {
+export function TieTable({ edges, selfId, book, range, onOpen, activeId, caseEdges, caption, groupBy = null, emptyText, excluded }: Props) {
+  const ctx = useAssumptionContext();
+  const out = excluded ?? ctx?.effect?.excluded;
   if (!edges.length) {
     return <p className="empty">{emptyText ?? "No ties match these filters."}</p>;
   }
@@ -67,7 +72,7 @@ export function TieTable({ edges, selfId, book, range, onOpen, activeId, caseEdg
               const n = filteredAmount(e, range).n;
               const inbound = e.directed && e.to.id === selfId;
               return (
-                <tr key={e.id} className={activeId === e.id ? "is-active" : undefined}>
+                <tr key={e.id} className={[activeId === e.id ? "is-active" : "", out?.has(e.id) ? "is-excluded" : ""].join(" ").trim() || undefined} data-edge={e.id}>
                   <td data-label="Tie">
                     <span className="ties__type">
                       <LineSample style={stringStyle(e)} />
@@ -79,7 +84,7 @@ export function TieTable({ edges, selfId, book, range, onOpen, activeId, caseEdg
                     <span className="ties__flags">
                       {e.basis === "derived" && <span className="flag">derived</span>}
                       {e.weak && <span className="flag">thin evidence</span>}
-                      {caseEdges?.has(e.id) && <span className="flag flag--case">case</span>}
+                      {caseEdges?.has(e.id) && !(ctx?.effect && !ctx.effect.cases.has(otherEnd(e, selfId).id)) && <span className="flag flag--case">case</span>}
                     </span>
                   </td>
                   <td data-label="With">

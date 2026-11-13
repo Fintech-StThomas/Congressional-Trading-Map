@@ -16,6 +16,7 @@ import { LedgerTable } from "@/components/LedgerTable";
 import { Timeline } from "@/components/Timeline";
 import { PrintButton } from "@/components/PrintButton";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { AssumeCase, AssumeCount, AssumptionProvider, PageAssumptionBar } from "@/components/assume/Assume";
 
 export const dynamicParams = false;
 
@@ -100,7 +101,12 @@ export default async function MemberPage({ params }: PageProps<"/m/[id]">) {
   const owners = ts?.by_owner ?? {};
   const ownTrades = owners.self ?? 0;
 
+  // Only what the assumption switches need: traded strings and case orgs.
+  const tradedEdges = file.edges.filter((e) => e.type === "traded").map((e) => ({ id: e.id, type: e.type, from: e.from, to: e.to }));
+  const caseOrgs = file.cases.map((c) => c.org);
+
   return (
+    <AssumptionProvider member={m.id} hasTrades={nTrades > 0} edges={tradedEdges} caseOrgs={caseOrgs}>
     <article className="page dossier" data-testid="member-page">
       <header className="dossier__head">
         <Print id={m.id} name={m.name} photo={m.photo} size="xl" />
@@ -112,12 +118,17 @@ export default async function MemberPage({ params }: PageProps<"/m/[id]">) {
             {seat(m)} · {PARTY_NAMES[m.party]} · {m.current ? "Serving" : "Former member"}, {served(m.served)}
           </p>
           <dl className="dossier__counts">
-            <div><dt>Household trades reported</dt><dd className="mono">{count(m.counts.trades)}</dd></div>
+            <div><dt>Household trades reported</dt><dd className="mono"><AssumeCount kind="trades" total={m.counts.trades} /></dd></div>
             <div><dt>Organisations tied</dt><dd className="mono">{count(m.counts.orgs)}</dd></div>
             <div><dt>Members tied</dt><dd className="mono">{count(m.counts.members)}</dd></div>
-            <div><dt>Cases</dt><dd className="mono">{count(m.counts.cases)}</dd></div>
+            <div><dt>Cases</dt><dd className="mono"><AssumeCount kind="cases" total={m.counts.cases} /></dd></div>
             {nTrades > 0 && <div><dt>Disclosed late</dt><dd className="mono">{count(lateCount)}</dd></div>}
           </dl>
+          {nTrades > 0 && (
+            <div className="no-print dossier__assume">
+              <PageAssumptionBar scope={m.name} />
+            </div>
+          )}
           <div className="dossier__actions no-print">
             {m.current ? (
               <Link className="btn btn--paper" href={boardHref({ s: m.state, m: m.id })}>Open on the board</Link>
@@ -155,7 +166,7 @@ export default async function MemberPage({ params }: PageProps<"/m/[id]">) {
           <p className="section__note">Companies whose stock this member&rsquo;s household traded while the member received money from the company&rsquo;s PAC, in the same years. A reason to read the filings, not a finding.</p>
           <ol className="dossier__cases">
             {file.cases.map((c) => (
-              <li key={c.id}>
+              <AssumeCase key={c.id} org={c.org}>
                 <span className="tag">Case</span>
                 <span className="dossier__casename">{orgName(c.org)}</span>
                 <span className="dossier__casetypes">
@@ -164,7 +175,7 @@ export default async function MemberPage({ params }: PageProps<"/m/[id]">) {
                 </span>
                 <span className="mono">{c.years[0] === c.years[1] ? c.years[0] : `${c.years[0]}–${c.years[1]}`}</span>
                 <Link className="no-print" href={boardHref({ s: m.current ? m.state : undefined, m: m.id, focus: c.org })}>On the board</Link>
-              </li>
+              </AssumeCase>
             ))}
           </ol>
         </section>
@@ -234,11 +245,17 @@ export default async function MemberPage({ params }: PageProps<"/m/[id]">) {
         <p>
           {SITE.disclaimer} Not investment advice. Use is restricted by 5 U.S.C. 13107(c): no commercial use other than by news media, and no use for soliciting money.
         </p>
+        <p className="dossier__fullfile">
+          <Link href={`/m/${m.id}/records`} className="no-print">Open the full file</Link>
+          <span className="print-only">The full file (every record, unfiltered): /m/{m.id}/records</span>
+          <span className="sub"> · every record held for this member, unfiltered, with CSV downloads</span>
+        </p>
         <p className="mono">
           {SITE.name} · member {m.id}
           {m.fec_ids.length ? ` · FEC ${m.fec_ids.join(", ")}` : ""}
         </p>
       </footer>
     </article>
+    </AssumptionProvider>
   );
 }

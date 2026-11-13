@@ -18,6 +18,7 @@ import { ErrorBoundary } from "../ErrorBoundary";
 import { BoardCanvas, type Center } from "./BoardCanvas";
 import { YearRange } from "./YearRange";
 import { Legend } from "./Legend";
+import { AssumptionBar, useAssumptions } from "../assume/Assume";
 
 export type CaseLite = {
   id: string;
@@ -30,7 +31,8 @@ export type CaseLite = {
   trades: number;
 };
 
-export type Featured = { kind: "case"; c: CaseLite } | { kind: "member"; member: string } | null;
+/** Featured examples, most varied first: `reason` is the one sentence shown on the slip. */
+export type Featured = { picks: { member: string; reason: string; kinds: number }[] } | null;
 
 export type StateChunk = {
   strings: Record<string, Edge[]>;
@@ -69,6 +71,9 @@ function toQuery(sel: Sel): string {
   if (sel.m) q.set("m", sel.m);
   if (sel.o) q.set("o", sel.o);
   if (sel.focus) q.set("focus", sel.focus);
+  // Assumption switches travel with every board URL.
+  const as = new URLSearchParams(window.location.search).get("as");
+  if (as) q.set("as", as);
   const s = q.toString();
   return s ? `/?${s}` : "/";
 }
@@ -76,14 +81,12 @@ function toQuery(sel: Sel): string {
 export function BoardApp(props: Props) {
   const { geo, states, featured, cases, caseTotal, caseIndex, sources, asOf } = props;
 
+  const [featIdx, setFeatIdx] = useState(0);
+  const featPick = featured?.picks[featIdx] ?? null;
   const featuredSel: Sel = useMemo(() => {
-    if (featured?.kind === "case") {
-      const m = props.members[featured.c.member];
-      return { s: m?.state ?? null, m: featured.c.member, o: null, focus: featured.c.org };
-    }
-    if (featured?.kind === "member") return { s: props.members[featured.member]?.state ?? null, m: featured.member, o: null, focus: null };
+    if (featPick) return { s: props.members[featPick.member]?.state ?? null, m: featPick.member, o: null, focus: null };
     return EMPTY;
-  }, [featured, props.members]);
+  }, [featPick, props.members]);
 
   const [sel, setSel] = useState<Sel>(featuredSel);
   const [isFeatured, setIsFeatured] = useState(Boolean(featured));
@@ -251,19 +254,26 @@ export function BoardApp(props: Props) {
     return center?.kind === "org" ? sortEdges(filtered).slice(0, MAX_STRINGS) : sortEdges(filtered);
   }, [allStrings, families, range, center]);
 
+  // Assumption switches (owner, asset class, size, lateness) for a member's board.
+  const assumeMember = center?.kind === "member" ? center.member.id : null;
+  const assumeEdges = useMemo(() => (assumeMember ? allStrings.filter((e) => e.type === "traded") : []), [assumeMember, allStrings]);
+  const assumeCases = useMemo(() => (assumeMember ? caseIndex[assumeMember] ?? [] : []), [assumeMember, caseIndex]);
+  const assumption = useAssumptions(assumeMember, true, assumeEdges, assumeCases);
+  const excluded = assumption.effect?.excluded;
+
   const familyCounts = useMemo(() => {
     const c: Record<Family, number> = { money: 0, holding: 0, people: 0, context: 0 };
-    for (const e of allStrings) if (inYears(e, range)) c[e.family]++;
+    for (const e of allStrings) if (inYears(e, range) && !excluded?.has(e.id)) c[e.family]++;
     return c;
-  }, [allStrings, range]);
+  }, [allStrings, range, excluded]);
 
   const caseNodes = useMemo(() => {
     if (!center) return new Set<string>();
-    if (center.kind === "member") return new Set(caseIndex[center.member.id] ?? []);
+    if (center.kind === "member") return assumption.effect ? new Set(assumption.effect.cases) : new Set(caseIndex[center.member.id] ?? []);
     const s = new Set<string>();
     for (const [m, orgs] of Object.entries(caseIndex)) if (orgs.includes(center.org.id)) s.add(m);
     return s;
-  }, [center, caseIndex]);
+  }, [center, caseIndex, assumption.effect]);
 
   // Ties not drawn: the rest of the member's organisations and colleagues, which
   // live in the case file (full edges and the money ledger).
@@ -316,13 +326,22 @@ export function BoardApp(props: Props) {
   const selectState = useCallback((code: string) => go({ s: code, m: null, o: null, focus: null }), [go]);
 
   // ---- slip: what the board is showing -------------------------------------------
-  const featuredCase = isFeatured && featured?.kind === "case" ? featured.c : null;
+  const nextFeatured = featured && featured.picks.length > 1
+    ? () => {
+        const i = (featIdx + 1) % featured.picks.length;
+        const m = featured.picks[i].member;
+        setFeatIdx(i);
+        setSel({ s: memberBook[m]?.state ?? null, m, o: null, focus: null });
+        setIsFeatured(true);
+        setOpen(null);
+      }
+    : null;
   const slip = (
     <Slip
       sel={sel}
       center={center}
-      featuredCase={featuredCase}
-      featuredMember={isFeatured && featured?.kind === "member"}
+      featured={isFeatured && featPick && featPick.member === sel.m ? { ...featPick, n: featIdx + 1, of: featured!.picks.length } : null}
+      onNextFeatured={nextFeatured}
       asOf={asOf}
       shown={visible.length}
       more={moreTies}
@@ -409,6 +428,11 @@ export function BoardApp(props: Props) {
       </div>
 
       <div className="board__main">
+        {center?.kind === "member" && (
+          <div className="board__assume">
+            <AssumptionBar state={assumption} scope={center.member.name} />
+          </div>
+        )}
         <div className="board__stage">
           {error && (
             <p className="board__error" role="alert">
@@ -426,6 +450,7 @@ export function BoardApp(props: Props) {
                 edges={visible}
                 book={book}
                 caseNodes={caseNodes}
+                excluded={excluded}
                 focusNode={sel.focus}
                 drawKey={drawKey}
                 range={range}
@@ -449,6 +474,7 @@ export function BoardApp(props: Props) {
                   onOpen={openEdge}
                   activeId={open?.id}
                   caption="Strings on the board"
+                  excluded={excluded}
                   caseEdges={new Set(visible.filter((e) => caseNodes.has(e.from.id) || caseNodes.has(e.to.id)).map((e) => e.id))}
                   groupBy="family"
                   emptyText={loading ? "Pulling the records…" : "No strings match the current filters. Turn on more families or widen the years."}
@@ -501,16 +527,16 @@ function Sep() {
 }
 
 function Slip({
-  sel, center, featuredCase, featuredMember, asOf, shown, more, onClear, onState,
+  sel, center, featured, onNextFeatured, asOf, shown, more, onClear, onState,
 }: {
-  sel: Sel; center: Center; featuredCase: CaseLite | null; featuredMember: boolean; asOf: string | null; shown: number; more: number;
+  sel: Sel; center: Center; featured: { reason: string; n: number; of: number } | null; onNextFeatured: (() => void) | null; asOf: string | null; shown: number; more: number;
   onClear: () => void; onState: (s: string) => void;
 }) {
   if (center?.kind === "member") {
     const m = center.member;
     return (
       <div className="slip">
-        {(featuredCase || featuredMember) && (
+        {featured && (
           <p className="slip__kicker">
             <span className="stamp-label">Featured example</span>
             {asOf && <span className="mono">as of {date(asOf)}</span>}
@@ -520,7 +546,7 @@ function Slip({
           {m.name} <PartyTag party={m.party} />
         </h2>
         <p className="slip__sub">{seat(m)}</p>
-        {featuredCase && <CaseSentence c={featuredCase} />}
+        {featured && <p className="slip__why">{featured.reason}</p>}
         <p className="slip__meta">
           <span className="mono">{shown}</span> {shown === 1 ? "string" : "strings"}
           {more > 0 && (
@@ -529,12 +555,20 @@ function Slip({
             </>
           )}{" "}
           · <Link href={memberHref(m.id)}>Open case file</Link>
-          {featuredCase || featuredMember ? (
+          {featured ? (
             <>
               {" · "}
               <button type="button" className="linkbtn" onClick={() => onState(m.state)}>
                 Browse {stateName(m.state)}
               </button>
+              {featured && onNextFeatured && (
+                <>
+                  {" · "}
+                  <button type="button" className="linkbtn slip__next" onClick={onNextFeatured} aria-label={`Show another featured example (${featured.n} of ${featured.of})`}>
+                    Show another <span className="mono">{featured.n}/{featured.of}</span>
+                  </button>
+                </>
+              )}
             </>
           ) : null}
         </p>

@@ -96,8 +96,9 @@ export function WallView({ current }: { current: WallRow[] }) {
 
   // Read the shareable state once, then keep the URL in step (replace, so Back leaves the wall).
   useEffect(() => {
-    const q = readQuery();
-    if (q) {
+    // Applied after hydration (the static page cannot know the query).
+    const apply = (q: ReturnType<typeof readQuery>) => {
+      if (!q) return;
       setMeasure(q.measure);
       setSort(q.sort);
       setChamber(q.chamber);
@@ -106,7 +107,8 @@ export function WallView({ current }: { current: WallRow[] }) {
       setYear(q.year);
       if (q.former || q.year !== null) loadAll();
       if (q.year !== null) loadYears();
-    }
+    };
+    apply(readQuery());
     ready.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -179,8 +181,8 @@ export function WallView({ current }: { current: WallRow[] }) {
     <div className="wall" data-testid="wall" data-measure={measure} data-year={yearMode ? year : "all"}>
       <div className="wallbar" role="group" aria-label="Wall controls">
         <div className="wallbar__group">
-          <span className="wallbar__label" id="wb-marker">Marker</span>
-          <Segmented label="Marker" name="measure" value={measure} options={MEASURES.map((x) => ({ value: x.k, label: x.label }))} onChange={setMeasure} />
+          <span className="wallbar__label">Marker</span>
+          <Segmented label="Marker" name="measure" value={measure} options={MEASURES.map((x) => ({ value: x.k, label: x.label, short: x.short }))} onChange={setMeasure} />
         </div>
         <div className="wallbar__group">
           <span className="wallbar__label">Year</span>

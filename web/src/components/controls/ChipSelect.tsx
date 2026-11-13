@@ -160,7 +160,7 @@ export function Switch({ label, on, onChange, disabled, hint }: { label: string;
 
 /** Segmented control on native radios (arrow keys work as in any radio group). */
 export function Segmented<T extends string>({ label, name, value, options, onChange }: {
-  label: string; name: string; value: T; options: { value: T; label: string }[]; onChange: (v: T) => void;
+  label: string; name: string; value: T; options: { value: T; label: string; short?: string }[]; onChange: (v: T) => void;
 }) {
   return (
     <fieldset className="seg">
@@ -168,7 +168,14 @@ export function Segmented<T extends string>({ label, name, value, options, onCha
       {options.map((o) => (
         <label key={o.value} className={value === o.value ? "is-on" : undefined}>
           <input type="radio" name={name} value={o.value} checked={value === o.value} onChange={() => onChange(o.value)} />
-          <span>{o.label}</span>
+          {o.short && o.short !== o.label ? (
+            <>
+              <span className="seg__long">{o.label}</span>
+              <span className="seg__short" aria-hidden="true">{o.short}</span>
+            </>
+          ) : (
+            <span>{o.label}</span>
+          )}
         </label>
       ))}
     </fieldset>
