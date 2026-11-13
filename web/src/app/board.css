@@ -1513,7 +1513,8 @@ button.crumb:hover {
   transition: opacity 420ms ease-out;
 }
 .board__assume {
-  margin: 0 0 10px;
+  grid-column: 1 / -1;
+  margin: 0;
 }
 .assume {
   font-size: 13px;
