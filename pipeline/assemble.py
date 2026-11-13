@@ -37,7 +37,8 @@ MONEY_MEMBERS_PER_ORG = 200          # members listed per org for money ties; th
 FAMILY_ORDER = {"money": 0, "holding": 1, "people": 2, "context": 3}
 STOCK_ACT_YEAR = 2012
 MEMBER_LEDGER_COLS = ["type", "kind", "other", "via", "exact", "low", "high", "count", "first", "last", "note", "dir"]
-ORG_TIE_COLS = ["type", "member", "exact", "low", "high", "count", "first", "last", "edge"]
+CARRIED_OVER = ("holdings", "holdings-index.json")  # written by the holdings stage, not by the assembler
+ORG_TIE_COLS = ["type", "member", "exact", "low", "high", "count", "first", "last", "edge", "note"]
 # Party split per org (contract: OrgSummary.split). Measure -> the ties it counts.
 PARTIES = ("D", "I", "R")
 SPLIT_MEASURES = ("given", "support", "oppose", "traded")
@@ -266,7 +267,8 @@ def org_ties(edges: list[dict[str, Any]], full_in_member_file: set[tuple[str, st
     for e in rank(edges):
         (listed if e["family"] != "money" or member_of(e) in top else rest).append(e)
     rows = [[e["type"], member_of(e), num(e["amount"]["exact"]), num(e["amount"]["low"]), num(e["amount"]["high"]),
-             e["count"], e["first"], e["last"], e["id"] if (member_of(e), e["id"]) in full_in_member_file else None]
+             e["count"], e["first"], e["last"], e["id"] if (member_of(e), e["id"]) in full_in_member_file else None,
+             e["note"]]
             for e in listed]
     return {"cols": ORG_TIE_COLS, "rows": rows}, rest
 
@@ -462,6 +464,11 @@ def swap_into_place(staging: Path) -> None:
     if old.exists():
         shutil.rmtree(old)
     if OUT.exists():
+        # Files written by other stages (holdings) live beside the assembled tree; carry them over.
+        for name in CARRIED_OVER:
+            src = OUT / name
+            if src.exists() and not (staging / name).exists():
+                src.rename(staging / name)
         OUT.rename(old)
     staging.rename(OUT)
     if old.exists():

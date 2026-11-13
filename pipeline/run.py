@@ -23,8 +23,8 @@ STAGES: dict[str, Callable[[], None]] = {
     "fec": fec,
     "edges_trades": edges_trades.run,
     "edges_committees": edges_committees.run,
-    "assemble": assemble.run,
-    "holdings": holdings.run,  # after assemble: it swaps web/public/data wholesale; holdings reads its member files
+    "holdings": holdings.run,  # before assemble, so its `owns` edges are merged in the same run
+    "assemble": assemble.run,  # carries the holdings files over when it swaps web/public/data
 }
 
 
