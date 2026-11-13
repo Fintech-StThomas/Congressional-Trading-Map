@@ -1,0 +1,57 @@
+import { LineSample } from "../LineSample";
+
+/** Every encoding on the board, in plain words. */
+export function Legend() {
+  return (
+    <section className="legend" aria-labelledby="legend-h">
+      <h2 id="legend-h" className="legend__h">
+        How to read the strings
+      </h2>
+      <ul>
+        <li>
+          <LineSample style="filed" />
+          <span>
+            <b>Solid red</b>: a filed record names both ends
+          </span>
+        </li>
+        <li>
+          <LineSample style="derived" />
+          <span>
+            <b>Long dashes</b>: derived by a published statistical rule
+          </span>
+        </li>
+        <li>
+          <LineSample style="weak" />
+          <span>
+            <b>Short dashes</b>: evidence is thin or incomplete
+          </span>
+        </li>
+        <li>
+          <svg className="legend__thick" viewBox="0 0 40 12" width="40" height="12" aria-hidden="true">
+            <path d="M2 4 Q10 8 18 4" strokeWidth="1.6" />
+            <path d="M22 4 Q30 9 38 4" strokeWidth="5" />
+          </svg>
+          <span>
+            <b>Thicker</b>: more money, or more records (log scale)
+          </span>
+        </li>
+        <li>
+          <LineSample style="context" />
+          <span>
+            <b>Thin grey</b>: context, such as a shared committee. Off by default
+          </span>
+        </li>
+        <li>
+          <span className="tag tag--inline">Case</span>
+          <span>three or more kinds of filed tie with one organisation, overlapping in time</span>
+        </li>
+        <li>
+          <abbr className="party" title="Democrat, Republican, Independent">
+            D
+          </abbr>
+          <span>party letter: D, R or I</span>
+        </li>
+      </ul>
+    </section>
+  );
+}
