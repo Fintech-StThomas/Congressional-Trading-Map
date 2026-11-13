@@ -120,3 +120,60 @@ test("phone width shows the table layout without horizontal scroll", async () =>
   assert.ok(overflow <= 0, `page scrolls sideways by ${overflow}px`);
   await p.close();
 });
+
+test("the wall renders prints, switches markers and opens the board", async () => {
+  const p = await page();
+  await p.goto(base + "/wall");
+  await p.waitForSelector("[data-testid=wall] .wall__print");
+  const prints = await p.locator(".wall__band--sm .wall__print").count();
+  assert.ok(prints > 400, `only ${prints} prints`);
+  assert.match(await p.getByTestId("wall-sum-D").innerText(), /members · .* cases · \$/);
+  const widths = () => p.locator(".wall__band--sm .wall__marker span").evaluateAll((els) => els.map((e) => e.style.width).join());
+  const before = await widths();
+  await p.getByRole("radio", { name: "PAC dollars received" }).check();
+  await p.waitForSelector("[data-testid=wall][data-measure=pac]");
+  assert.notEqual(await widths(), before);
+  const first = p.locator(".wall__band--sm .wall__print").first();
+  await first.hover();
+  await p.getByRole("tooltip").waitFor();
+  const href = await first.getAttribute("href");
+  assert.match(href, /^\/\?(s=[A-Z]{2}&)?m=[A-Z]\d{6}$/);
+  await first.click();
+  await p.waitForURL((u) => u.pathname === "/" && u.searchParams.has("m"));
+  await p.close();
+});
+
+test("organisations page lists both rankings with split bars", async () => {
+  const p = await page();
+  await p.goto(base + "/orgs");
+  await p.waitForSelector("[data-testid=orgs-reach] .orgs__row");
+  assert.ok((await p.locator("[data-testid=orgs-dollars] .orgs__row").count()) >= 20);
+  assert.ok((await p.locator("[data-testid=orgs-reach] .split__bar .seg").count()) > 20);
+  await p.getByLabel("Find an organisation").fill("realtors");
+  assert.match(await p.locator("[data-testid=orgs-reach] .orgs__row").first().innerText(), /REALTORS/);
+  await p.close();
+});
+
+test("a large organisation shows its party split and reach", async () => {
+  const p = await page();
+  await p.goto(base + "/o/co%3A732717");
+  const split = p.getByTestId("org-split");
+  await split.waitFor({ timeout: 15000 });
+  assert.match(await split.innerText(), /Gave to [\d,]+ Republicans, [\d,]+ Democrats and \d+ independents: \$/);
+  assert.ok((await split.locator(".split__bar").count()) >= 3);
+  const reach = p.getByTestId("org-reach");
+  assert.ok((await reach.locator(".reach__print").count()) >= 20);
+  await reach.locator("button.reach__print").first().click();
+  await p.getByTestId("evidence-drawer").waitFor();
+  await p.close();
+});
+
+test("wall and organisation pages do not scroll sideways at phone width", async () => {
+  const p = await page(390, 844);
+  for (const url of ["/wall", "/orgs", "/o/co%3A732717"]) {
+    await p.goto(base + url, { waitUntil: "networkidle" });
+    const overflow = await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    assert.ok(overflow <= 0, `${url} scrolls sideways by ${overflow}px`);
+  }
+  await p.close();
+});
