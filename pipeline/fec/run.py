@@ -111,6 +111,17 @@ def table(title: str, headers: tuple, rows: list[tuple]) -> None:
                                for v, x in zip(r, w)))
 
 
+SENATE_EFILING_YEAR = 2019  # Senate campaigns filed on paper (keyed by a contractor) before 2019
+
+
+def money_coverage(cycles: list[int]) -> dict[str, dict[str, str]]:
+    """Per chamber, per calendar year covered by the loaded cycles (cycle c spans c-1 and c): House
+    is full; Senate is partial before electronic filing began, full after."""
+    years = sorted({y for c in cycles for y in (c - 1, c)})
+    return {"rep": {str(y): "full" for y in years},
+            "sen": {str(y): "partial" if y < SENATE_EFILING_YEAR else "full" for y in years}}
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--cycles", help="comma-separated election cycles (even years); default 2000-2026")
@@ -412,7 +423,8 @@ def _write_sources(report: dict) -> None:
     }}
     SOURCE_FILE.parent.mkdir(parents=True, exist_ok=True)
     tmp = SOURCE_FILE.with_name(SOURCE_FILE.name + ".tmp")
-    tmp.write_text(json.dumps({"sources": src, "report": report}, indent=1, sort_keys=True, default=str) + "\n")
+    tmp.write_text(json.dumps({"sources": src, "report": report, "coverage": {"money": money_coverage(cycles)}},
+                              indent=1, sort_keys=True, default=str) + "\n")
     os.replace(tmp, SOURCE_FILE)
 
 

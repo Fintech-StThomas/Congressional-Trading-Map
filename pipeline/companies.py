@@ -35,13 +35,13 @@ GENERIC = {"A", "B", "C", "CL", "CLASS", "COM", "COMMON", "STOCK", "SHS", "SHARE
 
 
 def load_overrides(source: str) -> dict[str, str]:
-    """Hand-reviewed overrides from pipeline/crosswalk/org_overrides.csv for one source."""
+    """Reviewed rows of pipeline/crosswalk/org_overrides.csv whose `source` (case-insensitive) equals
+    `source`; rows without reviewed_by are ignored, as in the FEC module."""
     with open(CROSSWALK / "org_overrides.csv", newline="", encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
-    missing = [r for r in rows if not (r["reviewed_by"] and r["reviewed_on"])]
-    if missing:
-        raise ValueError(f"org_overrides.csv rows without reviewer/date: {missing}")
-    return {r["source_id_or_name"]: r["org_id"] for r in rows if r["source"] == source}
+    return {r["source_id_or_name"].strip(): r["org_id"].strip() for r in rows
+            if (r.get("source") or "").strip().lower() == source and (r.get("reviewed_by") or "").strip()
+            and r.get("source_id_or_name") and r.get("org_id")}
 
 
 def recent_quarters(today: date, n: int) -> list[str]:
@@ -132,7 +132,7 @@ def run() -> None:
             else:
                 vetoed[ticker] = {"sec_name": names[cik], "cik": cik, "filed_as": Counter(descriptions[ticker]).most_common(1)[0][0],
                                   "trades": len(descriptions[ticker])}
-        ticker_orgs[ticker] = overrides.get(ticker, org)
+        ticker_orgs[ticker] = overrides.get(ticker) or overrides.get(norm) or org
 
     primary: dict[int, str] = {}
     for r in registrants:  # primary ticker = first listed by SEC for that CIK

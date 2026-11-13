@@ -207,8 +207,8 @@ def org_rows(edges: list[dict[str, Any]], trades: list[dict[str, Any]], companie
             names[t["org"]][t["asset"]] += 1
     rows = []
     for org in sorted({e["to"]["id"] for e in edges if e["type"] == "traded"}):
-        if org.startswith("co:"):
-            c = companies[org]
+        c = companies.get(org)
+        if c:
             rows.append({"id": org, "name": c["name"], "kind": "company", "ticker": c["ticker"], "cik": c["cik"], "sector": c["sector"]})
         else:
             label = min(names[org].items(), key=lambda kv: (-kv[1], kv[0]))[0]

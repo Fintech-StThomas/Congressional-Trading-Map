@@ -132,6 +132,9 @@ type Edge = {
   to: NodeRef;
   directed: boolean;
   via: { id: string; name: string } | null; // e.g. the PAC or leadership PAC the money moved through
+                              // outside_spending: via.id is "pac:<spender>:support" or "pac:<spender>:oppose" and
+                              // note is "support"/"oppose"; the two are separate edges (via is part of the id and of
+                              // duplicate aggregation)
   amount: Amount;             // see "Sums" below
   count: number;              // number of underlying records (for traded_together: co-occurrences)
   first: string; last: string; // ISO dates of earliest and latest record
@@ -242,6 +245,7 @@ for members with at least one FEC id; otherwise `none`.
 - Amendments: use the current event version (`supersededAt` is null); keep `version` and `amended`.
 - Owner and filer are separate. An unlabelled owner is `unspecified`.
 - Missing tickers, dates and amounts stay null. Missing is not zero.
+- FEC money is exact: for FEC edges and ledger rows `low = high = exact`.
 - Amounts are disclosed ranges. No midpoint is stored. **Sums**: `low` adds the known lows and is null only when no
   record has one (a lower bound stays valid); `high` and `exact` are null as soon as any record lacks them. `by_year`
   entries follow the same rule and always sum to the edge totals.
