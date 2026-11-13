@@ -8,7 +8,7 @@
 // The site never writes to public/data (the pipeline owns it).
 // next.config.ts makes the same check and exposes the result to the client.
 
-import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
@@ -18,7 +18,17 @@ const real = join(root, "public", "data", "members.json");
 const fixtures = join(root, "fixtures", "data");
 const sampleOut = join(root, "public", "sample-data");
 
-if (existsSync(real)) {
+function useRealData() {
+  if (process.env.PT_DATA === "fixtures" || !existsSync(real)) return false;
+  if (process.env.PT_DATA === "real") return true;
+  try {
+    return Boolean(JSON.parse(readFileSync(join(root, "public", "data", "meta.json"), "utf8")).publication_budget);
+  } catch {
+    return false;
+  }
+}
+
+if (useRealData()) {
   rmSync(sampleOut, { recursive: true, force: true });
   console.log("[data] using real data from public/data");
 } else {
@@ -27,7 +37,7 @@ if (existsSync(real)) {
   }
   rmSync(sampleOut, { recursive: true, force: true });
   cpSync(fixtures, sampleOut, { recursive: true });
-  console.log("[data] public/data/members.json not found: using SAMPLE fixtures (served from /sample-data)");
+  console.log("[data] no current-contract build in public/data: using SAMPLE fixtures (served from /sample-data)");
 }
 
 // Geo: the assets agent ships public/geo/us-states.json. For local development

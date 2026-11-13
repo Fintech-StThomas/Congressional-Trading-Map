@@ -361,7 +361,7 @@ function makeTrades(memberId, n, pool) {
       asset_class,
       low, high,
       org: nullTicker ? null : o.id,
-      ticker_source: nullTicker ? null : o.id.startsWith("tk:") ? "filed" : "resolved",
+      ticker_source: nullTicker ? null : o.id.startsWith("tk:") ? "printed" : "resolved",
       doc: `S${memberId.slice(-3)}${String(Math.floor(i / 6)).padStart(4, "0")}`,
     });
     out[out.length - 1].amended = out[out.length - 1].version > 1;
@@ -523,13 +523,13 @@ for (const m of MEMBERS) {
   const filings = {};
   for (const t of TRADES[m.id]) filings[t.doc] = `https://example.org/sample-record/ptr/${t.doc}.pdf`;
   // Member ledger cols: type, kind, other, via, exact, low, high, count, first, last, note
-  const mine = ledgerRows.filter((r) => r[0] === m.id).map((r) => [r[1], "org", ...r.slice(2)]);
+  const mine = ledgerRows.filter((r) => r[0] === m.id).map((r) => [r[1], "org", ...r.slice(2), "in"]);
   write(`members/${m.id}.json`, {
     member: { ...s, terms: terms(m), committees: COMMITTEES[m.id] ?? [], fec_ids: [`H0SAMPLE${m.id.slice(-3)}`] },
     edges: edges.filter((e) => touches(e, m.id)),
     trades: { cols: TCOLS, rows: TRADES[m.id].map((t) => TCOLS.map((c) => t[c] ?? null)) },
     filings,
-    ledger: { cols: ["type", "kind", "other", "via", "exact", "low", "high", "count", "first", "last", "note"], rows: mine },
+    ledger: { cols: ["type", "kind", "other", "via", "exact", "low", "high", "count", "first", "last", "note", "dir"], rows: mine },
     ledger_totals: ledgerTotalsOf(mine, 0, 4, 7),
     cases: cases.filter((c) => c.member === m.id),
     coverage: coverage(m),

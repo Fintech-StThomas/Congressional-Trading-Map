@@ -4,12 +4,13 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Board, Case, Edge, MemberFileWire, MemberSummary, Meta, OrgSummary } from "./types";
 import { toBoardMember, type NameBook } from "./client";
+import { useRealData } from "./source";
 
 const ROOT = process.cwd();
 const REAL_DIR = join(ROOT, "public", "data");
 const FIXTURE_DIR = join(ROOT, "fixtures", "data");
 
-export const IS_SAMPLE = !existsSync(join(REAL_DIR, "members.json"));
+export const IS_SAMPLE = !useRealData(ROOT);
 export const DATA_DIR = IS_SAMPLE ? FIXTURE_DIR : REAL_DIR;
 
 const cache = new Map<string, unknown>();

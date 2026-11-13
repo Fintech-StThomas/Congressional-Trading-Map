@@ -1,11 +1,10 @@
 import type { NextConfig } from "next";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { useRealData } from "./src/lib/source";
 
 // Same rule as scripts/resolve-data.mjs: real data when the pipeline has
 // written public/data/members.json, otherwise the fixtures copied to
 // public/sample-data. The client reads these two values to fetch files.
-const hasRealData = existsSync(join(process.cwd(), "public", "data", "members.json"));
+const hasRealData = useRealData();
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
