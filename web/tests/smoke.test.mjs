@@ -107,7 +107,7 @@ test("table view lists the same ties", async () => {
   const strings = await p.locator(".yarn").count();
   await p.getByRole("button", { name: "View as table" }).click();
   await p.waitForSelector(".stage__table table.ties");
-  const rows = await p.locator(".stage__table table.ties tbody tr:not(.ties__group)").count();
+  const rows = await p.locator(".stage__table table.ties").first().locator("tbody tr:not(.ties__group)").count();
   assert.equal(rows, strings);
   await p.close();
 });
@@ -297,5 +297,21 @@ test("holdings: member section and full-file tables from a House holdings file",
   await p.goto(base + "/m/P000197/records");
   await p.getByTestId("records-ready").waitFor({ timeout: 30000 });
   assert.ok(Number((await p.getByTestId("rec-assets-count").innerText()).replace(/[^\d]/g, "")) > 50);
+  await p.close();
+});
+
+test("spending against sits in its own unconnected zone; frayed strings carry a word tag", async () => {
+  const p = await page();
+  await p.goto(base + "/?s=CA&m=K000389");
+  const zone = p.getByTestId("against-zone");
+  await zone.waitFor({ timeout: 15000 });
+  assert.match(await zone.innerText(), /Spent against this member[\s\S]*Not a relationship[\s\S]*AGAINST/);
+  const cardIds = await p.locator(".bcard").evaluateAll((els) => els.map((e) => e.getAttribute("data-node")));
+  const zoneText = await zone.innerText();
+  assert.ok(!/opposing/.test(await p.locator(".bcard").allInnerTexts().then((t) => t.join(" "))), "no opposing spender on a yarn card");
+  assert.ok(cardIds.length > 0 && zoneText.length > 0);
+  await zone.locator(".against__open").first().click();
+  await p.getByTestId("evidence-drawer").waitFor();
+  assert.ok(await p.locator(".bcard .tag--weak").count() >= 1, "frayed string's card is stamped");
   await p.close();
 });

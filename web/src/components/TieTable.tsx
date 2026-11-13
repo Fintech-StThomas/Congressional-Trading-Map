@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { Edge } from "@/lib/types";
-import { FAMILY_LABEL, typeLabel, amountLabel, filteredAmount, otherEnd, stringStyle, type Family } from "@/lib/edges";
+import { weakTag, FAMILY_LABEL, typeLabel, amountLabel, filteredAmount, otherEnd, stringStyle, type Family } from "@/lib/edges";
 import { count, NOT_DISCLOSED, seat, yearSpan } from "@/lib/format";
 import { memberHref, nodeName, orgHref, ORG_KIND_LABEL, type NameBook } from "@/lib/client";
 import { LineSample } from "./LineSample";
@@ -85,6 +85,7 @@ export function TieTable({ edges, selfId, book, range, onOpen, activeId, caseEdg
                       {e.basis === "derived" && <span className="flag">derived</span>}
                       {e.weak && <span className="flag">thin evidence</span>}
                       {caseEdges?.has(e.id) && !(ctx?.effect && !ctx.effect.cases.has(otherEnd(e, selfId).id)) && <span className="flag flag--case">case</span>}
+                      {weakTag(e) && <span className="tag tag--weak">{weakTag(e)}</span>}
                     </span>
                   </td>
                   <td data-label="With">

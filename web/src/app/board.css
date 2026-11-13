@@ -661,7 +661,6 @@ button.crumb:hover {
 }
 .yarns .yv__ply {
   stroke-linecap: butt;
-  stroke-dasharray: calc(var(--w) * 0.75px) calc(var(--w) * 0.95px);
 }
 .yv__ply--dark {
   stroke: var(--yarn-ply-dark);
@@ -669,7 +668,7 @@ button.crumb:hover {
 }
 .yarns .yv__ply--lite {
   stroke: var(--yarn-ply-lite);
-  stroke-dashoffset: calc(var(--w) * 0.85px);
+  opacity: 0.5;
   transition: stroke 160ms ease-out;
 }
 /* Frayed (weak or statistical): worn yarn drawn as geometry (lib/fray.ts). */
@@ -894,7 +893,7 @@ button.crumb:hover {
 .legend__thick .legend__ply {
   stroke: var(--yarn-ply-lite);
   stroke-linecap: butt;
-  stroke-dasharray: 1.5 2.1;
+  opacity: 0.6;
 }
 .legend .tag--inline {
   margin-left: 0;
@@ -1596,4 +1595,126 @@ tr.is-excluded td {
 }
 .drawer .notshown {
   color: var(--ink-2);
+}
+
+/* "Spent against this member": pinned, unconnected, no red. */
+.against {
+  margin-top: 10px;
+  padding: 12px 14px 14px;
+  border-top: 1px solid var(--rule);
+  background: var(--felt-deep);
+  border-radius: 0 0 var(--r) var(--r);
+}
+.against__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 14px;
+  margin-bottom: 10px;
+}
+.against__head h3 {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text);
+}
+.against__head p {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+.against__cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+.against__card {
+  position: relative;
+  display: flex;
+  background: oklch(0.86 0.008 85);
+  color: var(--ink);
+  border-radius: 1px;
+  box-shadow: var(--shadow-card);
+}
+.pinhead-css {
+  position: absolute;
+  top: -4px;
+  left: 50%;
+  width: 9px;
+  height: 9px;
+  margin-left: -4.5px;
+  border-radius: 50%;
+  background: var(--pin);
+  box-shadow: 0 1px 2px oklch(0 0 0 / 0.5);
+}
+.against__open {
+  all: unset;
+  box-sizing: border-box;
+  flex: 1;
+  display: grid;
+  gap: 2px;
+  padding: 10px 6px 10px 12px;
+  cursor: pointer;
+  min-width: 0;
+}
+.against__open:focus-visible,
+.against__recentre:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.against__tag {
+  justify-self: start;
+  padding: 1px 5px;
+  border: 1.2px solid var(--ink-2);
+  font: 700 10px/1.2 var(--type);
+  letter-spacing: 0.1em;
+  color: var(--ink-2);
+  transform: rotate(-2deg);
+}
+.against__kind {
+  font: 10.5px var(--mono);
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+.against__name {
+  font-weight: 650;
+  font-size: 13.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.against__amt {
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+.against__recentre {
+  all: unset;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.against__more {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+.tablezone {
+  margin-top: 18px;
+}
+.tablezone h3 {
+  font-size: 15px;
+  margin: 0 0 2px;
+}
+.legend__against {
+  background: oklch(0.86 0.008 85);
+  border-color: var(--ink-2);
+}
+.bcard__weak {
+  display: table;
+  margin: 0 0 2px;
+  font-size: 8.5px;
 }

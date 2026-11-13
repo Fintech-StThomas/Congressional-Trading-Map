@@ -66,7 +66,7 @@ export function typeLabel(e: Pick<Edge, "type" | "note" | "via">): string {
   if (e.type === "outside_spending") {
     const side = e.note === "oppose" || e.via?.id.endsWith(":oppose") ? "oppose" : e.note === "support" || e.via?.id.endsWith(":support") ? "support" : null;
     if (side === "oppose") return "Outside spending opposing";
-    if (side === "support") return "Outside spending supporting";
+    if (side === "support") return "Outside spending to support (independent)";
   }
   return TYPE_LABEL[e.type];
 }
@@ -161,11 +161,21 @@ export function isFrayed(e: Pick<Edge, "basis" | "weak" | "family">): boolean {
   return e.family !== "context" && (e.basis === "derived" || e.weak);
 }
 
-/** The words that go with a frayed string, so appearance is never the only cue. */
-export function frayCue(e: Pick<Edge, "basis" | "weak">): string | null {
-  if (e.basis === "derived") return e.weak ? "statistical, not filed; thin evidence" : "statistical, not filed";
-  if (e.weak) return "thin evidence";
+/** The one reason a string is frayed, as a stamped word: STATISTICAL (derived) or INCOMPLETE (weak). */
+export type WeakTag = "STATISTICAL" | "INCOMPLETE";
+export function weakTag(e: Pick<Edge, "basis" | "weak">): WeakTag | null {
+  if (e.basis === "derived") return "STATISTICAL";
+  if (e.weak) return "INCOMPLETE";
   return null;
+}
+export const WEAK_WHY: Record<WeakTag, string> = {
+  STATISTICAL: "Not a filed record: this tie meets a published statistical rule against a shuffled baseline.",
+  INCOMPLETE: "A filed record whose evidence is thin or incomplete, such as a trade without a date or an amount range with no top.",
+};
+
+/** The word that goes with a frayed string, so appearance is never the only cue. */
+export function frayCue(e: Pick<Edge, "basis" | "weak">): string | null {
+  return weakTag(e);
 }
 
 function surname(name: string): string {
@@ -191,8 +201,8 @@ export function tiePhrase(e: Edge, cardId: string, centre: string, range?: [numb
       return cardIsFrom ? `gave${$} to ${surname(centre)}` : `received${$} from ${surname(centre)}`;
     case "outside_spending": {
       const side = spendingSideOf(e);
-      if (!cardIsOrg) return `${amt ?? "money"} spent ${side === "oppose" ? "opposing" : "supporting"} them`;
-      return `spent${$} ${side === "oppose" ? "opposing" : side === "support" ? "supporting" : "in the race of"}${of}`;
+      if (!cardIsOrg) return `${amt ?? "money"} spent ${side === "oppose" ? "opposing" : "independently to support"} them`;
+      return `spent${$} ${side === "oppose" ? "opposing" : side === "support" ? "independently to support" : "in the race of"}${of}`;
     }
     case "pac_money":
       return cardIsOrg ? `PAC gave${$}${to}` : `received${$} from its PAC`;

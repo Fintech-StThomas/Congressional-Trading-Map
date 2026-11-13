@@ -18,6 +18,8 @@ import { ErrorBoundary } from "../ErrorBoundary";
 import { BoardCanvas, type Center } from "./BoardCanvas";
 import { YearRange } from "./YearRange";
 import { Legend } from "./Legend";
+import { AgainstZone } from "./AgainstZone";
+import { AGAINST_SHOWN, isAgainst } from "@/lib/pick";
 import { CASE_NOT_SHOWN } from "@/lib/notshown";
 import { AssumptionBar, useAssumptions } from "../assume/Assume";
 
@@ -253,10 +255,23 @@ export function BoardApp(props: Props) {
     return orgFiles[center.org.id]?.ties ?? [];
   }, [center, chunks, memberFiles, orgFiles, current]);
 
+  // Spending against (member board) or outside spending of unrecorded side (org board) is never yarn.
+  const inZone = useCallback(
+    (e: Edge) => (center?.kind === "org" ? e.type === "outside_spending" && e.note !== "support" : isAgainst(e)),
+    [center?.kind],
+  );
+  const zoneAll = useMemo(() => sortEdges(allStrings.filter(inZone)), [allStrings, inZone]);
+  const zoneMore = useMemo(() => {
+    if (!center) return 0;
+    if (center.kind === "org") return Math.max(0, zoneAll.length - AGAINST_SHOWN);
+    const id = center.member.id;
+    return (current.has(id) ? chunks[center.member.state]?.againstMore?.[id] : memberFiles[id]?.againstMore) ?? 0;
+  }, [center, zoneAll.length, current, chunks, memberFiles]);
+
   const visible = useMemo(() => {
-    const filtered = allStrings.filter((e) => families.has(e.family) && inYears(e, range));
+    const filtered = allStrings.filter((e) => !inZone(e) && families.has(e.family) && inYears(e, range));
     return center?.kind === "org" ? sortEdges(filtered).slice(0, MAX_STRINGS) : sortEdges(filtered);
-  }, [allStrings, families, range, center]);
+  }, [allStrings, families, range, center, inZone]);
 
   // Assumption switches (owner, asset class, size, lateness) for a member's board.
   const assumeMember = center?.kind === "member" ? center.member.id : null;
@@ -267,9 +282,9 @@ export function BoardApp(props: Props) {
 
   const familyCounts = useMemo(() => {
     const c: Record<Family, number> = { money: 0, holding: 0, people: 0, context: 0 };
-    for (const e of allStrings) if (inYears(e, range) && !excluded?.has(e.id)) c[e.family]++;
+    for (const e of allStrings) if (inYears(e, range) && !excluded?.has(e.id) && !inZone(e)) c[e.family]++;
     return c;
-  }, [allStrings, range, excluded]);
+  }, [allStrings, range, excluded, inZone]);
 
   const caseNodes = useMemo(() => {
     if (!center) return new Set<string>();
@@ -464,6 +479,18 @@ export function BoardApp(props: Props) {
                 slip={slip}
                 loading={loading}
               />
+              {center && (
+                <AgainstZone
+                  edges={zoneAll.slice(0, AGAINST_SHOWN)}
+                  more={zoneMore}
+                  selfId={selfId}
+                  book={book}
+                  title={center.kind === "member" ? "Spent against this member" : "Outside spending on members (side not recorded in this file)"}
+                  line={center.kind === "member" ? "Independent spending by groups opposing this member. Not a relationship with the member." : "Independent spending for or against members. Not a relationship with them; open a card for the record."}
+                  onOpen={(e, el) => openEdge(e, el)}
+                  onRecenter={recenter}
+                />
+              )}
             </div>
           </ErrorBoundary>
           <div className="stage__table">
@@ -483,7 +510,14 @@ export function BoardApp(props: Props) {
                   groupBy="family"
                   emptyText={loading ? "Pulling the records…" : "No strings match the current filters. Turn on more families or widen the years."}
                 />
-              ) : viewState ? (
+              ) : null}
+              {center && zoneAll.length > 0 ? (
+                <div className="tablezone">
+                  <h3>{center.kind === "member" ? "Spent against this member" : "Outside spending, side not recorded"}</h3>
+                  <p className="section__note">Independent spending{center.kind === "member" ? " by groups opposing this member" : ""}. Not a relationship.</p>
+                  <TieTable edges={zoneAll} selfId={selfId} book={book} range={range} onOpen={openEdge} activeId={open?.id} caption="Spent against" />
+                </div>
+              ) : center ? null : viewState ? (
                 <p className="empty">Choose a member of the {stateName(viewState)} delegation to list their ties.</p>
               ) : (
                 <StateTable states={states} onPick={selectState} />

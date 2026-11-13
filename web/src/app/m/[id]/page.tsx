@@ -16,7 +16,7 @@ import { LedgerTable } from "@/components/LedgerTable";
 import { Timeline } from "@/components/Timeline";
 import { PrintButton } from "@/components/PrintButton";
 import { CaseFile, caseNumber } from "@/components/CaseFile";
-import { pickBoard } from "@/lib/pick";
+import { pickAgainst, pickBoard } from "@/lib/pick";
 import "../../casefile.css";
 import { HoldingsSection } from "@/components/HoldingsSection";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -253,7 +253,7 @@ export default async function MemberPage({ params }: PageProps<"/m/[id]">) {
       </section>
 
       <style>{`@media print { @page { @top-left { content: "${SITE.name} · ${caseNo}"; } } }`}</style>
-      <CaseFile file={file} board={pickBoard(m.id, file.edges)} names={nameOf} ledger={ledger} trades={initialTrades} sources={metaSources(meta)} built={built} orgName={orgName} />
+      <CaseFile file={file} board={pickBoard(m.id, file.edges)} against={pickAgainst(file.edges)} names={nameOf} ledger={ledger} trades={initialTrades} sources={metaSources(meta)} built={built} orgName={orgName} />
 
       <footer className="provenance">
         <h2>Provenance</h2>

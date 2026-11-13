@@ -11,19 +11,13 @@ export function Legend() {
         <li>
           <LineSample style="filed" width={30} scale={1.6} />
           <span>
-            <b>Red yarn</b>: a filed record names both ends
-          </span>
-        </li>
-        <li>
-          <LineSample style="derived" width={30} scale={1.6} />
-          <span>
-            <b>Frayed</b>: statistical, not filed (derived by a published rule)
+            <b>Solid yarn</b>: a filed record names both ends
           </span>
         </li>
         <li>
           <LineSample style="weak" width={30} scale={1.6} />
           <span>
-            <b>Frayed</b>: thin evidence, the filing is incomplete
+            <b>Frayed yarn</b>: weaker; the card says why, <span className="tag tag--weak">STATISTICAL</span> or <span className="tag tag--weak">INCOMPLETE</span>
           </span>
         </li>
         <li>
@@ -39,12 +33,16 @@ export function Legend() {
         <li>
           <LineSample style="context" width={30} scale={1.6} />
           <span>
-            <b>Thin grey</b>: context, such as a shared committee. Off by default
+            <b>Grey thread</b>: context, such as a shared committee. Off by default
           </span>
         </li>
         <li>
           <span className="tag tag--inline">Case</span>
           <span>household traded the company&rsquo;s stock and the member received money from its PAC in the same years</span>
+        </li>
+        <li>
+          <span className="against__tag legend__against">AGAINST</span>
+          <span>spending against the member sits apart, unconnected: it is not a tie. Spending for them is yarn, spent independently</span>
         </li>
         <li>
           <abbr className="party" title="Democrat, Republican, Independent">

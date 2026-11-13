@@ -4,7 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import type { Edge, NodeRef, OrgSummary } from "@/lib/types";
 import type { MapGeometry } from "@/lib/geo";
 import { arrange, yarn, yarnAt, yarnPoint, type Rect, type Yarn } from "@/lib/layout";
-import { typeLabel, amountLabel, filteredAmount, otherEnd, stringStyle, strokeWidth, isFrayed, frayCue, tiePhrase } from "@/lib/edges";
+import { typeLabel, amountLabel, filteredAmount, otherEnd, stringStyle, strokeWidth, isFrayed, frayCue, tiePhrase, weakTag } from "@/lib/edges";
 import { count, seat } from "@/lib/format";
 import { nodeName, ORG_KIND_LABEL, type BoardMember, type NameBook } from "@/lib/client";
 import { fnv1a, tiltFor } from "@/lib/hash";
@@ -300,6 +300,7 @@ export function BoardCanvas(props: Props) {
             const n = nodes.find((x) => `${x.ref.kind}:${x.ref.id}` === p.id)!;
             const i = layout.strings.findIndex((s) => s.node === n);
             const isCase = caseNodes.has(n.ref.id);
+            const wtag = n.edges.map(weakTag).find(Boolean) ?? null;
             const m = n.ref.kind === "member" ? book.members[n.ref.id] : null;
             const o = n.ref.kind === "org" ? book.orgs[n.ref.id] : null;
             const name = nodeName(n.ref, book);
@@ -346,6 +347,7 @@ export function BoardCanvas(props: Props) {
                       </>
                     )}
                     <span className="bcard__says">
+                      {wtag && <span className="tag tag--weak bcard__weak">{wtag}</span>}
                       {says[0]}
                       {k > 1 && <span className="bcard__more"> +{k - 1}</span>}
                     </span>

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef } from "react";
 import type { Edge, NodeRef } from "@/lib/types";
 import { notShown } from "@/lib/notshown";
+import { weakTag, WEAK_WHY } from "@/lib/edges";
 import { typeLabel, TYPE_RULE, FAMILY_LABEL, filteredAmount, plainStat, stringStyle } from "@/lib/edges";
 import { amountText, count, date, NOT_DISCLOSED } from "@/lib/format";
 import { IS_SAMPLE_CLIENT, memberHref, nodeName, orgHref, type NameBook } from "@/lib/client";
@@ -185,6 +186,9 @@ export function EvidenceDrawer({ edge, book, sources, range, onClose, loading, s
 
         <h3>What the record says</h3>
         <p className="drawer__rule">{TYPE_RULE[edge.type]}</p>
+        {weakTag(edge) && (
+          <p className="drawer__weak" data-testid="weak-why"><span className="tag tag--weak">{weakTag(edge)}</span> {WEAK_WHY[weakTag(edge)!]}</p>
+        )}
         <p className="notshown" data-testid="not-shown"><span className="notshown__k">What this does not show:</span> {notShown(edge.type)}</p>
 
         <h3>

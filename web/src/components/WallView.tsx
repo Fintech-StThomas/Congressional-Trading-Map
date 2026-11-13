@@ -17,7 +17,7 @@ const MEASURES: { k: MeasureKey; label: string; short: string; fmt: (n: number) 
   { k: "cases", label: "Cases", short: "Cases", fmt: count, long: (n) => `${count(n)} ${n === 1 ? "case" : "cases"}` },
   { k: "trades", label: "Household trades", short: "Trades", fmt: count, long: (n) => `${count(n)} household ${n === 1 ? "trade" : "trades"}` },
   { k: "pac", label: "PAC dollars received", short: "PAC $", fmt: shortMoney, long: (n) => `${money(Math.max(0, n))} from PACs` },
-  { k: "oppose", label: "Outside spending against", short: "Spent against", fmt: shortMoney, long: (n) => `${money(Math.max(0, n))} in outside spending against` },
+  { k: "oppose", label: "Spent against them (not a tie)", short: "Spent against", fmt: shortMoney, long: (n) => `${money(Math.max(0, n))} in outside spending against` },
 ];
 type SortKey = "seat" | "measure" | "name";
 type Chamber = "all" | "sen" | "rep";

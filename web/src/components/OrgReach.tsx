@@ -100,9 +100,23 @@ export function OrgReach({
   record: string | null;
   onOpen: (e: TieEdge, el: HTMLElement) => void;
 }) {
+  // Spending against members (or of a side this file does not record) is never drawn as a string.
+  const apart = useMemo(() => {
+    const by = new Map<string, Reached>();
+    for (const e of ties) {
+      if (e.type !== "outside_spending" || e.note === "support") continue;
+      const id = memberOf(e);
+      const size = e.amount.exact ?? e.amount.high ?? e.amount.low ?? 0;
+      const cur = by.get(id) ?? { id, m: members[id], tie: e, money: 0, trades: 0 };
+      cur.money += size;
+      by.set(id, cur);
+    }
+    return [...by.values()].sort((a, b) => b.money - a.money || a.id.localeCompare(b.id)).slice(0, 24);
+  }, [ties, members]);
   const reached = useMemo(() => {
     const by = new Map<string, Reached>();
     for (const e of ties) {
+      if (e.type === "outside_spending" && e.note !== "support") continue;
       const id = memberOf(e);
       const size = e.amount.exact ?? e.amount.high ?? e.amount.low ?? 0;
       const cur = by.get(id) ?? { id, m: members[id], tie: e, money: 0, trades: 0 };
@@ -196,6 +210,22 @@ export function OrgReach({
           ))}
         </div>
       </div>
+      {apart.length > 0 && (
+        <section className="reach__apart" aria-labelledby="reach-apart-h" data-testid="reach-apart">
+          <h3 id="reach-apart-h">{apart.some((r) => r.tie.note === "oppose") ? "Members it spent against" : "Members in races where it spent independently"}</h3>
+          <p className="section__note">Independent spending{apart.every((r) => r.tie.note === "oppose") ? " opposing these members" : " for or against these members (the side is not recorded in this file; open a print for the record)"}. Not a relationship, so no strings.</p>
+          <ul>
+            {apart.map((r) => (
+              <li key={r.id}>
+                <button type="button" className="reach__apartbtn" onClick={(ev) => onOpen(r.tie, ev.currentTarget)}>
+                  <span className="reach__apartname">{r.m?.name ?? r.id}</span>
+                  <span className="mono">{r.m ? seat(r.m, false) : ""} · {shortMoney(r.money)}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </section>
   );
 }

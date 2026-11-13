@@ -551,7 +551,8 @@ input[type="checkbox"] {
 }
 .linesample__ply {
   stroke: var(--yarn-ply-lite);
-  stroke-width: 1.1;
+  stroke-width: 0.8;
+  opacity: 0.6;
 }
 .linesample--derived .linesample__shadow,
 .linesample--weak .linesample__shadow {
@@ -797,4 +798,27 @@ input[type="checkbox"] {
 }
 .crumbs--page a {
   color: var(--text-2);
+}
+
+/* The reason a string is frayed, stamped in words (never in the stroke). */
+.tag--weak {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 4px;
+  border: 1px solid currentColor;
+  border-radius: 1px;
+  font: 700 9.5px/1.45 var(--type);
+  letter-spacing: 0.08em;
+  color: var(--ink-2);
+  background: transparent;
+  transform: rotate(-1.5deg);
+  vertical-align: 1px;
+}
+.ties .tag--weak,
+.tablezone .tag--weak {
+  color: var(--text-2);
+}
+.drawer__weak {
+  font-size: 13px;
+  line-height: 1.45;
 }

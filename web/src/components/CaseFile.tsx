@@ -24,8 +24,8 @@ function rowAmount(r: { exact: number | null; low: number | null; high: number |
   return "not disclosed";
 }
 
-export function CaseFile({ file, board, names, ledger, trades, sources, built, orgName }: {
-  file: MemberFileWire; board: Edge[]; names: (id: string) => string; ledger: LedgerRow[]; trades: TradeRow[];
+export function CaseFile({ file, board, against, names, ledger, trades, sources, built, orgName }: {
+  file: MemberFileWire; board: Edge[]; against: { shown: Edge[]; more: number }; names: (id: string) => string; ledger: LedgerRow[]; trades: TradeRow[];
   sources: MetaSource[]; built: string | null; orgName: (id: string) => string;
 }) {
   const m = file.member;
@@ -102,7 +102,7 @@ export function CaseFile({ file, board, names, ledger, trades, sources, built, o
           <tbody>
             {board.map((e) => (
               <tr key={e.id}>
-                <td>{typeLabel(e)}{e.basis === "derived" ? " (statistical)" : e.weak ? " (thin evidence)" : ""}</td>
+                <td>{typeLabel(e)}{e.basis === "derived" ? " [STATISTICAL]" : e.weak ? " [INCOMPLETE]" : ""}</td>
                 <td>{names(other(e).id)}</td>
                 <td className="num mono">{amountLabel(e) ?? "—"}</td>
                 <td className="num mono">{count(e.count)}</td>
@@ -113,6 +113,21 @@ export function CaseFile({ file, board, names, ledger, trades, sources, built, o
           </tbody>
         </table>
       </section>
+
+      {against.shown.length > 0 && (
+        <section className="cf__sec">
+          <h3>Spent against this member</h3>
+          <p className="cf__note">Independent spending by groups opposing this member. Not a relationship with the member; spent independently and by law not coordinated.{against.more ? ` ${against.more} more in the full file.` : ""}</p>
+          <table className="cf__table">
+            <thead><tr><th>Spender</th><th className="num">Amount</th><th className="num">Records</th><th>Years</th></tr></thead>
+            <tbody>
+              {against.shown.map((e) => (
+                <tr key={e.id}><td>{names(other(e).id)}</td><td className="num mono">{amountLabel(e) ?? "—"}</td><td className="num mono">{count(e.count)}</td><td className="mono">{yearSpan(e.first, e.last)}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
 
       {topLedger.length > 0 && (
         <section className="cf__sec">
