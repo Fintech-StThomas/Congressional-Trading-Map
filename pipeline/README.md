@@ -34,6 +34,7 @@ the branch only when validation passes and some file other than `meta.json` chan
 | `edges_trades` | `edges_trades.py` | `trades_resolved.parquet`, `edges/trades.jsonl` (`traded`, `traded_together`), `orgs/trades.jsonl` |
 | `edges_committees` | `edges_committees.py` | `edges/committees.jsonl` (`sits_with`) |
 | `assemble` | `assemble.py` | every file in `web/public/data/`, built in a staging directory and swapped in |
+| `holdings` | `holdings/` (see its README) | `web/public/data/holdings/<id>.json`, `web/public/data/holdings-index.json` (after `assemble`, which would otherwise delete them), `edges/holdings_owns.jsonl`, `orgs/holdings.jsonl`, `sources/holdings.json` |
 | `validate` | `validate.py` | checks the output; writes `validation_sample.csv` (25 trades, fixed seed, with filing URLs) |
 
 New sources plug in without code changes: write `edges/<source>.jsonl`, `orgs/<source>.jsonl` and

@@ -316,3 +316,119 @@ The assembler picks up every `*.jsonl` and `*.json` in those directories, merges
 wins, files in name order; `company` kind wins), assigns edge ids, aggregates duplicates of the same
 type/from/to/via, and writes the files above. Edges with an unknown endpoint, an unlisted evidence source, no evidence
 or an invalid type/family are dropped and counted in `meta.json.unmatched.edges_dropped_at_assembly`.
+
+## Holdings and net worth
+
+Source: House annual financial disclosure reports (Schedule A assets, Schedule D liabilities) as extracted by the
+Hugging Face dataset `ZipLime/congress-trading` (source id `hf_holdings`; pinned revision, files, SHA-256 and row
+counts in `pipeline/build/sources/holdings.json`). Built by `pipeline/holdings/` after `assemble`. **House only, report
+years 2013-2025**: the dataset has no Senate annual reports, so senators have no holdings file. The report year is
+the "Filing Year" printed on the form (= the year in the Clerk PDF path), i.e. the calendar year the report covers.
+
+### Files
+
+| File | Contents |
+|---|---|
+| `holdings-index.json` | `Table` with cols `id, years, latest, nw_low, nw_high, nw_high_valued, nw_label, assets, liabilities, liab_low, liab_high, overlaps` (latest report year), plus `net_worth_definition` |
+| `holdings/<id>.json` | `HoldingsFile` for each House member with at least one used report |
+
+```ts
+type HoldingsFile = {
+  member: { id: string; name: string; chamber: "rep"; state: string; party: "D" | "R" | "I" };
+  source: "hf_holdings";
+  member_source: ("dataset" | "district_surname")[]; // how the member's documents were linked (rule below)
+  net_worth_definition: { name: "disclosed net worth range"; rule: string; excludes: string[]; caveats: string[]; instructions: string };
+  docs: { [doc: string]: { url: string; filed: string; amendment: boolean; report_year: number; used: boolean } };
+  years: { [reportYear: string]: HoldingsYear };
+  portfolio: Table<"group" | "org" | "name" | "sector" | "rows" | "low" | "high" | "share_low" | "share_high" | "owners">
+             & { year: number; by_owner: { [owner: string]: BandSum } }; // latest report year only
+  overlaps: Overlap[];
+  coverage: { year: number; status: "used" | `not_extracted:${string}` | "no_annual_report_in_dataset" }[];
+};
+
+type HoldingsYear = {
+  doc: string;                // the one document used for this year (see Amendments)
+  assets: Table<"row" | "asset" | "ticker" | "ticker_source" | "org" | "category" | "owner" | "low" | "high" |
+                "income_type" | "income_low" | "income_high" | "location" | "doc">;
+  liabilities: Table<"row" | "creditor" | "type" | "owner" | "low" | "high" | "incurred" | "residence_secured" | "doc">;
+  totals: { assets: BandSum; liabilities: BandSum; liabilities_residence_secured: BandSum; assets_by_owner: { [owner: string]: BandSum } };
+  net_worth: { low: number | null; high: number | null; high_valued: number | null;
+               label: "range" | "valued items only" | "at least" | "unbounded";
+               unvalued_assets: number; open_ended_assets: number; open_ended_liabilities: number };
+};
+// Asset row: row = the dataset's row suffix (dataset id is house_<doc>_<row>); asset = text as filed, after redaction;
+// ticker = printed ticker only (ticker_source "printed"), else null; org = co:/tk: id from the ticker by the
+// companies.py rules, else null; category = the dataset's bucket (stock | bond | option | other), not a filed code;
+// owner as below; low/high = value band (both null: no value; high null alone: open-ended "Over $X");
+// income_type and income band as filed (null when not filed); location = "City, ST" for real property, else null.
+// Liability row: creditor and type as filed (redacted), incurred = date incurred as filed (free text),
+// residence_secured = rule below.
+
+type BandSum = { n: number; unvalued: number; open_ended: number; low: number;
+                 high: number | null;        // null when any item is unvalued or open-ended
+                 high_valued: number | null }; // over valued items only; null when any is open-ended
+
+type Overlap = {              // a holding and a filed tie with the same org in the same calendar year
+  year: number; org: string;
+  holding: { rows: string[]; low: number; high: number | null; owners: string[]; doc: string; url: string };
+  ties: ({ type: "traded"; edge: string; trades: number }
+       | { type: "pac_money"; edge: string; via: string | null; exact: number | null; records: number; evidence: Evidence[] })[];
+};
+```
+
+### Rules
+
+- **Members.** A document is linked to the dataset's `bioguide_id` only when the filing's state/district (at-large
+  seats may be coded 01; American Samoa AQ) is one that member held in the report year or the next. Otherwise, or
+  when the dataset has no id, a unique exact match on normalised surname (accents folded) + state/district + a House
+  term overlapping the report year or the next (`district_surname`). No similarity matching. Everything else is
+  excluded and counted (`unlinked_filer`, `bioguide_district_mismatch`, `member_not_in_spine`).
+- **Amendments.** Per member and report year, a document set is used only when it contains an annual report
+  (Clerk type O); the latest filed document of the set is used (an amendment when one exists; House amendments
+  restate the whole report). Earlier documents stay in `docs` with `used: false` and are counted. An amendment
+  without an annual report for that member and year (typically a candidate report's amendment) is excluded.
+- **Owner.** `spouse` (SP), `joint` (JT), `dependent` (DC) as printed. The House form prints nothing for the filer, and
+  the dataset maps blank and unrecognised owner text alike to `self`; that is published as `unspecified`, never `self`.
+- **Ranges.** Bands are the disclosed ranges; no midpoint is stored. Asset value is at the end of the report year;
+  a liability is the highest amount owed during it. A missing value is null, never 0.
+- **Disclosed net worth range** (`net_worth`): low = sum of asset lows − sum of liability highs; high = sum of asset
+  highs − sum of liability lows. Unvalued assets add 0 to low (values are never negative) and make high null;
+  `high_valued` is the same figure over valued assets. An open-ended asset band makes high null and the figure reads
+  "at least" low; an open-ended liability makes low null. Liabilities flagged `residence_secured` are listed and
+  totalled separately but not subtracted, because the residence is not reported as an asset. A midpoint may be shown
+  in the site only as a labelled assumption.
+- **What the figure excludes by law** (House Committee on Ethics, *Instruction Guide, Financial Disclosure Reports and
+  Periodic Transaction Reports, Calendar Year 2025*, 2026, Schedule A "Exclusions" and Schedule D; SHA-256 in the
+  source report): personal residences and non-rental second or vacation homes, and (here) mortgages on them; federal
+  retirement benefits including the Thrift Savings Plan; non-interest-bearing deposits; personal property not held for
+  investment; debts owed by relatives or interest-free; term life insurance; HSA/FSA cash; assets at or under the
+  reporting threshold and liabilities of $10,000 or less; a separated spouse's finances; the contents of excepted and
+  qualified blind trusts; the open-ended "Spouse/DC over $1,000,000" band. Schedules C and E-J (earned income,
+  positions, gifts, travel, agreements) are not in the source. It is not a measure of true net worth.
+- **Tickers.** Kept only when printed in parentheses in the asset text (case-insensitive; the PDFs' small capitals
+  extract as e.g. `aXP`); the dataset's `name_lookup` tickers that are not printed are dropped and counted. Resolution
+  to `co:` follows the Tickers rule above (exact, veto, reviewed overrides); a ticker already resolved for trades keeps
+  that id; the rest become `tk:<TICKER>`.
+- **Real property and residences.** Publish only what the filing prints, at city/state granularity at most: the
+  dataset's Location is cut to "City, ST". Street addresses are replaced by `[street address redacted]` in asset,
+  creditor and liability-type text (number + street suffix everywhere; in real-property text also a house number
+  followed by a name, and a street name without a number), and counted. Nothing is geocoded. An asset whose text names
+  a personal residence or non-rental second home is never published (counted as `personal_residence`).
+  `residence_secured` marks a liability whose type or creditor names a residence, home mortgage or home equity
+  (and not rental, investment, commercial, farm or business).
+- **Portfolio.** Latest report year; rows grouped by `org` when resolved, else by the asset text (`asset:<text>`);
+  `share_low` = group low / total low, `share_high` = group high / total high (null when either is null); `sector`
+  is the SIC major-group label from `companies.json` when SEC lists a SIC code.
+- **Overlaps.** For each report year, an org held that year that also has a `traded` edge with a trade in that
+  calendar year, or a full `pac_money` edge with money in that calendar year, in the member's published file.
+  Ledger-only money rows have no years and are not checked (counted in the report).
+- **`owns` plug-in edges** (`pipeline/build/edges/holdings_owns.jsonl`): one per member and org (resolved assets only),
+  family `holding`, basis `filed`, directed member → org. A holding is a stock, not a flow, so `amount`, `count` and the
+  single `by_year` entry describe the latest report year that lists the org (they sum, as required); `first`/`last`
+  are the filing dates of the earliest and latest reports listing it, and `note` names every year. Evidence: one entry
+  per report (latest first, up to 5), `record` = dataset row ids; `weak` when the latest range is not closed.
+- **Joins.** Holdings → filings and liabilities → filings are asserted 1:1; every document maps to one bioguide id;
+  published rows + residence exclusions equal the rows of the used documents.
+- **Validation.** `python -m pipeline.holdings.validate` re-derives every total and net-worth range, checks owners,
+  document URLs, redaction and edges, and writes `docs/validation/holdings-sample.csv` (25 rows, seed 20261113, with a
+  machine check that the asset words and the band figures occur in the PDF text, and empty columns for a human).
