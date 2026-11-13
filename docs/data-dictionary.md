@@ -44,6 +44,7 @@ Matching is exact on a normalised name, plus a hand-reviewed override file (`pip
 | `member-ties.json` | Array of member-to-member `Edge`s for graph views (see below) |
 | `cases.json` | Array of `Case`, strongest first |
 | `wall.json` | `Wall`: one compact row per member (all members, current flagged) for the wall view; a single fetch |
+| `wall-years.json` | `WallYears`: per member, terms by year and sparse per-year measures, so the wall can be drawn for any year 2000..current year; a single fetch (about 350 KB, 120 KB gzipped) |
 | `org-index.json` | `OrgIndex`: the top organisations by current members reached and by dollars to current members, split by party, so the site can browse organisations without shipping `orgs.json` |
 
 The whole directory is built in a staging directory and swapped into place, so a reader never sees a half-written tree.
@@ -261,6 +262,24 @@ type Wall = {                 // wall.json, rows sorted by id, one per member in
                               // pac = dollars of pac_money received; support / oppose = outside_spending dollars
                               // supporting / opposing the member (exact, else high, else low per tie; all years)
 };
+
+type WallYears = {            // wall-years.json, rows sorted by id, one per row of wall.json
+  years: [number, number];    // [2000, current year]
+  cols: ["id", "terms", "cases", "trades", "pac", "oppose"];
+  rows: unknown[][];
+  // terms: [start year, end year, chamber, party, state][], inclusive calendar years served (the Coverage rule: a term
+  //   ending on 3 January does not count that year), clipped to 2000, consecutive terms with the same chamber, party
+  //   and state merged. A member serves in year y when some term covers y; when two do (a switch), the later-starting
+  //   one gives that year's party, chamber and state.
+  // cases, trades, pac, oppose: sparse flat [year, value, year, value, ...] arrays, ascending years, zero years omitted.
+  //   cases = the member's Cases whose `years` window includes the year; trades = trades by transaction date (else
+  //   availability date); pac = pac_money dollars received, oppose = outside_spending against, from each edge's
+  //   by_year (exact, else high, else low), rounded to whole dollars. A year can be negative (refunds exceed receipts)
+  //   and money years can precede 2000 (the 2000 cycle starts in 1999).
+  first: { trades: { rep: number; sen: number }; cases: number; money: number }; // first year with data per measure
+};
+// Validation: trades by year sum to wall.json `trades`; pac / oppose by year sum to wall.json within rounding; cases
+// by year equal the count of the member's cases.json windows covering that year.
 
 type OrgIndex = {             // org-index.json
   cols: ["id", "name", "kind", "ticker", "members_D", "members_I", "members_R", "dollars_D", "dollars_I", "dollars_R", "degree"];

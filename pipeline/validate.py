@@ -150,7 +150,7 @@ def check_wall_years(c: Checker, wy: Any, wall: Any, cases: list[dict[str, Any]]
         c.check(all(isinstance(t, list) and len(t) == 5 and lo <= t[0] <= t[1] and t[2] in ("sen", "rep") and t[3] in PARTIES
                     for t in row["terms"]), "schema", f"{where} terms")
         pairs = {k: list(zip(row[k][::2], row[k][1::2])) for k in ("cases", "trades", "pac", "oppose")}
-        c.check(all(len(row[k]) % 2 == 0 and all(v > 0 for _, v in pairs[k]) and [y for y, _ in pairs[k]] == sorted({y for y, _ in pairs[k]})
+        c.check(all(len(row[k]) % 2 == 0 and all(v != 0 for _, v in pairs[k]) and [y for y, _ in pairs[k]] == sorted({y for y, _ in pairs[k]})
                     for k in pairs), "schema", f"{where} sparse year arrays")
         c.check(sum(v for _, v in pairs["trades"]) == w["trades"], "wall-years trades by year sum to wall.json", where)
         for k in ("pac", "oppose"):
