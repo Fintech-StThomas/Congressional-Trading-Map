@@ -423,7 +423,7 @@ def _write_sources(report: dict) -> None:
     }}
     SOURCE_FILE.parent.mkdir(parents=True, exist_ok=True)
     tmp = SOURCE_FILE.with_name(SOURCE_FILE.name + ".tmp")
-    tmp.write_text(json.dumps({"sources": src, "report": report, "coverage": {"money": money_coverage(cycles)}},
+    tmp.write_text(json.dumps({"sources": src, "report": report, "coverage": {"money": money_coverage(report["cycles"])}},
                               indent=1, sort_keys=True, default=str) + "\n")
     os.replace(tmp, SOURCE_FILE)
 

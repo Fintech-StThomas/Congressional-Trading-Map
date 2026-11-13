@@ -138,17 +138,18 @@ def load_edges(members: set[str], orgs: dict[str, Any], sources: set[str]) -> tu
                    "edges_dropped_examples": dict(examples)}
 
 
-def load_sources() -> tuple[dict[str, Any], dict[str, Any], dict[str, str]]:
+def load_sources() -> tuple[dict[str, Any], dict[str, Any], dict[str, dict[str, str]]]:
     sources: dict[str, Any] = {}
     reports: dict[str, Any] = {}
-    money: dict[str, str] = {}
+    money: dict[str, dict[str, str]] = {"rep": {}, "sen": {}}
     for path in sorted(SOURCES_DIR.glob("*.json")):
         doc = read_json(path)
         sources.update(doc.get("sources", {}))
         reports[path.stem] = doc.get("report", {})
-        for year, level in (doc.get("coverage", {}).get("money", {}) or {}).items():
-            if money.get(year) != "full":
-                money[year] = level
+        for chamber, years in (doc.get("coverage", {}).get("money") or {}).items():
+            for year, level in years.items():
+                if money[chamber].get(year) != "full":
+                    money[chamber][year] = level
     return sources, reports, money
 
 
@@ -287,13 +288,14 @@ def trade_coverage(chambers: set[str], year: int, chamber_cov: dict[str, Any], f
     return min(levels, key=["full", "partial", "none"].index)
 
 
-def coverage(m: dict[str, Any], chamber_cov: dict[str, Any], failed: set[int], money: dict[str, str], this_year: int) -> list[dict[str, Any]]:
+def coverage(m: dict[str, Any], chamber_cov: dict[str, Any], failed: set[int], money: dict[str, dict[str, str]], this_year: int) -> list[dict[str, Any]]:
     out = []
     for y in range(2000, this_year + 1):
         chambers = in_office(m["terms"], y)
         if not chambers:
             continue
-        money_level = money.get(str(y), "none") if m["fec_ids"] else "none"
+        levels = [money[ch].get(str(y), "none") for ch in chambers] if m["fec_ids"] else ["none"]
+        money_level = max(levels, key=["full", "partial", "none"].index)
         out.append({"year": y, "trades": trade_coverage(chambers, y, chamber_cov, failed, this_year), "money": money_level})
     return out
 

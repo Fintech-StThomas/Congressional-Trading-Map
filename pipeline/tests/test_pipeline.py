@@ -86,23 +86,23 @@ def _edge(type_: str, frm: tuple[str, str], to: tuple[str, str], first: str, las
     return e
 
 
-def test_cases_need_three_overlapping_filed_types() -> None:
+def test_cases_need_holding_plus_money_or_people_overlapping() -> None:
     m, o = ("member", "A000001"), ("org", "co:1")
-    edges = [_edge("traded", m, o, "2018-01-01", "2022-01-01"), _edge("pac_money", o, m, "2020-01-01", "2021-01-01", 5000),
-             _edge("employee_money", o, m, "2021-01-01", "2023-01-01", 100)]
-    cases = assemble.find_cases(edges)
-    assert len(cases) == 1 and cases[0]["years"] == [2021, 2021] and cases[0]["score"] == 3
-    edges[2] = _edge("employee_money", o, m, "2023-01-01", "2024-01-01", 100)
-    assert assemble.find_cases(edges) == []
-    context = [edges[0], edges[1], _edge("oversees", m, o, "2020-01-01", "2021-01-01")]
-    assert assemble.find_cases(context) == []
+    traded = _edge("traded", m, o, "2018-01-01", "2022-01-01")
+    pac = _edge("pac_money", o, m, "2020-01-01", "2021-01-01", 5000)
+    cases = assemble.find_cases([traded, pac])
+    assert len(cases) == 1 and cases[0]["years"] == [2020, 2021] and cases[0]["types"] == ["pac_money", "traded"]
+    assert assemble.find_cases([traded, _edge("pac_money", o, m, "2023-01-01", "2024-01-01", 1)]) == []
+    assert assemble.find_cases([pac, _edge("employee_money", o, m, "2020-01-01", "2021-01-01", 1)]) == []
+    assert assemble.find_cases([traded, _edge("oversees", m, o, "2020-01-01", "2021-01-01")]) == []
 
 
 def test_member_budget_keeps_largest_money_edges_and_all_others() -> None:
     m = ("member", "A000001")
     money = [_edge("pac_money", ("org", f"pac:C{i:08d}"), m, "2020-01-01", "2020-01-01", float(i)) for i in range(1, 40)]
     traded = _edge("traded", m, ("org", "co:1"), "2020-01-01", "2020-01-01")
-    full, rest = assemble.split_member_edges("A000001", money + [traded], set())
+    full, rest, context = assemble.split_member_edges("A000001", money + [traded], set())
+    assert context == []
     assert traded in full and len(full) == assemble.MONEY_EDGES_PER_MEMBER + 1
     size = assemble.edge_size
     assert min(size(e) for e in full if e["type"] == "pac_money") > max(size(e) for e in rest)

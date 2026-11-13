@@ -36,10 +36,11 @@ Matching is exact on a normalised name, plus a hand-reviewed override file (`pip
 |---|---|
 | `meta.json` | Build time, each source's revision and retrieval date, row counts, unmatched counts, exclusions, coverage notes, publication budget, largest files |
 | `members.json` | Array of `MemberSummary` |
-| `members/<id>.json` | `MemberFile`: one member's full record, edges, ledger, trades, cases, coverage |
+| `members/<id>.json` | `MemberFile`: one member's full record, edges, board, nodes, ledger, trade summary, cases, coverage |
+| `trades/<id>.json` | `TradeFile`: every current trade of one member (only members with trades) |
 | `orgs.json` | Array of `OrgSummary`: every org with at least one tie (full edge, ledger row or org tie) |
 | `orgs/<shard>.json` | `{ [orgId]: OrgFile }`, where shard is the first two hex characters of `sha1(orgId)` |
-| `board.json` | What the map needs without loading profiles |
+| `board.json` | `Board`: current member ids by state; the strings themselves come from each member file |
 | `member-ties.json` | Array of member-to-member `Edge`s for graph views (see below) |
 | `cases.json` | Array of `Case`, strongest first |
 
@@ -51,18 +52,22 @@ All JSON is minified with sorted keys; output is byte-stable between runs on the
 Full `Edge` objects (with evidence) are written **only in member files**. Constants live at the top of `pipeline/assemble.py`
 and are echoed in `meta.json.publication_budget`.
 
-- A member file holds, as full edges: every non-money edge touching the member, every edge in one of the member's Cases,
-  and the member's `MONEY_EDGES_PER_MEMBER` (15) largest money edges (by `amount.exact`, else `high`, else `low`).
+- A member file holds, as full edges: every non-money edge touching the member except `sits_with`, every edge in one
+  of the member's Cases, and the member's `MONEY_EDGES_PER_MEMBER` (10) largest money edges (by `amount.exact`, else `high`, else `low`).
   A member-to-member money edge is judged separately in each endpoint's file.
 - The member's remaining money ties are `ledger` rows (no evidence), largest first. The ledger is complete for current
   members; former members keep their `FORMER_MEMBER_LEDGER_ROWS` (100) largest rows. `ledger_totals` always covers every
   money tie that is not a full edge, so headline totals never need the rows to be summed.
+- `sits_with` (`LEDGER_ONLY_TYPES`) is never a full edge: each member gets one ledger row per colleague
+  (`kind` member, `note` = shared committee names, amounts null, `dir` both) after the money rows, and it is counted
+  in `ledger_totals`. Its evidence is the member's `committees` list and the committee pages.
 - Org files carry no full edges. `OrgFile.ties` lists every non-money tie and, for money, every tie with the
   `MONEY_MEMBERS_PER_ORG` (200) members with the largest money totals with that org; `ledger_totals` covers the rest.
   `ties.edge` is the edge id when the full edge is in that member's file (fetch `members/<member>.json` for evidence), else null.
 - Provenance for a ledger row or a tie without `edge` is derived, not stored: the site links `pac:<id>` and `via` ids to
   `https://www.fec.gov/data/committee/<id>/`.
-- `board.json` edges are copies of member-file edges with only their first evidence item (`evidence_total` unchanged).
+- `MemberFile.board` lists up to 12 ids of the member's full edges in map order; `MemberFile.nodes` names every
+  org or member those full edges reference (ledger rows excluded).
 - `member-ties.json` holds member-to-member edges that exist as full edges in some member file, excluding context
   edges (`sits_with`, `legislates_with`): all derived edges, and filed money edges within a member's cap.
 - Every edge, kept or not, stays in `pipeline/build/`; counts (`MemberSummary.counts`, `OrgSummary.degree`) include all ties.
@@ -196,26 +201,42 @@ type OrgTie = {
   edge: string | null;        // id of the full Edge in members/<member>.json, if published there
 };
 
-type Case = {                 // a member-org pair with several kinds of tie at once
+type Case = {                 // a member-org pair with several kinds of tie at once (rule below)
   id: string;                 // sha1 of case|member|org, first 12 hex
   member: string; org: string;
-  types: EdgeType[];          // distinct filed edge types (money/holding/people) between the pair, at least 3, overlapping in time
+  types: EdgeType[];          // distinct filed edge types active in the overlap window
   edges: string[];            // edge ids, all published as full edges in the member's file
   years: [number, number];    // overlap window (intersection of the chosen types' year spans)
-  score: number;              // number of distinct types; cases.json is sorted by score, then money total; a ranking aid, not a finding
+  score: number;              // number of distinct types; a ranking aid, not a finding
+  money: number;              // sum of the chosen money edges' amounts (exact, else high, else low)
+  trades: number;             // number of trades in the chosen traded edge (0 if none)
 };
+// Case rule (CASE_MIN_TYPES = 2, also in meta.json.publication_budget.case_rule): at least 2 distinct filed edge
+// types between the pair, at least one of family holding and at least one of family money or people, all active in
+// a common year (year spans from first/last). cases.json is sorted by score, then money, then trades.
 
 type MemberFile = {
   member: MemberSummary & { terms: Term[]; committees: Committee[]; fec_ids: string[] };
   edges: Edge[];              // full edges for this member (see Publication budget)
+  board: string[];            // up to 12 edge ids for the map: case edges first, then money, holding, people,
+                              // context, each by size
+  nodes: { [id: string]: { name: string; kind: OrgSummary["kind"] | "member"; ticker: string | null } };
   ledger: Table<keyof LedgerRow>; // cols: type, kind, other, via, exact, low, high, count, first, last, note, dir
-  ledger_totals: LedgerTotals; // every money tie not published as a full edge
-  trades: Table<keyof Trade>; // cols: id, version, amended, date, available, lag_days, late, owner, action, partial,
-                              // ticker, ticker_source, asset, asset_class, low, high, org, doc; newest first,
-                              // current versions only
-  filings: { [doc: string]: string }; // filing id -> official filing URL
+  ledger_totals: LedgerTotals; // every tie published as a ledger row or not published at all
+  trade_summary: {
+    count: number; first: string | null; last: string | null; late: number;
+    by_year: { [year: string]: number };   // "none" for trades without a transaction date
+    by_owner: { [owner: string]: number }; by_action: { [action: string]: number };
+  };
   cases: Case[];
   coverage: { year: number; trades: "full" | "partial" | "none" | "n/a"; money: "full" | "partial" | "none" }[];
+};
+
+type TradeFile = {           // trades/<memberId>.json
+  cols: (keyof Trade)[];      // id, version, amended, date, available, lag_days, late, owner, action, partial,
+                              // ticker, ticker_source, asset, asset_class, low, high, org, doc
+  rows: unknown[][];          // newest first, current versions only
+  filings: { [doc: string]: string }; // filing id -> official filing URL
 };
 
 type OrgFile = {
@@ -226,9 +247,6 @@ type OrgFile = {
 
 type Board = {
   states: { [state: string]: string[] };        // current member ids, senators first
-  strings: { [memberId: string]: Edge[] };      // top 12 full edges per current member: case edges first, then
-                                                // money, holding, people, context, each by size; 1 evidence item
-  nodes: { [orgId: string]: OrgSummary };       // every org referenced in strings
 };
 ```
 
@@ -237,8 +255,10 @@ type Board = {
 One entry per year 2000..current year in which the member held office (a term ending on 3 January does not count).
 `trades`: `n/a` before 2012; `none` before the first year with filings for the chamber in the trade dataset (House
 2014, Senate 2012); `partial` for that first year when it starts after January, the current year, and years with a
-failed-extraction filing by the member; otherwise `full`. `money`: what a money plug-in declares (see plug-in format)
-for members with at least one FEC id; otherwise `none`.
+failed-extraction filing by the member; otherwise `full`. `money`: what a money plug-in declares for the chamber(s) served that
+year (the weaker level if both), for members with at least one FEC id; otherwise `none`. The FEC module declares House
+`full` and Senate `partial` before 2019 (paper filings keyed by a contractor), `full` from 2019, for the calendar years
+of the loaded cycles (2000 cycle = 1999-2000 onward).
 
 ## Rules the pipeline must keep
 
@@ -279,9 +299,18 @@ Each source module writes, under `pipeline/build/`:
 
 - `edges/<source>.jsonl`: one `Edge` per line, without `id`.
 - `orgs/<source>.jsonl`: one `OrgSummary` per line, without `degree`.
-- `sources/<source>.json`: `{ "sources": { "<source id>": { "name", "url", "revision", "retrieved", "licence", "files"?: [...] } }, "report": { ... }, "coverage"?: { "money": { "<year>": "full" | "partial" } } }`.
+- `sources/<source>.json`: `{ "sources": { "<source id>": { "name", "url", "revision", "retrieved", "licence", "files"?: [...] } }, "report": { ... }, "coverage"?: { "money": { "rep" | "sen": { "<year>": "full" | "partial" } } } }`.
   Every `Evidence.source` must be a key of some `sources` object. `report` is free-form (row counts, unmatched records,
   exclusions) and is copied to `meta.json.reports.<file stem>`. `coverage.money` applies to members with an FEC id.
+
+### Org overrides (`pipeline/crosswalk/org_overrides.csv`)
+
+Columns: `source, source_id_or_name, org_id, note, reviewed_by, reviewed_on`. Rows without `reviewed_by` are ignored.
+`source` is case-insensitive:
+- `ticker`: `source_id_or_name` is a ticker as filed or in normalised form (`BRK.B`); applied by `companies.py`.
+- `fec`, `fec_committee` or `fec_connected_org`: `source_id_or_name` is an FEC committee id (`C` + 8 digits) or a PAC
+  connected-organisation name (normalised before lookup); applied by `pipeline/fec/`.
+`org_id` is the target id (`co:<CIK>` and so on).
 
 The assembler picks up every `*.jsonl` and `*.json` in those directories, merges orgs by id (first non-null field
 wins, files in name order; `company` kind wins), assigns edge ids, aggregates duplicates of the same

@@ -15,7 +15,7 @@ from typing import Any, Callable
 
 import pyarrow.parquet as pq
 
-from .assemble import BOARD_EVIDENCE, FORMER_MEMBER_LEDGER_ROWS, MEMBER_LEDGER_COLS, ORG_TIE_COLS, TRADE_COLUMNS, shard
+from .assemble import FORMER_MEMBER_LEDGER_ROWS, LEDGER_ONLY_TYPES, MEMBER_LEDGER_COLS, ORG_TIE_COLS, TRADE_COLUMNS, shard
 from .edges import FAMILY, MAX_EVIDENCE, edge_id, sum_amounts
 from .util import BUILD, OUT, read_json
 
@@ -80,8 +80,8 @@ ORG_SUMMARY = {"id": lambda v: isinstance(v, str), "name": lambda v: isinstance(
                "ticker": opt(lambda v: isinstance(v, str)), "cik": opt(lambda v: isinstance(v, int)),
                "sector": opt(lambda v: isinstance(v, str)), "degree": lambda v: isinstance(v, int) and v >= 1}
 CASE = {"id": lambda v: isinstance(v, str), "member": lambda v: isinstance(v, str), "org": lambda v: isinstance(v, str),
-        "types": lambda v: isinstance(v, list) and len(v) >= 3, "edges": lambda v: isinstance(v, list) and len(v) >= 3,
-        "years": lambda v: isinstance(v, list) and len(v) == 2 and v[0] <= v[1], "score": is_num}
+        "types": lambda v: isinstance(v, list) and len(v) >= 2, "edges": lambda v: isinstance(v, list) and len(v) >= 2,
+        "years": lambda v: isinstance(v, list) and len(v) == 2 and v[0] <= v[1], "score": is_num, "money": is_num, "trades": lambda v: isinstance(v, int)}
 
 
 def check_edge(c: Checker, e: dict[str, Any], where: str, sources: set[str], members: set[str], orgs: set[str]) -> None:
@@ -136,7 +136,7 @@ def check_table(c: Checker, table: Any, cols: list[str], where: str) -> list[dic
 def check_member_ledger(c: Checker, mf: dict[str, Any], where: str, orgs: set[str], members: set[str]) -> None:
     rows = check_table(c, mf["ledger"], MEMBER_LEDGER_COLS, f"{where}.ledger")
     for row in rows:
-        c.check(FAMILY.get(row["type"]) == "money", "ledger rows are money ties", f"{where}:{row['type']}")
+        c.check(FAMILY.get(row["type"]) == "money" or row["type"] in LEDGER_ONLY_TYPES, "ledger rows are money or ledger-only ties", f"{where}:{row['type']}")
         c.check(row["other"] in (members if row["kind"] == "member" else orgs), "ledger endpoint exists", f"{where}:{row['other']}")
         c.check(row["dir"] in ("in", "out", "both") and row["count"] >= 1, "schema", f"{where} ledger dir/count")
     per_type = Counter(r["type"] for r in rows)
@@ -144,14 +144,16 @@ def check_member_ledger(c: Checker, mf: dict[str, Any], where: str, orgs: set[st
     if mf["member"]["current"]:
         c.check(dict(per_type) == totals, "current members: ledger is complete (matches ledger_totals)", where)
     else:
-        c.check(len(rows) == min(sum(totals.values()), FORMER_MEMBER_LEDGER_ROWS)
+        money_total = sum(n for t, n in totals.items() if t not in LEDGER_ONLY_TYPES)
+        c.check(sum(1 for r in rows if r["type"] not in LEDGER_ONLY_TYPES) == min(money_total, FORMER_MEMBER_LEDGER_ROWS)
                 and all(per_type[t] <= n for t, n in totals.items()), "former members: ledger is the largest rows", where)
-    sizes = [r["exact"] or r["high"] or r["low"] or 0 for r in rows]
+    sizes = [r["exact"] or r["high"] or r["low"] or 0 for r in rows if r["type"] not in LEDGER_ONLY_TYPES]
     c.check(sizes == sorted(sizes, reverse=True), "ledger rows largest first", where)
 
 
 def check_trades(c: Checker, mf: dict[str, Any], where: str, orgs: set[str]) -> int:
-    t = mf["trades"]
+    t = mf
+    c.check(set(t) == {"cols", "rows", "filings"}, "schema", f"{where} keys")
     c.check(t.get("cols") == TRADE_COLUMNS, "schema", f"{where}.trades.cols")
     prev = None
     for r in t.get("rows", []):
@@ -217,16 +219,24 @@ def main() -> int:
     for mid in sorted(members):
         mf = read_json(OUT / "members" / f"{mid}.json")
         where = f"members/{mid}"
-        c.check(set(mf) == {"member", "edges", "ledger", "ledger_totals", "trades", "filings", "cases", "coverage"}, "schema", f"{where} keys")
+        c.check(set(mf) == {"member", "edges", "board", "nodes", "ledger", "ledger_totals", "trade_summary", "cases", "coverage"},
+                "schema", f"{where} keys")
         c.check(mf["member"]["id"] == mid, "member file id", where)
         for e in mf["edges"]:
             check_edge(c, e, where, sources, members, orgs)
             c.check(mid in (e["from"]["id"], e["to"]["id"]), "member file edges touch the member", f"{where}:{e['id']}")
             seen_edges[e["id"]] = e
             full_pairs.add((mid, e["id"]))
+            c.check(e["type"] not in LEDGER_ONLY_TYPES, "ledger-only types are not full edges", e["id"])
+            for end in (e["from"], e["to"]):
+                c.check(end["id"] == mid or end["id"] in mf["nodes"], "member nodes cover full edges", f"{where}:{end['id']}")
+        ids = {e["id"] for e in mf["edges"]}
+        c.check(len(mf["board"]) <= 12 and set(mf["board"]) <= ids, "board: <= 12 ids of full edges", where)
         check_member_ledger(c, mf, where, orgs, members)
-        trade_rows += check_trades(c, mf, where, orgs)
-        c.check(mf["member"]["counts"]["trades"] == len(mf["trades"]["rows"]), "counts.trades matches trade rows", where)
+        tpath = OUT / "trades" / f"{mid}.json"
+        n = check_trades(c, read_json(tpath), f"trades/{mid}", orgs) if tpath.exists() else 0
+        trade_rows += n
+        c.check(mf["member"]["counts"]["trades"] == n == mf["trade_summary"]["count"], "trade counts match trades file", where)
         for cov in mf["coverage"]:
             c.check(cov["trades"] in ("full", "partial", "none", "n/a") and cov["money"] in ("full", "partial", "none"), "schema", f"{where} coverage")
 
@@ -250,15 +260,9 @@ def main() -> int:
         c.check(e["from"]["kind"] == e["to"]["kind"] == "member" and e["family"] != "context" and e["id"] in seen_edges,
                 "member-ties: non-context member pairs published as full edges", e["id"])
     board = read_json(OUT / "board.json")
-    c.check(set(board) == {"states", "strings", "nodes"}, "schema", "board keys")
-    for mid, es in board["strings"].items():
-        c.check(len(es) <= 12 and mid in members, "board strings: <= 12 per current member", mid)
-        for e in es:
-            check_edge(c, e, "board", sources, members, orgs)
-            c.check(len(e["evidence"]) <= BOARD_EVIDENCE and (mid, e["id"]) in full_pairs, "board edges are trimmed copies of member-file edges", e["id"])
-            for end in (e["from"], e["to"]):
-                if end["kind"] == "org":
-                    c.check(end["id"] in board["nodes"], "board nodes cover strings", end["id"])
+    c.check(set(board) == {"states"}, "schema", "board keys")
+    c.check({m for ids in board["states"].values() for m in ids} == {m["id"] for m in members_list if m["current"]},
+            "board states list every current member", "")
     for k in cases:
         c.check(all(eid in seen_edges for eid in k["edges"]), "case edges are published", k["id"])
 
