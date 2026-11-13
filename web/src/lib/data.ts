@@ -5,6 +5,7 @@ import { join } from "node:path";
 import type { Board, Case, Edge, MemberFileWire, MemberSummary, Meta, OrgSummary, TradeFile } from "./types";
 import { toBoardMember, type BoardMember, type NameBook } from "./client";
 import { isRealDataBuild } from "./source";
+import { pickBoard } from "./pick";
 
 const ROOT = process.cwd();
 const REAL_DIR = join(ROOT, "public", "data");
@@ -120,13 +121,11 @@ export function orgNodesOf(file: MemberFileWire): Record<string, OrgSummary> {
 
 export type MemberBoard = { edges: Edge[]; nodes: Record<string, OrgSummary>; members: Record<string, BoardMember>; more: number };
 
-/** The strings the board draws for one member: the file's `board` ids, in order. */
+/** The strings the board draws for one member, chosen by `pickBoard` from every edge in the file. */
 export function memberBoard(id: string): MemberBoard {
   const file = getMemberFile(id);
   if (!file) return { edges: [], nodes: {}, members: {}, more: 0 };
-  const byId = new Map(file.edges.map((e) => [e.id, e]));
-  const ids = file.board ?? [];
-  const edges = (ids.length ? ids.map((x) => byId.get(x)).filter((e): e is Edge => Boolean(e)) : file.edges.slice(0, 12));
+  const edges = pickBoard(id, file.edges);
   const all = orgNodesOf(file);
   const nodes: Record<string, OrgSummary> = {};
   const members: Record<string, BoardMember> = {};
