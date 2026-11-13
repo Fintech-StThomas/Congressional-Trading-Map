@@ -614,6 +614,7 @@ input[type="checkbox"] {
   background: oklch(0.32 0.01 60);
 }
 .print__frame img {
+  height: auto;
   filter: grayscale(1) sepia(0.22) contrast(1.06) brightness(0.96);
 }
 .print__blank {

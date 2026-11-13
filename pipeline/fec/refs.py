@@ -27,6 +27,11 @@ LEGISLATORS = "https://unitedstates.github.io/congress-legislators"
 SEC_TICKERS = "https://www.sec.gov/files/company_tickers.json"
 CUTOFF = "2000-01-01"
 
+def _clean(name: str) -> str:
+    """Drop EDGAR's trailing state/status tag, e.g. "MASCO CORP /DE/"."""
+    return re.sub(r"\s*[/\\][A-Za-z]{2,4}[/\\]?\s*$", "", name).strip()
+
+
 # --- name normalisation --------------------------------------------------------
 # Identical to pipeline/util.py:normalise_name (the contract rule). We import the
 # shared one when it exists and keep a copy so this module also runs standalone;
@@ -120,7 +125,7 @@ def sec_company_info() -> dict[str, dict]:
     for key in sorted(data, key=lambda k: int(k)):   # file order = SEC's ranking; keep the first ticker
         row = data[key]
         oid = f"co:{int(row['cik_str'])}"
-        out.setdefault(oid, {"name": row["title"], "ticker": row.get("ticker"), "cik": int(row["cik_str"])})
+        out.setdefault(oid, {"name": _clean(row["title"]), "ticker": row.get("ticker"), "cik": int(row["cik_str"])})
     return out
 
 
@@ -136,10 +141,10 @@ def load_companies(prefer_shared: bool = True) -> Companies:
     names: dict[str, str] = {}
     for row in data.values():
         oid = f"co:{int(row['cik_str'])}"
-        n = normalise_name(row["title"])
+        n = normalise_name(_clean(row["title"]))
         if n:
             by_norm.setdefault(n, set()).add(oid)
-        names.setdefault(oid, row["title"])
+        names.setdefault(oid, _clean(row["title"]))
     index = {n: next(iter(ids)) for n, ids in by_norm.items() if len(ids) == 1}
     return Companies("fallback:sec-company_tickers.json", index, names)
 

@@ -43,7 +43,7 @@ export function Legend() {
         </li>
         <li>
           <span className="tag tag--inline">Case</span>
-          <span>three or more kinds of filed tie with one organisation, overlapping in time</span>
+          <span>household traded the company&rsquo;s stock and the member received money from its PAC in the same years</span>
         </li>
         <li>
           <abbr className="party" title="Democrat, Republican, Independent">

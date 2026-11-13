@@ -455,8 +455,8 @@ button.crumb:hover {
 .bcard .tag {
   position: absolute;
   right: -6px;
-  top: -7px;
-  transform: rotate(4deg);
+  bottom: -8px;
+  transform: rotate(-3deg);
 }
 .bcard--centre {
   position: relative;
@@ -1191,8 +1191,8 @@ button.crumb:hover {
   .legend {
     margin: 16px 0 0;
   }
-  .board__side {
-    order: -1;
+  .pick--sen .print {
+    --w: 72px;
   }
   .board__main {
     gap: 14px;
@@ -1210,4 +1210,8 @@ button.crumb:hover {
       opacity: 0;
     }
   }
+}
+
+.canvas__center .print__blank span {
+  font-size: 36px;
 }

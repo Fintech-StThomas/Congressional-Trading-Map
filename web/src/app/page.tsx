@@ -1,8 +1,7 @@
-import { getBoard, getCases, getMemberIndex, getMeta, getOrgIndex, metaBuilt } from "@/lib/data";
+import { getBoard, getCases, getMemberIndex, getMeta, getOrgIndex, memberBoard, metaBuilt } from "@/lib/data";
 import { getMapGeometry } from "@/lib/geo";
 import { sourceNames } from "@/lib/meta";
 import { toBoardMember, type BoardMember } from "@/lib/client";
-import type { OrgSummary } from "@/lib/types";
 import { BoardApp, type CaseLite, type Featured, type StateChunk } from "@/components/board/BoardApp";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 
@@ -14,53 +13,35 @@ export default function BoardPage() {
   const allCases = getCases();
   const current = new Set(Object.values(board.states).flat());
 
-  // Names the board can show without another request: every current member,
-  // plus any former member a current member's strings point at.
+  // Every current member ships with the page; other names arrive with each state.
   const book: Record<string, BoardMember> = {};
   for (const id of current) {
     const m = members.get(id);
     if (m) book[id] = toBoardMember(m);
   }
-  for (const list of Object.values(board.strings))
-    for (const e of list)
-      for (const n of [e.from, e.to]) if (n.kind === "member" && !book[n.id]) {
-        const m = members.get(n.id);
-        if (m) book[n.id] = toBoardMember(m);
-      }
 
-  const orgName = (id: string) => orgs.get(id)?.name ?? board.nodes[id]?.name ?? id;
-  const lite = (c: (typeof allCases)[number]): CaseLite => ({ id: c.id, member: c.member, org: c.org, orgName: orgName(c.org), types: c.types, years: c.years });
+  const orgName = (id: string) => orgs.get(id)?.name ?? id;
+  const lite = (c: (typeof allCases)[number]): CaseLite => ({
+    id: c.id, member: c.member, org: c.org, orgName: orgName(c.org), types: c.types, years: c.years, money: c.money ?? 0, trades: c.trades ?? 0,
+  });
 
-  // Featured example: the strongest case whose member is on the board, else
-  // the current member with the most strings.
+  // Featured example: the strongest case whose member is serving, else the
+  // current member with the most organisations tied.
   const top = allCases.find((c) => current.has(c.member) && book[c.member]);
   let featured: Featured = null;
   if (top) featured = { kind: "case", c: lite(top) };
   else {
     let best: string | null = null;
-    for (const id of current) if (!best || (board.strings[id]?.length ?? 0) > (board.strings[best]?.length ?? 0)) best = id;
+    for (const id of current) if (!best || (members.get(id)?.counts.orgs ?? 0) > (members.get(best)?.counts.orgs ?? 0)) best = id;
     if (best) featured = { kind: "member", member: best };
   }
 
   const initialChunks: Record<string, StateChunk> = {};
   const fm = featured ? (featured.kind === "case" ? featured.c.member : featured.member) : null;
   if (fm && book[fm]) {
-    const st = book[fm].state;
-    const strings: StateChunk["strings"] = {};
-    const nodes: Record<string, OrgSummary> = {};
-    // Ship only the featured member's strings with the page; the rest of the
-    // state arrives when someone asks for it.
-    strings[fm] = board.strings[fm] ?? [];
-    for (const e of strings[fm]) for (const n of [e.from, e.to]) if (n.kind === "org" && board.nodes[n.id]) nodes[n.id] = board.nodes[n.id];
-    initialChunks[st] = { strings, nodes };
-    // Mark the chunk partial by leaving other members out: BoardApp refetches
-    // the state when another member of it is picked.
-  }
-
-  const tieTotals: Record<string, number> = {};
-  for (const id of current) {
-    const m = members.get(id);
-    if (m) tieTotals[id] = (m.counts?.orgs ?? 0) + (m.counts?.members ?? 0);
+    const b = memberBoard(fm);
+    Object.assign(book, b.members);
+    initialChunks[book[fm].state] = { strings: { [fm]: b.edges }, nodes: b.nodes, members: b.members, more: { [fm]: b.more } };
   }
 
   const caseIndex: Record<string, string[]> = {};
@@ -79,7 +60,6 @@ export default function BoardPage() {
           cases={allCases.filter((c) => book[c.member]).slice(0, 40).map(lite)}
           caseTotal={allCases.length}
           caseIndex={caseIndex}
-          tieTotals={tieTotals}
           sources={sourceNames(meta)}
           asOf={metaBuilt(meta)}
         />

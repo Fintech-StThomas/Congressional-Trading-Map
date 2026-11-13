@@ -1,9 +1,8 @@
 import type { MemberFile } from "@/lib/types";
-import type { TradeRow } from "@/lib/decode";
 import { YEAR_MAX, YEAR_MIN } from "@/lib/site";
 
 type Coverage = MemberFile["coverage"];
-type Props = { trades: TradeRow[]; moneyByYear: Record<number, number>; coverage: Coverage; served: [string, string | null] };
+type Props = { tradeByYear: Record<number, number>; moneyByYear: Record<number, number>; coverage: Coverage; served: [string, string | null] };
 
 const COVER_WORD = { full: "complete", partial: "partial", none: "no coverage in this build", "n/a": "no reports existed" } as const;
 
@@ -12,13 +11,8 @@ const COVER_WORD = { full: "complete", partial: "partial", none: "no coverage in
  * complete the underlying data is for each year. Trades before July 2012
  * cannot exist: the STOCK Act created the reports.
  */
-export function Timeline({ trades, moneyByYear, coverage, served }: Props) {
+export function Timeline({ tradeByYear, moneyByYear, coverage, served }: Props) {
   const years = Array.from({ length: YEAR_MAX - YEAR_MIN + 1 }, (_, i) => YEAR_MIN + i);
-  const tradeByYear: Record<number, number> = {};
-  for (const t of trades) {
-    const y = Number(t.date?.slice(0, 4));
-    if (y) tradeByYear[y] = (tradeByYear[y] ?? 0) + 1;
-  }
   const cov = new Map(coverage.map((c) => [c.year, c]));
   const maxT = Math.max(1, ...Object.values(tradeByYear));
   const maxM = Math.max(1, ...Object.values(moneyByYear));

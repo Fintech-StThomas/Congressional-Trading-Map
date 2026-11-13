@@ -11,6 +11,6 @@ export function metaSources(meta: Meta): MetaSource[] {
 /** source id -> display name, for evidence lines. */
 export function sourceNames(meta: Meta): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const s of metaSources(meta)) out[s.id] = typeof s.name === "string" && s.name ? s.name : s.id;
+  for (const s of metaSources(meta)) out[s.id] = typeof s.name === "string" && s.name ? s.name.split(" (")[0] : s.id;
   return out;
 }

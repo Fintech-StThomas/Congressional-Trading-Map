@@ -6,7 +6,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-export function useRealData(root: string = process.cwd()): boolean {
+export function isRealDataBuild(root: string = process.cwd()): boolean {
   const mode = process.env.PT_DATA;
   if (mode === "fixtures") return false;
   const dir = join(root, "public", "data");

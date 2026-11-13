@@ -20,13 +20,19 @@ function fromColumns<T>(c: Columnar): T[] {
   return out;
 }
 
-export function tradeCount(file: Pick<MemberFileWire, "trades">): number {
+/** trades/<id>.json: a columnar table plus the filings map. */
+export function decodeTradeFile(f: { cols: string[]; rows: unknown[][]; filings?: Record<string, string> } | null, limit?: number): TradeRow[] {
+  if (!f) return [];
+  return decodeTrades({ trades: { cols: f.cols, rows: f.rows }, filings: f.filings }, limit);
+}
+
+export function tradeCount(file: { trades?: MemberFileWire["trades"] }): number {
   const t = file.trades;
   return isColumnar(t) ? t.rows.length : Array.isArray(t) ? t.length : 0;
 }
 
 /** Decode trades, optionally only the first `limit` rows (newest first, as filed). */
-export function decodeTrades(file: Pick<MemberFileWire, "trades" | "filings">, limit?: number): TradeRow[] {
+export function decodeTrades(file: { trades?: MemberFileWire["trades"]; filings?: Record<string, string> }, limit?: number): TradeRow[] {
   const t = file.trades;
   let list: TradeWire[];
   if (isColumnar(t)) list = fromColumns<TradeWire>(limit != null ? { cols: t.cols, rows: t.rows.slice(0, limit) } : t);

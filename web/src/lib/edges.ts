@@ -61,6 +61,16 @@ export const TYPE_RULE: Record<EdgeType, string> = {
   sits_with: "Committee rosters show both members on the same committee. Context only.",
 };
 
+/** Type label for one edge: outside spending says which way the money went. */
+export function typeLabel(e: Pick<Edge, "type" | "note" | "via">): string {
+  if (e.type === "outside_spending") {
+    const side = e.note === "oppose" || e.via?.id.endsWith(":oppose") ? "oppose" : e.note === "support" || e.via?.id.endsWith(":support") ? "support" : null;
+    if (side === "oppose") return "Outside spending opposing";
+    if (side === "support") return "Outside spending supporting";
+  }
+  return TYPE_LABEL[e.type];
+}
+
 export function size(e: Edge, range?: [number, number]): number {
   const a = filteredAmount(e, range);
   const dollars = a.exact ?? a.high ?? a.low;

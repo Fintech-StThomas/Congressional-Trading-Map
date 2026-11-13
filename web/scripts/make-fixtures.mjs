@@ -407,7 +407,9 @@ for (const m of MEMBERS) {
       id: sha1(`case|${m.id}|${org}`).slice(0, 12),
       member: m.id, org, types, edges: es.map((e) => e.id),
       years: [Math.min(lo, hi), Math.max(lo, hi)],
-      score: types.length + Math.min(0.99, money / 1e7),
+      score: types.length,
+      money,
+      trades: es.filter((e) => e.type === "traded").reduce((n, e) => n + e.count, 0),
     });
   }
 }
@@ -524,11 +526,34 @@ for (const m of MEMBERS) {
   for (const t of TRADES[m.id]) filings[t.doc] = `https://example.org/sample-record/ptr/${t.doc}.pdf`;
   // Member ledger cols: type, kind, other, via, exact, low, high, count, first, last, note
   const mine = ledgerRows.filter((r) => r[0] === m.id).map((r) => [r[1], "org", ...r.slice(2), "in"]);
+  const mineEdges = edges.filter((e) => touches(e, m.id));
+  const caseIds = new Set(cases.filter((c) => c.member === m.id).flatMap((c) => c.edges));
+  const boardIds = [...mineEdges.filter((e) => caseIds.has(e.id)), ...mineEdges.filter((e) => !caseIds.has(e.id)).sort((a, b) => famOrder[a.family] - famOrder[b.family] || size(b) - size(a))]
+    .slice(0, 12).map((e) => e.id);
+  const nodes = {};
+  for (const e of mineEdges) for (const n of [e.from, e.to]) {
+    if (n.id === m.id) continue;
+    if (n.kind === "org") nodes[n.id] = { name: orgById[n.id].name, kind: orgById[n.id].kind, ticker: orgById[n.id].ticker };
+    else nodes[n.id] = { name: memberName(n.id), kind: "member", ticker: null };
+  }
+  for (const r of mine) nodes[r[2]] = { name: orgById[r[2]].name, kind: orgById[r[2]].kind, ticker: null };
+  const tr = TRADES[m.id];
+  const tally = (f) => tr.reduce((o, t) => ((o[f(t)] = (o[f(t)] ?? 0) + 1), o), {});
+  if (tr.length) write(`trades/${m.id}.json`, { cols: TCOLS, rows: tr.map((t) => TCOLS.map((c) => t[c] ?? null)), filings });
   write(`members/${m.id}.json`, {
     member: { ...s, terms: terms(m), committees: COMMITTEES[m.id] ?? [], fec_ids: [`H0SAMPLE${m.id.slice(-3)}`] },
-    edges: edges.filter((e) => touches(e, m.id)),
-    trades: { cols: TCOLS, rows: TRADES[m.id].map((t) => TCOLS.map((c) => t[c] ?? null)) },
-    filings,
+    board: boardIds,
+    nodes,
+    edges: mineEdges,
+    trade_summary: {
+      count: tr.length,
+      first: tr.length ? tr[tr.length - 1].date : null,
+      last: tr.length ? tr[0].date : null,
+      late: tr.filter((t) => t.late).length,
+      by_year: tally((t) => (t.date ? t.date.slice(0, 4) : "none")),
+      by_owner: tally((t) => t.owner),
+      by_action: tally((t) => t.action),
+    },
     ledger: { cols: ["type", "kind", "other", "via", "exact", "low", "high", "count", "first", "last", "note", "dir"], rows: mine },
     ledger_totals: ledgerTotalsOf(mine, 0, 4, 7),
     cases: cases.filter((c) => c.member === m.id),
@@ -570,7 +595,7 @@ for (const s of summaries.filter((x) => x.current)) {
   strings[s.id] = my;
   for (const e of my) for (const n of [e.from, e.to]) if (n.kind === "org") nodes[n.id] = orgSummaryById[n.id];
 }
-write("board.json", { states: boardStates, strings, nodes });
+write("board.json", { states: boardStates });
 write("member-ties.json", edges.filter((e) => e.from.kind === "member" && e.to.kind === "member" && e.family !== "context"));
 write("cases.json", cases);
 

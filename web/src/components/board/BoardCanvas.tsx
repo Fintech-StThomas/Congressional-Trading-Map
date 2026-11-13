@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode }
 import type { Edge, NodeRef, OrgSummary } from "@/lib/types";
 import type { MapGeometry } from "@/lib/geo";
 import { arrange, yarn, type Rect } from "@/lib/layout";
-import { TYPE_LABEL, amountLabel, filteredAmount, otherEnd, stringStyle, strokeWidth } from "@/lib/edges";
+import { typeLabel, amountLabel, filteredAmount, otherEnd, stringStyle, strokeWidth } from "@/lib/edges";
 import { count, seat } from "@/lib/format";
 import { nodeName, ORG_KIND_LABEL, type BoardMember, type NameBook } from "@/lib/client";
 import { tiltFor } from "@/lib/hash";
@@ -101,18 +101,28 @@ export function BoardCanvas(props: Props) {
     const pos = new Map(placed.map((p) => [p.id, p]));
     const strings = nodes.flatMap((n) => {
       const p = pos.get(`${n.ref.kind}:${n.ref.id}`)!;
-      const pin = { x: p.x + p.w / 2, y: p.y + 7 };
+      // Pin on the edge facing the centre so yarn never crosses the card's text.
+      const ccx = centerRect.x + centerRect.w / 2;
+      const pin =
+        p.y + p.h < centerRect.y + 10
+          ? { x: p.x + p.w / 2, y: p.y + p.h - 7 }
+          : p.y > centerRect.y + centerRect.h - 10
+            ? { x: p.x + p.w / 2, y: p.y + 7 }
+            : p.x + p.w / 2 < ccx
+              ? { x: p.x + p.w - 11, y: p.y + 8 }
+              : { x: p.x + 11, y: p.y + 8 };
       return n.edges.map((e, j) => {
         const k = n.edges.length;
         const slack = 1 + (j - (k - 1) / 2) * 0.42;
         const shift = (j - (k - 1) / 2) * 7;
-        return { e, node: n, y: yarn(centerRect, pin, slack, shift) };
+        return { e, node: n, pin, y: yarn(centerRect, pin, slack, shift) };
       });
     });
+    const pins = new Map(strings.map((x) => [`${x.node.ref.kind}:${x.node.ref.id}`, x.pin]));
     // Draw order: strongest string first, as the edges arrived.
     const orderOf = new Map(edges.map((e, i) => [e.id, i]));
     strings.sort((a, b) => orderOf.get(a.e.id)! - orderOf.get(b.e.id)!);
-    return { W, H, centerRect, placed, pos, strings, cw, ch, compact };
+    return { W, H, centerRect, placed, pos, strings, pins, cw, ch, compact };
   }, [size, center, nodes, edges, slipBox]);
 
   const backdrop = Boolean(center);
@@ -211,7 +221,7 @@ export function BoardCanvas(props: Props) {
                   className={`yarn yarn--${style}${hot ? " is-hot" : ""}${anyHot && !hot ? " is-dim" : ""}`}
                   tabIndex={0}
                   role="button"
-                  aria-label={`${TYPE_LABEL[e.type]}, ${name}: ${amt ?? "no amount disclosed"}, ${n} ${n === 1 ? "record" : "records"}${e.basis === "derived" ? ", derived" : ""}${e.weak ? ", thin evidence" : ""}. Open the evidence.`}
+                  aria-label={`${typeLabel(e)}, ${name}: ${amt ?? "no amount disclosed"}, ${n} ${n === 1 ? "record" : "records"}${e.basis === "derived" ? ", derived" : ""}${e.weak ? ", thin evidence" : ""}. Open the evidence.`}
                   data-edge={e.id}
                   onMouseEnter={() => setHover(e.id)}
                   onMouseLeave={() => setHover(null)}
@@ -236,7 +246,7 @@ export function BoardCanvas(props: Props) {
               );
             })}
             {layout.placed.map((p) => (
-              <g key={`pin-${drawKey}-${p.id}`} className="pinhead" transform={`translate(${p.x + p.w / 2} ${p.y + 7})`} aria-hidden="true">
+              <g key={`pin-${drawKey}-${p.id}`} className="pinhead" transform={`translate(${layout.pins.get(p.id)?.x ?? p.x + p.w / 2} ${layout.pins.get(p.id)?.y ?? p.y + 7})`} aria-hidden="true">
                 <circle r="5.2" className="pinhead__shadow" cx="1.2" cy="2" />
                 <circle r="5" className="pinhead__head" />
                 <circle r="1.7" className="pinhead__glint" cx="-1.4" cy="-1.5" />
@@ -253,7 +263,7 @@ export function BoardCanvas(props: Props) {
                 top: Math.max(30, Math.min(layout.H - 20, hovered.y.mid.y)),
               }}
             >
-              <span className="yarnlabel__type">{TYPE_LABEL[hovered.e.type]}</span>
+              <span className="yarnlabel__type">{typeLabel(hovered.e)}</span>
               <span className="mono">{amountLabel(hovered.e, range) ?? "no amount"}</span>
               <span className="mono">
                 {count(filteredAmount(hovered.e, range).n)} {filteredAmount(hovered.e, range).n === 1 ? "record" : "records"}

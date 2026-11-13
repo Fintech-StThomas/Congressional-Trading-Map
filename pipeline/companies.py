@@ -19,7 +19,8 @@ import pyarrow.parquet as pq
 import requests
 
 from .sic import POOLED_VEHICLE_SIC, sector
-from .util import (BUILD, CACHE, CROSSWALK, DAY, SUFFIXES, RateLimiter, fetch, normalise_name, normalise_ticker,
+from .util import (BUILD, CACHE, CROSSWALK, DAY, SUFFIXES, RateLimiter, clean_sec_name, fetch, normalise_name,
+                   normalise_ticker,
                    print_table, read_json, write_json, write_source_meta)
 
 SOURCE_ID = "sec"
@@ -104,7 +105,7 @@ def run() -> None:
     for r in registrants:
         if r["ticker"]:
             by_ticker[normalise_ticker(r["ticker"])].add(r["cik"])
-        names.setdefault(r["cik"], r["name"])
+        names.setdefault(r["cik"], clean_sec_name(r["name"]))
     sic, quarters = fetch_sic()
 
     table = pq.read_table(BUILD / "trades.parquet", columns=["ticker", "asset"]).to_pylist()

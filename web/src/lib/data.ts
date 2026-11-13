@@ -2,15 +2,15 @@
 // Real data: web/public/data (written by the pipeline). Fallback: web/fixtures/data.
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Board, Case, Edge, MemberFileWire, MemberSummary, Meta, OrgSummary } from "./types";
-import { toBoardMember, type NameBook } from "./client";
-import { useRealData } from "./source";
+import type { Board, Case, Edge, MemberFileWire, MemberSummary, Meta, OrgSummary, TradeFile } from "./types";
+import { toBoardMember, type BoardMember, type NameBook } from "./client";
+import { isRealDataBuild } from "./source";
 
 const ROOT = process.cwd();
 const REAL_DIR = join(ROOT, "public", "data");
 const FIXTURE_DIR = join(ROOT, "fixtures", "data");
 
-export const IS_SAMPLE = !useRealData(ROOT);
+export const IS_SAMPLE = !isRealDataBuild(ROOT);
 export const DATA_DIR = IS_SAMPLE ? FIXTURE_DIR : REAL_DIR;
 
 const cache = new Map<string, unknown>();
@@ -46,8 +46,14 @@ export function getMemberFile(id: string): MemberFileWire | null {
   }
 }
 
+export function getTradeFile(id: string): TradeFile | null {
+  const p = join(DATA_DIR, "trades", `${id}.json`);
+  if (!existsSync(/*turbopackIgnore: true*/ p)) return null;
+  return JSON.parse(readFileSync(/*turbopackIgnore: true*/ p, "utf8")) as TradeFile;
+}
+
 export function getBoard(): Board {
-  return read<Board>("board.json", { states: {}, strings: {}, nodes: {} });
+  return read<Board>("board.json", { states: {} });
 }
 
 export function getCases(): Case[] {
@@ -83,7 +89,6 @@ export function metaBuilt(meta: Meta = getMeta()): string | null {
 export function nameBookFor(edges: Edge[], extraMembers: string[] = []): NameBook {
   const mi = getMemberIndex();
   const oi = getOrgIndex();
-  const board = getBoard();
   const book: NameBook = { members: {}, orgs: {} };
   const addM = (id: string) => {
     const m = mi.get(id);
@@ -94,10 +99,47 @@ export function nameBookFor(edges: Edge[], extraMembers: string[] = []): NameBoo
     for (const n of [e.from, e.to]) {
       if (n.kind === "member") addM(n.id);
       else {
-        const o = oi.get(n.id) ?? board.nodes[n.id];
+        const o = oi.get(n.id);
         if (o) book.orgs[n.id] = o;
       }
     }
   }
   return book;
+}
+/** OrgSummary-shaped entries from a member file's `nodes`, for labelling. */
+export function orgNodesOf(file: MemberFileWire): Record<string, OrgSummary> {
+  const oi = getOrgIndex();
+  const out: Record<string, OrgSummary> = {};
+  for (const [id, n] of Object.entries(file.nodes ?? {})) {
+    if (n.kind === "member") continue;
+    const o = oi.get(id);
+    out[id] = { id, name: n.name, kind: n.kind, ticker: n.ticker, cik: o?.cik ?? null, sector: o?.sector ?? null, degree: o?.degree ?? 0 };
+  }
+  return out;
+}
+
+export type MemberBoard = { edges: Edge[]; nodes: Record<string, OrgSummary>; members: Record<string, BoardMember>; more: number };
+
+/** The strings the board draws for one member: the file's `board` ids, in order. */
+export function memberBoard(id: string): MemberBoard {
+  const file = getMemberFile(id);
+  if (!file) return { edges: [], nodes: {}, members: {}, more: 0 };
+  const byId = new Map(file.edges.map((e) => [e.id, e]));
+  const ids = file.board ?? [];
+  const edges = (ids.length ? ids.map((x) => byId.get(x)).filter((e): e is Edge => Boolean(e)) : file.edges.slice(0, 12));
+  const all = orgNodesOf(file);
+  const nodes: Record<string, OrgSummary> = {};
+  const members: Record<string, BoardMember> = {};
+  const mi = getMemberIndex();
+  const drawn = new Set<string>();
+  for (const e of edges)
+    for (const n of [e.from, e.to]) {
+      if (n.id === id) continue;
+      drawn.add(n.id);
+      if (n.kind === "org" && all[n.id]) nodes[n.id] = all[n.id];
+      if (n.kind === "member" && mi.get(n.id)) members[n.id] = toBoardMember(mi.get(n.id)!);
+    }
+  const m = file.member;
+  const more = Math.max(0, (m.counts?.orgs ?? 0) + (m.counts?.members ?? 0) - drawn.size);
+  return { edges, nodes, members, more };
 }

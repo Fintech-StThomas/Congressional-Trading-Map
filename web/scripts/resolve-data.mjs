@@ -18,7 +18,7 @@ const real = join(root, "public", "data", "members.json");
 const fixtures = join(root, "fixtures", "data");
 const sampleOut = join(root, "public", "sample-data");
 
-function useRealData() {
+function isRealDataBuild() {
   if (process.env.PT_DATA === "fixtures" || !existsSync(real)) return false;
   if (process.env.PT_DATA === "real") return true;
   try {
@@ -28,7 +28,7 @@ function useRealData() {
   }
 }
 
-if (useRealData()) {
+if (isRealDataBuild()) {
   rmSync(sampleOut, { recursive: true, force: true });
   console.log("[data] using real data from public/data");
 } else {

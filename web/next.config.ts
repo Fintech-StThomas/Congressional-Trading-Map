@@ -1,10 +1,10 @@
 import type { NextConfig } from "next";
-import { useRealData } from "./src/lib/source";
+import { isRealDataBuild } from "./src/lib/source";
 
 // Same rule as scripts/resolve-data.mjs: real data when the pipeline has
 // written public/data/members.json, otherwise the fixtures copied to
 // public/sample-data. The client reads these two values to fetch files.
-const hasRealData = useRealData();
+const hasRealData = isRealDataBuild();
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,

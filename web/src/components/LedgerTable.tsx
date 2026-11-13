@@ -107,7 +107,7 @@ export function LedgerTable({ rows, names, totals, selfRecordUrl }: Props) {
                   </td>
                   <td data-label="With">
                     <Link href={r.otherKind === "member" ? memberHref(r.other) : orgHref(r.other)}>{name(r)}</Link>
-                    {r.via && <span className="sub"> · via {r.via.name}</span>}
+                    {r.via && <span className="sub"> · via {names[r.via.id] ?? r.via.name}</span>}
                   </td>
                   <td data-label="Amount" className="num mono">{amountText(r) ?? <span className="nd">not disclosed</span>}</td>
                   <td data-label="Records" className="num mono">{count(r.count)}</td>

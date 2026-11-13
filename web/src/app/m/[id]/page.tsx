@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { IS_SAMPLE, getMemberFile, getMemberIndex, getMembers, getMeta, getOrgIndex, metaBuilt } from "@/lib/data";
-import { decodeLedger, decodeTrades, ledgerTotals, tradeCount } from "@/lib/decode";
+import { IS_SAMPLE, getMemberFile, getMemberIndex, getMembers, getMeta, getOrgIndex, getTradeFile, metaBuilt, orgNodesOf } from "@/lib/data";
+import { decodeLedger, decodeTradeFile, ledgerTotals } from "@/lib/decode";
 import { sortEdges, TYPE_LABEL } from "@/lib/edges";
 import { count, date, PARTY_NAMES, plural, seat, served } from "@/lib/format";
 import { boardHref, dataUrl, toBoardMember, type NameBook } from "@/lib/client";
@@ -47,7 +47,9 @@ export default async function MemberPage({ params }: PageProps<"/m/[id]">) {
 
   // Names for every node the page can show, slimmed to what the tables print.
   const book: NameBook = { members: {}, orgs: {} };
+  const fileOrgs = orgNodesOf(file);
   const slimOrg = (id: string): OrgSummary | null => {
+    if (fileOrgs[id]) return fileOrgs[id];
     const o = orgIndex.get(id);
     return o ? { id, name: o.name, kind: o.kind, ticker: o.ticker, cik: null, sector: null, degree: o.degree } : null;
   };
@@ -70,16 +72,23 @@ export default async function MemberPage({ params }: PageProps<"/m/[id]">) {
   const ledger = decodeLedger(file);
   const ledgerNames: Record<string, string> = {};
   for (const r of ledger) {
-    const nm = r.otherKind === "member" ? memberIndex.get(r.other)?.name : orgIndex.get(r.other)?.name;
+    const nm = r.otherKind === "member" ? memberIndex.get(r.other)?.name : file.nodes?.[r.other]?.name ?? orgIndex.get(r.other)?.name;
     if (nm) ledgerNames[r.other] = nm;
+    if (r.via) {
+      const vid = r.via.id.replace(/:(support|oppose)$/, "");
+      const vn = file.nodes?.[vid]?.name ?? orgIndex.get(vid)?.name;
+      if (vn) ledgerNames[r.via.id] = vn;
+    }
   }
   const totals = ledgerTotals(file);
   const ledgerTotalRows = Object.values(totals).reduce((n, t) => n + (t?.edges ?? 0), 0);
   const ledgerPartial = ledgerTotalRows > ledger.length;
 
-  const nTrades = tradeCount(file);
-  const allTrades = decodeTrades(file);
-  const initialTrades = allTrades.slice(0, 60);
+  const ts = file.trade_summary;
+  const nTrades = ts?.count ?? 0;
+  const initialTrades = nTrades ? decodeTradeFile(getTradeFile(m.id), 60) : [];
+  const tradeByYear: Record<number, number> = {};
+  for (const [y, n] of Object.entries(ts?.by_year ?? {})) if (/^\d{4}$/.test(y)) tradeByYear[Number(y)] = n;
   const moneyByYear: Record<number, number> = {};
   for (const e of file.edges) if (e.family === "money") for (const b of e.by_year) moneyByYear[b.y] = (moneyByYear[b.y] ?? 0) + b.n;
 
@@ -87,7 +96,9 @@ export default async function MemberPage({ params }: PageProps<"/m/[id]">) {
   const built = metaBuilt(meta);
   const current = m.committees.filter((c) => c.current);
   const past = m.committees.filter((c) => !c.current);
-  const lateCount = allTrades.filter((t) => t.late).length;
+  const lateCount = ts?.late ?? 0;
+  const owners = ts?.by_owner ?? {};
+  const ownTrades = owners.self ?? 0;
 
   return (
     <article className="page dossier" data-testid="member-page">
@@ -101,7 +112,7 @@ export default async function MemberPage({ params }: PageProps<"/m/[id]">) {
             {seat(m)} · {PARTY_NAMES[m.party]} · {m.current ? "Serving" : "Former member"}, {served(m.served)}
           </p>
           <dl className="dossier__counts">
-            <div><dt>Trades reported</dt><dd className="mono">{count(m.counts.trades)}</dd></div>
+            <div><dt>Household trades reported</dt><dd className="mono">{count(m.counts.trades)}</dd></div>
             <div><dt>Organisations tied</dt><dd className="mono">{count(m.counts.orgs)}</dd></div>
             <div><dt>Members tied</dt><dd className="mono">{count(m.counts.members)}</dd></div>
             <div><dt>Cases</dt><dd className="mono">{count(m.counts.cases)}</dd></div>
@@ -141,14 +152,17 @@ export default async function MemberPage({ params }: PageProps<"/m/[id]">) {
       {file.cases.length > 0 && (
         <section className="section" id="cases" aria-labelledby="cases-h">
           <h2 id="cases-h">Cases</h2>
-          <p className="section__note">Organisations tied to {m.name} by three or more kinds of filed record overlapping in time. A reason to read the filings, not a finding.</p>
+          <p className="section__note">Companies whose stock this member&rsquo;s household traded while the member received money from the company&rsquo;s PAC, in the same years. A reason to read the filings, not a finding.</p>
           <ol className="dossier__cases">
             {file.cases.map((c) => (
               <li key={c.id}>
                 <span className="tag">Case</span>
                 <span className="dossier__casename">{orgName(c.org)}</span>
-                <span className="dossier__casetypes">{c.types.map((t) => TYPE_LABEL[t]).join(" · ")}</span>
-                <span className="mono">{c.years[0]}–{c.years[1]}</span>
+                <span className="dossier__casetypes">
+                  {c.trades ? `${count(c.trades)} ${c.trades === 1 ? "trade" : "trades"}` : TYPE_LABEL.traded}
+                  {c.money ? ` · $${count(Math.round(c.money))} from its PAC, all years` : ` · ${TYPE_LABEL.pac_money}`}
+                </span>
+                <span className="mono">{c.years[0] === c.years[1] ? c.years[0] : `${c.years[0]}–${c.years[1]}`}</span>
                 <Link className="no-print" href={boardHref({ s: m.current ? m.state : undefined, m: m.id, focus: c.org })}>On the board</Link>
               </li>
             ))}
@@ -177,9 +191,9 @@ export default async function MemberPage({ params }: PageProps<"/m/[id]">) {
 
       {(ledger.length > 0 || ledgerTotalRows > 0) && (
         <section className="section" aria-labelledby="ledger-h">
-          <h2 id="ledger-h">Further money ties</h2>
+          <h2 id="ledger-h">Further ties</h2>
           <p className="section__note">
-            Smaller money ties, summarised from the same filings without individual records attached. Each row links to the committee&rsquo;s filings where an official page exists.
+            Smaller money ties and shared committee seats, summarised from the same filings without individual records attached. Each row links to the committee&rsquo;s filings where an official page exists.
             {ledgerPartial ? ` This list holds the ${count(ledger.length)} largest of ${count(ledgerTotalRows)}; the totals cover all of them.` : ""}
           </p>
           <ErrorBoundary label="ledger">
@@ -191,17 +205,22 @@ export default async function MemberPage({ params }: PageProps<"/m/[id]">) {
       <section className="section" aria-labelledby="time-h">
         <h2 id="time-h">Activity by year</h2>
         <p className="section__note">Bars show trades reported and itemised money records per year. Shading shows how complete the underlying data is for that year.</p>
-        <Timeline trades={allTrades} moneyByYear={moneyByYear} coverage={file.coverage} served={m.served} />
+        <Timeline tradeByYear={tradeByYear} moneyByYear={moneyByYear} coverage={file.coverage} served={m.served} />
       </section>
 
       <section className="section" aria-labelledby="trades-h">
-        <h2 id="trades-h">Trades</h2>
+        <h2 id="trades-h">Trades reported by this member&rsquo;s household</h2>
         <p className="section__note">
+          {nTrades > 0 && (
+            <>
+              Of {count(nTrades)} trades, {count(ownTrades)} {ownTrades === 1 ? "is" : "are"} marked as the member&rsquo;s own; the rest belong to a spouse, a dependent child, a joint account, or an owner the filing does not state.{" "}
+            </>
+          )}
           Periodic transaction reports as filed. Amounts are the disclosed ranges. A report is late when the public could see it more than 45 days after the trade.
           Missing values say &ldquo;not disclosed&rdquo;; they are never filled in.
         </p>
         <ErrorBoundary label="trades table">
-          <TradesTable initial={initialTrades} total={nTrades} fullUrl={dataUrl(`members/${m.id}.json`)} />
+          <TradesTable initial={initialTrades} total={nTrades} fullUrl={dataUrl(`trades/${m.id}.json`)} />
         </ErrorBoundary>
         {nTrades > initialTrades.length && <p className="print-only">The full list of {count(nTrades)} trades is on the website; this dossier prints the {initialTrades.length} most recent.</p>}
       </section>

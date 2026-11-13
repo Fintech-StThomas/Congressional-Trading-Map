@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { MemberFileWire, Trade } from "@/lib/types";
-import { decodeTrades, type TradeRow } from "@/lib/decode";
+import type { Trade, TradeFile } from "@/lib/types";
+import { decodeTradeFile, type TradeRow } from "@/lib/decode";
 import { count, date, money, NOT_DISCLOSED } from "@/lib/format";
 import { getJSON } from "@/lib/client";
 import { ExternalIcon } from "./EvidenceDrawer";
@@ -35,6 +35,14 @@ function Nd({ text = NOT_DISCLOSED }: { text?: string }) {
   return <span className="nd">{text}</span>;
 }
 
+/** How the shown trades split by owner: most are not the member's own. */
+function OwnerMix({ trades }: { trades: TradeRow[] }) {
+  const c: Record<string, number> = {};
+  for (const t of trades) c[t.owner] = (c[t.owner] ?? 0) + 1;
+  const parts = (Object.keys(OWNER_LABEL) as Trade["owner"][]).filter((k) => c[k]).map((k) => `${OWNER_LABEL[k].toLowerCase()} ${count(c[k])}`);
+  return <span className="ownermix"> · by owner: {parts.join(", ")}</span>;
+}
+
 const COLS: { k: Key; label: string; cls?: string }[] = [
   { k: "date", label: "Traded" },
   { k: "available", label: "Disclosed" },
@@ -64,10 +72,10 @@ export function TradesTable({ initial, total, fullUrl }: Props) {
   useEffect(() => {
     if (total <= initial.length) return;
     let live = true;
-    getJSON<MemberFileWire>(fullUrl)
+    getJSON<TradeFile>(fullUrl)
       .then((file) => {
         if (!live) return;
-        setTrades(decodeTrades(file));
+        setTrades(decodeTradeFile(file));
         setStatus("ok");
       })
       .catch(() => live && setStatus("error"));
@@ -100,7 +108,7 @@ export function TradesTable({ initial, total, fullUrl }: Props) {
     scroller.current?.scrollTo({ top: 0 });
   }, [year, owner, cls, late, sort]);
 
-  if (!total) return <p className="empty">No periodic transaction reports on file for this member. Reports exist only from July 2012.</p>;
+  if (!total) return <p className="empty">No periodic transaction reports on file for this member&rsquo;s household. Reports exist only from July 2012.</p>;
 
   const first = Math.max(0, Math.floor(top / ROW) - OVERSCAN);
   const last = Math.min(rows.length, Math.ceil((top + ROW * VIEW_ROWS) / ROW) + OVERSCAN);
@@ -146,6 +154,7 @@ export function TradesTable({ initial, total, fullUrl }: Props) {
             : status === "error"
               ? `Showing ${count(trades.length)} of ${count(total)}; the rest failed to load.`
               : `${count(rows.length)} ${rows.length === 1 ? "trade" : "trades"} · ${count(lateCount)} disclosed late`}
+          {status === "ok" && owners.length > 0 && <OwnerMix trades={rows} />}
         </p>
       </div>
       <div
@@ -189,7 +198,7 @@ export function TradesTable({ initial, total, fullUrl }: Props) {
                   {t.lag_days == null ? <Nd /> : <>{count(t.lag_days)} d</>}
                   {t.late && <span className="late" title="Disclosed more than 45 days after the trade">late</span>}
                 </td>
-                <td>{t.owner === "unspecified" ? <Nd text="unspecified" /> : OWNER_LABEL[t.owner]}</td>
+                <td className={`owner owner--${t.owner}`}>{t.owner === "unspecified" ? <Nd text="not stated" /> : OWNER_LABEL[t.owner]}</td>
                 <td>
                   {ACTION_LABEL[t.action] ?? t.action}
                   {t.partial ? <span className="sub"> partial</span> : null}

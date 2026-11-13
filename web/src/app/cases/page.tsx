@@ -19,8 +19,8 @@ export default function CasesPage() {
     <div className="page page--narrow">
       <h1>Open cases</h1>
       <p className="lede">
-        A case is one member and one organisation tied by three or more different kinds of filed record whose dates overlap: say, stock trades in a company, money from its PAC,
-        and a committee seat over its industry. Committee co-membership and co-sponsored bills never count. The ranking is by the number of kinds, then money. It is a reading list, not a finding.
+        A case is a member of Congress whose household traded a company&rsquo;s stock and who received money from that company&rsquo;s PAC in the same years. Both facts come from filed
+        records; together they are a reason to read the filings. They are not a finding, and they say nothing about why. Ranked by the number of kinds of tie, then money, then trades.
       </p>
       {cases.length === 0 ? (
         <div className="emptycase">
@@ -49,13 +49,13 @@ export default function CasesPage() {
                     <Link href={orgHref(c.org)}>{o?.name ?? c.org}</Link>
                   </p>
                   <p className="caserow__sub">
-                    {m ? seat(m) : ""} · <span className="mono">{c.years[0]}–{c.years[1]}</span>
+                    {m ? seat(m) : ""} · <span className="mono">{c.years[0] === c.years[1] ? c.years[0] : `${c.years[0]}–${c.years[1]}`}</span>
                   </p>
-                  <ul className="caserow__types" aria-label="Kinds of tie">
-                    {c.types.map((t) => (
-                      <li key={t}>{TYPE_LABEL[t]}</li>
-                    ))}
-                  </ul>
+                  <p className="caserow__what">
+                    Household traded the stock{c.trades ? ` (${c.trades.toLocaleString("en-US")} ${c.trades === 1 ? "trade" : "trades"})` : ""} · received
+                    {c.money ? ` $${Math.round(c.money).toLocaleString("en-US")}` : " money"} from its PAC (all years)
+                    {c.types.filter((t) => t !== "traded" && t !== "pac_money").map((t) => ` · ${TYPE_LABEL[t].toLowerCase()}`).join("")}
+                  </p>
                 </div>
                 <Link className="btn btn--small" href={boardHref({ s: m?.current ? m.state : undefined, m: c.member, focus: c.org })}>
                   Open on the board

@@ -158,6 +158,12 @@ def normalise_name(name: str) -> str:
     return " ".join(words)
 
 
+def clean_sec_name(name: str) -> str:
+    """Drop the state-of-incorporation or status tag EDGAR appends to some registrant
+    names (e.g. "MASCO CORP /DE/", "KEYCORP /NEW/"); it is not part of the company's name."""
+    return re.sub(r"\s*[/\\][A-Za-z]{2,4}[/\\]?\s*$", "", name).strip()
+
+
 def normalise_ticker(ticker: str) -> str:
     """Uppercase and unify share-class punctuation: BRK/B, BRK-B, BRK B -> BRK.B."""
     return re.sub(r"[\s/\-_.]+", ".", ticker.strip().upper()).strip(".")

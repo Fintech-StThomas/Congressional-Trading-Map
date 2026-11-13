@@ -47,6 +47,8 @@ await shoot("08-member-trades-desktop", 1440, 900, async (p) => {
 });
 await shoot("09-cases-desktop", 1440, 900, (p) => p.goto(base + "/cases"));
 await shoot("10-method-desktop", 1440, 900, (p) => p.goto(base + "/method"));
+await shoot("14-org-desktop", 1440, 900, (p) => p.goto(`${base}/o/${encodeURIComponent("co:789019")}`));
+await shoot("15-board-org-desktop", 1440, 900, (p) => p.goto(`${base}/?o=${encodeURIComponent("co:789019")}`));
 await shoot("11-board-phone", 390, 844, (p) => p.goto(base + "/"));
 await shoot("12-member-phone", 390, 844, (p) => p.goto(`${base}/m/${m12 ?? ""}`));
 await shoot("13-drawer-phone", 390, 844, async (p) => {

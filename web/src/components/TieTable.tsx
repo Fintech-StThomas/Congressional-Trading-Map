@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { Edge } from "@/lib/types";
-import { FAMILY_LABEL, TYPE_LABEL, amountLabel, filteredAmount, otherEnd, stringStyle, type Family } from "@/lib/edges";
+import { FAMILY_LABEL, typeLabel, amountLabel, filteredAmount, otherEnd, stringStyle, type Family } from "@/lib/edges";
 import { count, NOT_DISCLOSED, seat, yearSpan } from "@/lib/format";
 import { memberHref, nodeName, orgHref, ORG_KIND_LABEL, type NameBook } from "@/lib/client";
 import { LineSample } from "./LineSample";
@@ -72,7 +72,7 @@ export function TieTable({ edges, selfId, book, range, onOpen, activeId, caseEdg
                     <span className="ties__type">
                       <LineSample style={stringStyle(e)} />
                       <span>
-                        {TYPE_LABEL[e.type]}
+                        {typeLabel(e)}
                         <span className="ties__dir">{e.directed ? (inbound ? " from" : " to") : " with"}</span>
                       </span>
                     </span>
@@ -97,7 +97,7 @@ export function TieTable({ edges, selfId, book, range, onOpen, activeId, caseEdg
                   <td data-label="Records" className="num mono">{count(n)}</td>
                   <td data-label="Years" className="mono">{yearSpan(e.first, e.last)}</td>
                   <td className="ties__act">
-                    <button type="button" className="btn btn--small" onClick={(ev) => onOpen(e, ev.currentTarget)} aria-label={`Evidence: ${TYPE_LABEL[e.type]}, ${name}`}>
+                    <button type="button" className="btn btn--small" onClick={(ev) => onOpen(e, ev.currentTarget)} aria-label={`Evidence: ${typeLabel(e)}, ${name}`}>
                       Evidence
                     </button>
                   </td>

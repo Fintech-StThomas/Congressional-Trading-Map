@@ -705,6 +705,12 @@
   .nav {
     margin-left: auto;
   }
+  .nav a {
+    padding: 6px 7px;
+  }
+  .brand__name {
+    font-size: 17px;
+  }
   .stamp {
     font-size: 11px;
   }
@@ -756,8 +762,9 @@
   }
   .ties tbody tr:not(.ties__group) {
     display: grid;
-    grid-template-columns: 1fr auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: 2px 12px;
+    overflow-wrap: anywhere;
     padding: 11px 12px;
     border-bottom: 1px solid var(--rule-soft);
   }
@@ -765,6 +772,10 @@
     padding: 0;
     border: 0;
     width: auto;
+    min-width: 0;
+  }
+  .ties caption {
+    width: 1px !important;
   }
   .ties td[data-label="Tie"],
   .ties td[data-label="With"],

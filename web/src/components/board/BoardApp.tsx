@@ -26,11 +26,19 @@ export type CaseLite = {
   orgName: string;
   types: EdgeType[];
   years: [number, number];
+  money: number;
+  trades: number;
 };
 
 export type Featured = { kind: "case"; c: CaseLite } | { kind: "member"; member: string } | null;
 
-export type StateChunk = { strings: Record<string, Edge[]>; nodes: Record<string, OrgSummary> };
+export type StateChunk = {
+  strings: Record<string, Edge[]>;
+  nodes: Record<string, OrgSummary>;
+  members: Record<string, BoardMember>;
+  /** Ties per member beyond the drawn strings. */
+  more: Record<string, number>;
+};
 
 type Props = {
   geo: MapGeometry;
@@ -41,8 +49,6 @@ type Props = {
   cases: CaseLite[];
   caseTotal: number;
   caseIndex: Record<string, string[]>;
-  /** Distinct organisations and members each current member is tied to. */
-  tieTotals: Record<string, number>;
   sources: Record<string, string>;
   asOf: string | null;
 };
@@ -68,7 +74,7 @@ function toQuery(sel: Sel): string {
 }
 
 export function BoardApp(props: Props) {
-  const { geo, states, featured, cases, caseTotal, caseIndex, tieTotals, sources, asOf } = props;
+  const { geo, states, featured, cases, caseTotal, caseIndex, sources, asOf } = props;
 
   const featuredSel: Sel = useMemo(() => {
     if (featured?.kind === "case") {
@@ -169,16 +175,25 @@ export function BoardApp(props: Props) {
             setLoading(true);
             const chunk = await getJSON<StateChunk>(`/board-data/${st}`);
             if (!live) return;
-            setChunks((c) => ({ ...c, [st]: { strings: { ...c[st]?.strings, ...chunk.strings }, nodes: { ...c[st]?.nodes, ...chunk.nodes } } }));
+            setChunks((c) => ({
+              ...c,
+              [st]: {
+                strings: { ...c[st]?.strings, ...chunk.strings },
+                nodes: { ...c[st]?.nodes, ...chunk.nodes },
+                members: { ...c[st]?.members, ...chunk.members },
+                more: { ...c[st]?.more, ...chunk.more },
+              },
+            }));
             setOrgBook((b) => ({ ...b, ...chunk.nodes }));
+            setMemberBook((b) => ({ ...chunk.members, ...b }));
           } else if (!current.has(sel.m) && memberBook[sel.m] && !memberFiles[sel.m]) {
             // Former members are not on board.json: their strings are cut from
             // the case file at build time.
             setLoading(true);
-            const body = await getJSON<{ edges: Edge[]; nodes: Record<string, OrgSummary>; more: number }>(`/board-member/${sel.m}`);
+            const body = await getJSON<{ edges: Edge[]; nodes: Record<string, OrgSummary>; members: Record<string, BoardMember>; more: number }>(`/board-member/${sel.m}`);
             if (!live) return;
             setOrgBook((b) => ({ ...b, ...body.nodes }));
-            await ensureMembers(body.edges.flatMap((e) => [e.from, e.to]).filter((n) => n.kind === "member").map((n) => n.id));
+            setMemberBook((b) => ({ ...body.members, ...b }));
             setMemberFiles((f) => ({ ...f, [sel.m!]: { edges: body.edges, more: body.more } }));
           }
         } else if (sel.o && !orgFiles[sel.o]) {
@@ -256,10 +271,8 @@ export function BoardApp(props: Props) {
     if (center.kind === "org") return Math.max(0, center.total - visible.length);
     const id = center.member.id;
     if (!current.has(id)) return memberFiles[id]?.more ?? 0;
-    const drawnNodes = new Set(allStrings.flatMap((e) => [e.from.id, e.to.id]));
-    drawnNodes.delete(id);
-    return Math.max(0, (tieTotals[id] ?? 0) - drawnNodes.size);
-  }, [center, visible.length, current, memberFiles, allStrings, tieTotals]);
+    return chunks[center.member.state]?.more?.[id] ?? 0;
+  }, [center, visible.length, current, memberFiles, chunks]);
 
   const drawKey = `${center?.kind ?? "none"}-${center ? (center.kind === "member" ? center.member.id : center.org.id) : ""}`;
   const selfId = center?.kind === "member" ? center.member.id : center?.kind === "org" ? center.org.id : "";
@@ -499,11 +512,7 @@ function Slip({
           {m.name} <PartyTag party={m.party} />
         </h2>
         <p className="slip__sub">{seat(m)}</p>
-        {featuredCase && (
-          <p className="slip__case">
-            Tied to <b>{featuredCase.orgName}</b> by {featuredCase.types.length} kinds of filed record ({featuredCase.types.map((t) => TYPE_LABEL[t].toLowerCase()).join(", ")}), {featuredCase.years[0]}–{featuredCase.years[1]}.
-          </p>
-        )}
+        {featuredCase && <CaseSentence c={featuredCase} />}
         <p className="slip__meta">
           <span className="mono">{shown}</span> {shown === 1 ? "string" : "strings"}
           {more > 0 && (
@@ -564,6 +573,25 @@ function Slip({
         Each number is the state&rsquo;s current delegation. Pick a state, then a member, to see who they are tied to and the filings behind each tie.
       </p>
     </div>
+  );
+}
+
+/** A case, described exactly as the rule defines it. */
+export function CaseSentence({ c }: { c: CaseLite }) {
+  const traded = c.types.includes("traded");
+  const pac = c.types.includes("pac_money");
+  const yrs = c.years[0] === c.years[1] ? `in ${c.years[0]}` : `in ${c.years[0]}–${c.years[1]}`;
+  if (traded && pac)
+    return (
+      <p className="slip__case">
+        The household traded <b>{c.orgName}</b> stock{c.trades ? ` (${c.trades.toLocaleString("en-US")} ${c.trades === 1 ? "trade" : "trades"})` : ""} {yrs}, and its PAC gave the member money in that period
+        {c.money ? ` ($${Math.round(c.money).toLocaleString("en-US")} across all years on record)` : ""}.
+      </p>
+    );
+  return (
+    <p className="slip__case">
+      Tied to <b>{c.orgName}</b> by {c.types.map((t) => TYPE_LABEL[t].toLowerCase()).join(" and ")} {yrs}.
+    </p>
   );
 }
 
@@ -715,7 +743,7 @@ function CaseList({ cases, total, book, onOpen }: { cases: CaseLite[]; total: nu
     <div>
       <h2 className="side__h">Open cases</h2>
       <p className="side__note">
-        A case is a member and an organisation tied by three or more kinds of filed record that overlap in time. It is a reason to read the filings, not a finding.
+        A case is a member whose household traded a company&rsquo;s stock and who received money from that company&rsquo;s PAC in the same years. It is a reason to read the filings, not a finding.
       </p>
       <ol className="caselist">
         {cases.map((c) => {
@@ -728,7 +756,9 @@ function CaseList({ cases, total, book, onOpen }: { cases: CaseLite[]; total: nu
                 </span>
                 <span className="casebtn__org">{c.orgName}</span>
                 <span className="casebtn__meta mono">
-                  {c.types.length} kinds · {c.years[0]}–{c.years[1]}
+                  {c.trades ? `${c.trades} trades · ` : ""}
+                  {c.money ? `$${Math.round(c.money).toLocaleString("en-US")} PAC · ` : ""}
+                  {c.years[0]}–{c.years[1]}
                 </span>
               </button>
             </li>

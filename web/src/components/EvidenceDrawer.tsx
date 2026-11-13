@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef } from "react";
 import type { Edge, NodeRef } from "@/lib/types";
-import { TYPE_LABEL, TYPE_RULE, FAMILY_LABEL, filteredAmount, plainStat, stringStyle } from "@/lib/edges";
+import { typeLabel, TYPE_RULE, FAMILY_LABEL, filteredAmount, plainStat, stringStyle } from "@/lib/edges";
 import { amountText, count, date, NOT_DISCLOSED } from "@/lib/format";
 import { IS_SAMPLE_CLIENT, memberHref, nodeName, orgHref, type NameBook } from "@/lib/client";
 import { recordUrlFor } from "@/lib/decode";
@@ -90,7 +90,7 @@ export function EvidenceDrawer({ edge, book, sources, range, onClose, loading }:
       </div>
       <div className="drawer__body">
         <h2 id="drawer-title" ref={titleRef} tabIndex={-1}>
-          {TYPE_LABEL[edge.type]}
+          {typeLabel(edge)}
         </h2>
         <p className="drawer__ends">
           <NodeLink n={edge.from} book={book} />
@@ -144,8 +144,10 @@ export function EvidenceDrawer({ edge, book, sources, range, onClose, loading }:
             <h3>Why this derived string is drawn</h3>
             <p className="stat__plain">{plainStat(edge.stat)}</p>
             <p className="stat__meta">
-              <span className="mono">{edge.stat.lift}×</span> the baseline. Method: {edge.stat.method}
+              <span className="mono">{edge.stat.lift}×</span> the baseline
+              {typeof (edge.stat as { p?: number }).p === "number" ? <>, p = <span className="mono">{(edge.stat as { p?: number }).p!.toPrecision(2)}</span></> : null}. Method: {edge.stat.method}
             </p>
+            {edge.type === "traded_together" && <p className="stat__meta">Frequent traders overlap often; this is not evidence of coordination.</p>}
           </div>
         )}
 

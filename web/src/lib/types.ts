@@ -63,6 +63,9 @@ type Edge = {
   to: NodeRef;
   directed: boolean;
   via: { id: string; name: string } | null; // e.g. the PAC or leadership PAC the money moved through
+                              // outside_spending: via.id is "pac:<spender>:support" or "pac:<spender>:oppose" and
+                              // note is "support"/"oppose"; the two are separate edges (via is part of the id and of
+                              // duplicate aggregation)
   amount: Amount;             // see "Sums" below
   count: number;              // number of underlying records (for traded_together: co-occurrences)
   first: string; last: string; // ISO dates of earliest and latest record
@@ -124,26 +127,42 @@ type OrgTie = {
   edge: string | null;        // id of the full Edge in members/<member>.json, if published there
 };
 
-type Case = {                 // a member-org pair with several kinds of tie at once
+type Case = {                 // a member-org pair with several kinds of tie at once (rule below)
   id: string;                 // sha1 of case|member|org, first 12 hex
   member: string; org: string;
-  types: EdgeType[];          // distinct filed edge types (money/holding/people) between the pair, at least 3, overlapping in time
+  types: EdgeType[];          // distinct filed edge types active in the overlap window
   edges: string[];            // edge ids, all published as full edges in the member's file
   years: [number, number];    // overlap window (intersection of the chosen types' year spans)
-  score: number;              // number of distinct types; cases.json is sorted by score, then money total; a ranking aid, not a finding
+  score: number;              // number of distinct types; a ranking aid, not a finding
+  money: number;              // sum of the chosen money edges' amounts (exact, else high, else low)
+  trades: number;             // number of trades in the chosen traded edge (0 if none)
 };
+// Case rule (CASE_MIN_TYPES = 2, also in meta.json.publication_budget.case_rule): at least 2 distinct filed edge
+// types between the pair, at least one of family holding and at least one of family money or people, all active in
+// a common year (year spans from first/last). cases.json is sorted by score, then money, then trades.
 
 type MemberFile = {
   member: MemberSummary & { terms: Term[]; committees: Committee[]; fec_ids: string[] };
   edges: Edge[];              // full edges for this member (see Publication budget)
+  board: string[];            // up to 12 edge ids for the map: case edges first, then money, holding, people,
+                              // context, each by size
+  nodes: { [id: string]: { name: string; kind: OrgSummary["kind"] | "member"; ticker: string | null } };
   ledger: Table<keyof LedgerRow>; // cols: type, kind, other, via, exact, low, high, count, first, last, note, dir
-  ledger_totals: LedgerTotals; // every money tie not published as a full edge
-  trades: Table<keyof Trade>; // cols: id, version, amended, date, available, lag_days, late, owner, action, partial,
-                              // ticker, ticker_source, asset, asset_class, low, high, org, doc; newest first,
-                              // current versions only
-  filings: { [doc: string]: string }; // filing id -> official filing URL
+  ledger_totals: LedgerTotals; // every tie published as a ledger row or not published at all
+  trade_summary: {
+    count: number; first: string | null; last: string | null; late: number;
+    by_year: { [year: string]: number };   // "none" for trades without a transaction date
+    by_owner: { [owner: string]: number }; by_action: { [action: string]: number };
+  };
   cases: Case[];
   coverage: { year: number; trades: "full" | "partial" | "none" | "n/a"; money: "full" | "partial" | "none" }[];
+};
+
+type TradeFile = {           // trades/<memberId>.json
+  cols: (keyof Trade)[];      // id, version, amended, date, available, lag_days, late, owner, action, partial,
+                              // ticker, ticker_source, asset, asset_class, low, high, org, doc
+  rows: unknown[][];          // newest first, current versions only
+  filings: { [doc: string]: string }; // filing id -> official filing URL
 };
 
 type OrgFile = {
@@ -154,15 +173,12 @@ type OrgFile = {
 
 type Board = {
   states: { [state: string]: string[] };        // current member ids, senators first
-  strings: { [memberId: string]: Edge[] };      // top 12 full edges per current member: case edges first, then
-                                                // money, holding, people, context, each by size; 1 evidence item
-  nodes: { [orgId: string]: OrgSummary };       // every org referenced in strings
 };
 // END CONTRACT
 
 export type {
   NodeRef, MemberSummary, Term, Committee, OrgSummary, EdgeType, Amount, Edge, Evidence, Trade,
-  Table, LedgerRow, LedgerTotals, OrgTie, Case, MemberFile, OrgFile, Board,
+  Table, LedgerRow, LedgerTotals, OrgTie, Case, MemberFile, TradeFile, OrgFile, Board,
 };
 
 // ---------------------------------------------------------------------------
@@ -172,10 +188,9 @@ export type {
 
 export type Columnar = Table<string>;
 export type TradeWire = Trade & { url?: string | null };
-export type MemberFileWire = Omit<MemberFile, "trades" | "ledger" | "ledger_totals" | "filings"> & {
-  trades: Columnar | TradeWire[];
-  ledger?: Columnar;
-  ledger_totals?: LedgerTotals;
+export type MemberFileWire = MemberFile & {
+  /** Earlier drafts carried trades inline; current files keep them in trades/<id>.json. */
+  trades?: Columnar | TradeWire[];
   filings?: { [doc: string]: string };
 };
 export type OrgFileWire = Omit<OrgFile, "ties" | "ledger_totals"> & { ties?: Columnar; edges?: Edge[]; ledger_totals?: LedgerTotals };

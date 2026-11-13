@@ -1,7 +1,6 @@
-// One static JSON file per state, cut from board.json at build time, so the
-// browser loads a delegation's strings instead of the whole board.
-import { getBoard } from "@/lib/data";
-import type { OrgSummary } from "@/lib/types";
+// One static JSON file per state with every current member's board strings,
+// cut from the member files at build time.
+import { getBoard, memberBoard, type MemberBoard } from "@/lib/data";
 
 export const dynamic = "force-static";
 export const dynamicParams = false;
@@ -12,14 +11,16 @@ export function generateStaticParams() {
 
 export async function GET(_req: Request, ctx: RouteContext<"/board-data/[state]">) {
   const { state } = await ctx.params;
-  const board = getBoard();
-  const ids = board.states[state] ?? [];
-  const strings: Record<string, (typeof board.strings)[string]> = {};
-  const nodes: Record<string, OrgSummary> = {};
-  for (const id of ids) {
-    const list = board.strings[id] ?? [];
-    strings[id] = list;
-    for (const e of list) for (const n of [e.from, e.to]) if (n.kind === "org" && board.nodes[n.id]) nodes[n.id] = board.nodes[n.id];
+  const strings: Record<string, MemberBoard["edges"]> = {};
+  const more: Record<string, number> = {};
+  const nodes: MemberBoard["nodes"] = {};
+  const members: MemberBoard["members"] = {};
+  for (const id of getBoard().states[state] ?? []) {
+    const b = memberBoard(id);
+    strings[id] = b.edges;
+    more[id] = b.more;
+    Object.assign(nodes, b.nodes);
+    Object.assign(members, b.members);
   }
-  return Response.json({ strings, nodes });
+  return Response.json({ strings, nodes, members, more });
 }
