@@ -34,7 +34,12 @@ type OrgSummary = {
   cik: number | null;
   sector: string | null;      // SIC major group label (first two SIC digits), when SEC lists a SIC code
   degree: number;             // number of distinct members tied to it (all ties)
+  split?: PartySplit;         // see "Party split"; optional on the site because older builds and fixtures lack it
 };
+
+// measure -> party -> [distinct members, dollars]. Only measures with at least one tie are present; when one is
+// present all three parties are. Dollars are null for "traded".
+type PartySplit = { [measure in "given" | "support" | "oppose" | "traded"]?: { D: [number, number | null]; I: [number, number | null]; R: [number, number | null] } };
 
 type EdgeType =
   // member -> org
@@ -169,6 +174,21 @@ type OrgFile = {
   org: OrgSummary;
   ties: Table<keyof OrgTie>;  // cols: type, member, exact, low, high, count, first, last, edge; largest first
   ledger_totals: LedgerTotals; // money ties not listed in ties
+  chambers?: { rep: number; sen: number }; // distinct members tied to it (all ties) by MemberSummary.chamber
+  years?: [number, number];   // earliest first year and latest last year over all its ties
+};
+
+type Wall = {                 // wall.json, rows sorted by id, one per member in members.json
+  cols: ["id", "name", "last", "party", "state", "chamber", "district", "current", "photo", "cases", "trades",
+         "pac", "support", "oppose", "orgs"];
+  rows: unknown[][];
+};
+
+type OrgIndex = {             // org-index.json
+  cols: ["id", "name", "kind", "ticker", "members_D", "members_I", "members_R", "dollars_D", "dollars_I", "dollars_R", "degree"];
+  rows: unknown[][];
+  by_members: number[];       // row indexes, top 300 by current members reached
+  by_dollars: number[];       // row indexes, top 300 by pac_money dollars to current members
 };
 
 type Board = {
@@ -179,6 +199,7 @@ type Board = {
 export type {
   NodeRef, MemberSummary, Term, Committee, OrgSummary, EdgeType, Amount, Edge, Evidence, Trade,
   Table, LedgerRow, LedgerTotals, OrgTie, Case, MemberFile, TradeFile, OrgFile, Board,
+  PartySplit, Wall, OrgIndex,
 };
 
 // ---------------------------------------------------------------------------

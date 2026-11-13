@@ -79,6 +79,11 @@ export function getMeta(): Meta {
   return read<Meta>("meta.json", {});
 }
 
+/** Any data file by path, or the fallback when it is missing (files newer than some builds and the fixtures). */
+export function readData<T>(rel: string, fallback: T): T {
+  return read<T>(rel, fallback);
+}
+
 /** Build date as an ISO string, from whichever key the pipeline used. */
 export function metaBuilt(meta: Meta = getMeta()): string | null {
   const build = (meta as Record<string, unknown>).build as { time?: string } | undefined;

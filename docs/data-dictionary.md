@@ -43,6 +43,8 @@ Matching is exact on a normalised name, plus a hand-reviewed override file (`pip
 | `board.json` | `Board`: current member ids by state; the strings themselves come from each member file |
 | `member-ties.json` | Array of member-to-member `Edge`s for graph views (see below) |
 | `cases.json` | Array of `Case`, strongest first |
+| `wall.json` | `Wall`: one compact row per member (all members, current flagged) for the wall view; a single fetch |
+| `org-index.json` | `OrgIndex`: the top organisations by current members reached and by dollars to current members, split by party, so the site can browse organisations without shipping `orgs.json` |
 
 The whole directory is built in a staging directory and swapped into place, so a reader never sees a half-written tree.
 All JSON is minified with sorted keys; output is byte-stable between runs on the same inputs, except `meta.json` (build time, retrieval times).
@@ -108,7 +110,12 @@ type OrgSummary = {
   cik: number | null;
   sector: string | null;      // SIC major group label (first two SIC digits), when SEC lists a SIC code
   degree: number;             // number of distinct members tied to it (all ties)
+  split: PartySplit;          // see "Party split" below
 };
+
+// measure -> party -> [distinct members, dollars]. Only measures with at least one tie are present; when one is
+// present all three parties are. Dollars are null for "traded".
+type PartySplit = { [measure in "given" | "support" | "oppose" | "traded"]?: { D: [number, number]; I: [number, number]; R: [number, number] } };
 
 type EdgeType =
   // member -> org
@@ -243,12 +250,45 @@ type OrgFile = {
   org: OrgSummary;
   ties: Table<keyof OrgTie>;  // cols: type, member, exact, low, high, count, first, last, edge; largest first
   ledger_totals: LedgerTotals; // money ties not listed in ties
+  chambers: { rep: number; sen: number }; // distinct members tied to it (all ties) by MemberSummary.chamber; sums to degree
+  years: [number, number];    // earliest first year and latest last year over all its ties
+};
+
+type Wall = {                 // wall.json, rows sorted by id, one per member in members.json
+  cols: ["id", "name", "last", "party", "state", "chamber", "district", "current", "photo", "cases", "trades",
+         "pac", "support", "oppose", "orgs"];
+  rows: unknown[][];          // current and photo are 0/1; cases, trades and orgs equal MemberSummary.counts;
+                              // pac = dollars of pac_money received; support / oppose = outside_spending dollars
+                              // supporting / opposing the member (exact, else high, else low per tie; all years)
+};
+
+type OrgIndex = {             // org-index.json
+  cols: ["id", "name", "kind", "ticker", "members_D", "members_I", "members_R", "dollars_D", "dollars_I", "dollars_R", "degree"];
+  rows: unknown[][];          // sorted by id; members_* = distinct CURRENT members with a pac_money or outside_spending
+                              // tie, by party; dollars_* = pac_money dollars to current members, by party; degree as OrgSummary
+  by_members: number[];       // row indexes, top 300 by members (then dollars, then id)
+  by_dollars: number[];       // row indexes, top 300 by dollars > 0 (then members, then id)
 };
 
 type Board = {
   states: { [state: string]: string[] };        // current member ids, senators first
 };
 ```
+
+### Party split
+
+`OrgSummary.split` (in `orgs.json` and in each `OrgFile.org`; it adds about 1 MB, keeping `orgs.json` near 3 MB) is
+computed from **every** tie between the org and a member, full edges and ledger rows alike, current and former members:
+
+- `given`: `pac_money` ties (money the org's PAC gave to a member's campaign committee);
+- `support` / `oppose`: `outside_spending` ties whose `note` is `support` / `oppose` (independent expenditures for or
+  against the member);
+- `traded`: `traded` ties (the member's household traded the org's stock); member counts only, dollars null.
+
+Members are counted once per measure. Each member is counted under the party of their `MemberSummary` (most recent
+term), so a member who switched party is counted under the later party for all years. Dollars sum each tie's
+`amount.exact`, else `high`, else `low` (FEC money is always exact). The validator checks that the dollars equal the
+org's listed ties plus `ledger_totals`, and that the members equal the listed ties by party where every tie is listed.
 
 ### Coverage
 
