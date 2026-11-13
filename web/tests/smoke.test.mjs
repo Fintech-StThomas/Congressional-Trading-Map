@@ -192,3 +192,110 @@ test("wall and organisation pages do not scroll sideways at phone width", async 
   }
   await p.close();
 });
+
+test("wall by year: a year loads, members and summaries change, and 2008 trades say so in words", async () => {
+  const p = await page();
+  await p.goto(base + "/wall");
+  await p.waitForSelector("[data-testid=wall] .wall__print");
+  const allSum = await p.getByTestId("wall-sum-D").innerText();
+  await p.getByRole("slider", { name: "Year" }).fill("2008");
+  await p.waitForSelector('[data-testid=wall][data-year="2008"]', { timeout: 15000 });
+  assert.match(new URL(p.url()).search, /y=2008/);
+  const sum = await p.getByTestId("wall-sum-D").innerText();
+  assert.notEqual(sum, allSum);
+  assert.match(sum, /in 2008/);
+  const prints = await p.locator(".wall__band--sm .wall__print").count();
+  assert.ok(prints >= 535 && prints < 600, `${prints} prints in 2008`);
+  await p.getByRole("radio", { name: "Household trades" }).check();
+  assert.match(await p.getByTestId("wall-gap").innerText(), /2012/);
+  assert.equal(await p.locator(".wall__band--sm .wall__marker").count(), 0, "no empty markers before the data");
+  await p.getByRole("button", { name: "All years" }).click();
+  await p.waitForSelector('[data-testid=wall][data-year="all"]');
+  await p.close();
+});
+
+test("wall state picker searches and filters", async () => {
+  const p = await page(390, 844);
+  await p.goto(base + "/wall");
+  await p.getByRole("button", { name: /State/ }).click();
+  await p.keyboard.type("Vermont");
+  await p.keyboard.press("Enter");
+  await p.waitForFunction(() => document.querySelectorAll(".wall__band--sm .wall__print").length <= 3);
+  assert.match(new URL(p.url()).search, /st=VT/);
+  await p.close();
+});
+
+test("featured example explains itself and steps to another", async () => {
+  const p = await page();
+  await p.goto(base + "/");
+  const slip = p.locator(".slip").first();
+  await slip.getByText("Featured example").waitFor();
+  assert.match(await slip.innerText(), /Shown because this member/);
+  const before = await slip.locator(".slip__title").innerText();
+  await slip.getByRole("button", { name: /Show another/ }).click();
+  await p.waitForFunction((b) => document.querySelector(".slip .slip__title")?.textContent !== b, before);
+  assert.match(await p.locator(".slip").first().innerText(), /Featured example/i);
+  await p.close();
+});
+
+test("the full file: K000389 loads every table, filters, and CSV has rows", async () => {
+  const p = await page();
+  await p.goto(base + "/m/K000389/records");
+  await p.getByTestId("records-ready").waitFor({ timeout: 60000 });
+  const n = (s) => Number(s.replace(/[^\d]/g, ""));
+  const trades = n(await p.getByTestId("rec-trades-count").innerText());
+  assert.ok(trades > 40000, `trades ${trades}`);
+  assert.ok(n(await p.getByTestId("rec-ties-count").innerText()) > 1000);
+  assert.ok(n(await p.getByTestId("rec-docs-count").innerText()) > 100);
+  assert.ok((await p.locator("[data-testid=rec-trades] tbody tr").count()) < 200, "trade rows are windowed");
+  await p.getByLabel("Filter Owner").first().fill("spouse");
+  await p.waitForFunction(() => /of/.test(document.querySelector("[data-testid=rec-trades-count]").textContent));
+  const [dl] = await Promise.all([p.waitForEvent("download"), p.getByTestId("rec-ties-csv").click()]);
+  const text = await (await dl.createReadStream()).toArray().then((c) => Buffer.concat(c).toString("utf8"));
+  const lines = text.trim().split(/\r\n/);
+  assert.match(lines[0], /^Published as,Type,Basis,Counterparty/);
+  assert.ok(lines.length > 1000, `${lines.length} CSV lines`);
+  assert.equal(await p.getByTestId("rec-holdings").count() + await p.getByTestId("rec-holdings-none").count(), 1, "holdings: tables or a one-line note");
+  await p.close();
+});
+
+test("member page links to the full file and assumption switches recompute cases", async () => {
+  const p = await page();
+  await p.goto(base + "/m/K000389");
+  assert.ok(await p.getByRole("link", { name: "Open the full file" }).count());
+  await p.locator(".assume summary").first().click();
+  await p.getByRole("switch", { name: "Member’s own trades only" }).click();
+  await p.waitForFunction(() => /of .* trades count/.test(document.querySelector("[data-testid=assume-line]")?.textContent ?? ""), null, { timeout: 60000 });
+  assert.match(new URL(p.url()).search, /as=own/);
+  await p.close();
+});
+
+test("senators get a one-line holdings note; a House holdings file renders the section", async () => {
+  const p = await page();
+  await p.goto(base + "/m/W000817/records");
+  await p.getByTestId("records-ready").waitFor({ timeout: 30000 });
+  assert.match(await p.getByTestId("rec-holdings-none").innerText(), /senators/);
+  await p.goto(base + "/m/W000817");
+  assert.match(await p.getByTestId("holdings-note").innerText(), /senators/);
+  await p.close();
+});
+
+// Runs when the build used PT_HOLDINGS_DIR (unmerged holdings data): serves those files to the browser.
+test("holdings: member section and full-file tables from a House holdings file", { skip: !process.env.PT_HOLDINGS_DIR }, async () => {
+  const { readFileSync } = await import("node:fs");
+  const p = await page();
+  await p.route("**/holdings/*.json", (r) => {
+    const id = r.request().url().split("/").pop();
+    try {
+      r.fulfill({ body: readFileSync(`${process.env.PT_HOLDINGS_DIR}/${id}`), contentType: "application/json" });
+    } catch {
+      r.fulfill({ status: 404 });
+    }
+  });
+  await p.goto(base + "/m/P000197");
+  assert.match(await p.getByTestId("holdings").innerText(), /Disclosed net worth range/);
+  await p.goto(base + "/m/P000197/records");
+  await p.getByTestId("records-ready").waitFor({ timeout: 30000 });
+  assert.ok(Number((await p.getByTestId("rec-assets-count").innerText()).replace(/[^\d]/g, "")) > 50);
+  await p.close();
+});

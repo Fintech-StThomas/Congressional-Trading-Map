@@ -1,0 +1,198 @@
+/* The printable case file (components/CaseFile.tsx). Hidden on screen; in print it
+   replaces the page: black ink on white, one red accent, greyscale portrait. */
+.casefile {
+  display: none;
+}
+@media print {
+  @page {
+    size: auto;
+    margin: 16mm 14mm 18mm;
+    @bottom-right {
+      content: "page " counter(page) " of " counter(pages);
+      font: 8pt ui-monospace, monospace;
+      color: #444;
+    }
+    @bottom-left {
+      content: "A tie is not a finding.";
+      font: 8pt ui-sans-serif, system-ui, sans-serif;
+      color: #444;
+    }
+    @top-left {
+      font: 8pt ui-monospace, monospace;
+      color: #444;
+    }
+  }
+  @page :first {
+    @top-left {
+      content: none;
+    }
+  }
+  html,
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+  body * {
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+  .dossier > :not(.casefile),
+  .sample-banner,
+  .site-header,
+  .site-footer,
+  nextjs-portal {
+    display: none !important;
+  }
+  .page.dossier {
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: none !important;
+    background: #fff !important;
+  }
+  .casefile {
+    display: block;
+    color: #000;
+    font: 9.5pt/1.4 var(--sans);
+  }
+  .casefile .mono {
+    font-family: var(--mono);
+  }
+  .cf__cover {
+    break-after: page;
+    padding-top: 30mm;
+  }
+  .cf__site {
+    font-size: 13pt;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    margin: 0;
+  }
+  .cf__stamp {
+    display: inline-block;
+    margin: 10mm 0 3mm;
+    padding: 2mm 5mm;
+    border: 2.2pt solid oklch(0.47 0.175 27);
+    color: oklch(0.47 0.175 27);
+    font: 700 26pt/1 var(--type);
+    letter-spacing: 0.12em;
+  }
+  .cf__no {
+    font-size: 12pt;
+    margin: 0 0 14mm;
+  }
+  .cf__who {
+    display: flex;
+    gap: 8mm;
+    align-items: flex-start;
+  }
+  .cf__who p {
+    margin: 1mm 0;
+  }
+  .cf__photo {
+    width: 38mm;
+    height: auto;
+    filter: grayscale(1) contrast(1.05);
+    border: 0.6pt solid #000;
+  }
+  .cf__photo--blank {
+    display: grid;
+    place-items: center;
+    height: 46mm;
+    font: 700 20pt var(--sans);
+  }
+  .cf__name {
+    font-size: 20pt;
+    margin: 0 0 2mm;
+  }
+  .cf__asof {
+    margin-top: 14mm;
+    font-size: 10pt;
+  }
+  .cf__disc {
+    margin-top: 4mm;
+    max-width: 150mm;
+    color: #222;
+  }
+  .cf__sec {
+    margin-top: 7mm;
+  }
+  .cf__sec h3 {
+    font-size: 12pt;
+    margin: 0 0 1.5mm;
+    padding-bottom: 1mm;
+    border-bottom: 1pt solid #000;
+    break-after: avoid;
+  }
+  .cf__note,
+  .cf__notshown {
+    margin: 0 0 2mm;
+    color: #222;
+    break-after: avoid;
+  }
+  .cf__notshown {
+    margin-top: 2mm;
+    font-style: italic;
+  }
+  .cf__table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 8.5pt;
+  }
+  .cf__table thead {
+    display: table-header-group;
+  }
+  .cf__table tr {
+    break-inside: avoid;
+  }
+  .cf__table th,
+  .cf__table td {
+    text-align: left;
+    vertical-align: top;
+    padding: 1mm 1.5mm;
+    border-bottom: 0.4pt solid #999;
+  }
+  .cf__table th {
+    border-bottom: 0.8pt solid #000;
+    font-weight: 700;
+  }
+  .cf__table .num {
+    text-align: right;
+    white-space: nowrap;
+  }
+  .cf__small {
+    font-size: 7.5pt;
+    color: #222;
+  }
+  .cf__counts {
+    border-collapse: collapse;
+    width: 100%;
+  }
+  .cf__counts th {
+    text-align: left;
+    font-weight: 400;
+    padding: 1mm 2mm 1mm 0;
+  }
+  .cf__counts td {
+    font: 700 11pt var(--mono);
+    padding: 1mm 8mm 1mm 0;
+  }
+  .cf__three {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 5mm;
+    align-items: start;
+    margin-bottom: 4mm;
+    break-inside: avoid;
+  }
+  .cf__sources {
+    break-before: page;
+  }
+  .cf__method {
+    padding-left: 5mm;
+    margin: 3mm 0;
+  }
+  .cf__notice {
+    margin: 2mm 0;
+    font-size: 8.5pt;
+  }
+}

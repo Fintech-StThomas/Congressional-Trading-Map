@@ -18,6 +18,7 @@ import { ErrorBoundary } from "../ErrorBoundary";
 import { BoardCanvas, type Center } from "./BoardCanvas";
 import { YearRange } from "./YearRange";
 import { Legend } from "./Legend";
+import { CASE_NOT_SHOWN } from "@/lib/notshown";
 import { AssumptionBar, useAssumptions } from "../assume/Assume";
 
 export type CaseLite = {
@@ -802,6 +803,7 @@ function CaseList({ cases, total, book, onOpen }: { cases: CaseLite[]; total: nu
                   {c.money ? `$${Math.round(c.money).toLocaleString("en-US")} PAC · ` : ""}
                   {c.years[0]}–{c.years[1]}
                 </span>
+                <span className="casebtn__not">{CASE_NOT_SHOWN}</span>
               </button>
             </li>
           );

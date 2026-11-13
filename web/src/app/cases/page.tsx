@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { CASE_NOT_SHOWN } from "@/lib/notshown";
 import { getCases, getMemberIndex, getOrgIndex } from "@/lib/data";
 import { TYPE_LABEL } from "@/lib/edges";
 import { seat } from "@/lib/format";
@@ -56,6 +57,7 @@ export default function CasesPage() {
                     {c.money ? ` $${Math.round(c.money).toLocaleString("en-US")}` : " money"} from its PAC (all years)
                     {c.types.filter((t) => t !== "traded" && t !== "pac_money").map((t) => ` · ${TYPE_LABEL[t].toLowerCase()}`).join("")}
                   </p>
+                  <p className="notshown">{CASE_NOT_SHOWN}</p>
                 </div>
                 <Link className="btn btn--small" href={boardHref({ s: m?.current ? m.state : undefined, m: c.member, focus: c.org })}>
                   Open on the board

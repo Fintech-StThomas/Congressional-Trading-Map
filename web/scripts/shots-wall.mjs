@@ -1,7 +1,7 @@
 // Screenshots for the wall, the featured board, frayed yarn and the records view.
 // node scripts/shots-wall.mjs http://localhost:3100 [only]
 import { createRequire } from "node:module";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 const require = createRequire(import.meta.url);
 const { chromium } = require("playwright");
 
@@ -14,6 +14,10 @@ const browser = await chromium.launch();
 async function shot(name, url, { w = 1440, h = 900, full = false, prep, scale = 1, clip } = {}) {
   if (only && !name.includes(only)) return;
   const p = await browser.newPage({ viewport: { width: w, height: h }, deviceScaleFactor: scale });
+  const hd = process.env.PT_HOLDINGS_DIR;
+  if (hd) await p.route("**/holdings/*.json", (r) => {
+    try { r.fulfill({ body: readFileSync(`${hd}/${r.request().url().split("/").pop()}`), contentType: "application/json" }); } catch { r.fulfill({ status: 404 }); }
+  });
   await p.goto(base + url, { waitUntil: "networkidle" });
   if (prep) await prep(p);
   await p.waitForTimeout(600);
@@ -56,4 +60,8 @@ await shot("frayed-closeup-2x", frayUrl, { scale: 2, clip: fray(12) });
 await shot("frayed-closeup-4x", frayUrl, { scale: 4, clip: fray(8) });
 await shot("records-1440", "/m/K000389/records", { prep: async (p) => p.waitForSelector("[data-testid=records-ready]", { timeout: 30000 }) });
 await shot("records-390", "/m/K000389/records", { w: 390, h: 844, prep: async (p) => p.waitForSelector("[data-testid=records-ready]", { timeout: 30000 }) });
+await shot("holdings-member-1440", "/m/P000197", { full: false, prep: async (p) => { await p.getByTestId("holdings").scrollIntoViewIfNeeded(); await p.evaluate(() => document.querySelector("[data-testid=holdings]").scrollIntoView()); } });
+await shot("holdings-records-1440", "/m/P000197/records#rec-holdings", { prep: async (p) => { await p.waitForSelector("[data-testid=records-ready]", { timeout: 30000 }); await p.evaluate(() => document.querySelector("#rec-holdings").scrollIntoView()); } });
+await shot("member-assume-1440", "/m/K000389?as=own", { prep: async (p) => { await p.waitForFunction(() => /trades count/.test(document.querySelector("[data-testid=assume-line]")?.textContent ?? ""), null, { timeout: 60000 }); } });
+await shot("board-assume-1440", "/?s=CA&m=K000389&as=own", { prep: async (p) => { await p.waitForFunction(() => /trades count/.test(document.querySelector("[data-testid=assume-line]")?.textContent ?? ""), null, { timeout: 60000 }); await p.waitForTimeout(1500); } });
 await browser.close();

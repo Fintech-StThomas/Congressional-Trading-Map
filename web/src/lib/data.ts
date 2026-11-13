@@ -147,3 +147,18 @@ export function memberBoard(id: string): MemberBoard {
   const more = Math.max(0, (m.counts?.orgs ?? 0) + (m.counts?.members ?? 0) - drawn.size);
   return { edges, nodes, members, more };
 }
+
+/**
+ * A member's holdings file (House annual reports), or null. PT_HOLDINGS_DIR points
+ * at another folder of holdings/<id>.json files (testing against unmerged data).
+ */
+export function getHoldings(id: string): import("./holdings").HoldingsFile | null {
+  const dir = process.env.PT_HOLDINGS_DIR || join(DATA_DIR, "holdings");
+  const p = join(dir, `${id}.json`);
+  if (!existsSync(/*turbopackIgnore: true*/ p)) return null;
+  try {
+    return JSON.parse(readFileSync(/*turbopackIgnore: true*/ p, "utf8"));
+  } catch {
+    return null;
+  }
+}

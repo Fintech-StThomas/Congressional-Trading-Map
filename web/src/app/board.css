@@ -1593,3 +1593,6 @@ tr.is-excluded td {
 @media (prefers-reduced-motion: reduce) {
   .yv.is-excluded, .bcard.is-excluded, li.is-excluded, tr.is-excluded td { transition: none; }
 }
+.drawer .notshown {
+  color: var(--ink-2);
+}

@@ -7,6 +7,7 @@ import {
   caveats, DOC_COLS, documentRows, identifierLinks, TIE_COLS, tieRows, TRADE_COLS_ALL, tradeRows, USE_NOTICE, type Col,
 } from "@/lib/records";
 import { DataTable, download } from "./DataTable";
+import { ASSET_COLS, coverageWords, holdingRows, LIABILITY_COLS, netWorthText, SENATE_NOTE, type HoldingsFile } from "@/lib/holdings";
 
 type TradeWire = { cols: string[]; rows: unknown[][]; filings: Record<string, string> };
 type Source = { id: string; name: string; revision: string | null; retrieved: string | null; url: string | null };
@@ -19,13 +20,14 @@ const COV_COLS: Col[] = [
 ];
 
 /** Everything the site holds for one member, unfiltered: loaded from the same public files the site uses. */
-export function RecordsView({ id, hasTrades, hasHoldings, names, sources, built, pageUrl, siteName }: {
-  id: string; hasTrades: boolean; hasHoldings: boolean; names: Record<string, string>; sources: Source[];
+export function RecordsView({ id, hasTrades, hasHoldings, everHouse, names, sources, built, pageUrl, siteName }: {
+  id: string; hasTrades: boolean; hasHoldings: boolean; everHouse: boolean; names: Record<string, string>; sources: Source[];
   built: string | null; pageUrl: string; siteName: string;
 }) {
   const [file, setFile] = useState<MemberFileWire | null>(null);
   const [trades, setTrades] = useState<TradeWire | null>(null);
-  const [holdings, setHoldings] = useState<unknown>(null);
+  const [holdings, setHoldings] = useState<HoldingsFile | null>(null);
+  const [holdState, setHoldState] = useState<"none" | "loading" | "ok" | "error">(hasHoldings ? "loading" : "none");
   const [state, setState] = useState<{ member: "loading" | "ok" | "error"; trades: "loading" | "ok" | "error" | "none" }>({
     member: "loading", trades: hasTrades ? "loading" : "none",
   });
@@ -44,7 +46,14 @@ export function RecordsView({ id, hasTrades, hasHoldings, names, sources, built,
           setState((s) => ({ ...s, trades: "ok" }));
         })
         .catch(() => setState((s) => ({ ...s, trades: "error" })));
-    if (hasHoldings) getJSON<unknown>(dataUrl(`holdings/${id}.json`)).then(setHoldings).catch(() => setHoldings(null));
+    // holdings/<id>.json (House annual reports) exists only for some House members.
+    if (hasHoldings)
+      getJSON<HoldingsFile>(dataUrl(`holdings/${id}.json`))
+        .then((h) => {
+          setHoldings(h);
+          setHoldState("ok");
+        })
+        .catch(() => setHoldState("error"));
   }, [id, hasTrades, hasHoldings]);
 
   const name = useMemo(() => {
@@ -60,6 +69,8 @@ export function RecordsView({ id, hasTrades, hasHoldings, names, sources, built,
   const tradeTable = useMemo(() => tradeRows(trades), [trades]);
   const docs = useMemo(() => (file ? documentRows(file, trades, sourceName) : []), [file, trades, sourceName]);
   const notes = useMemo(() => (file ? caveats(file, trades) : []), [file, trades]);
+  const assets = useMemo(() => (holdings ? holdingRows(holdings, "assets") : []), [holdings]);
+  const liabilities = useMemo(() => (holdings ? holdingRows(holdings, "liabilities") : []), [holdings]);
   const coverage = useMemo(() => {
     const by = file?.trade_summary?.by_year ?? {};
     return (file?.coverage ?? []).map((c) => [c.year, c.trades, c.money, by[String(c.year)] ?? 0]);
@@ -87,7 +98,7 @@ export function RecordsView({ id, hasTrades, hasHoldings, names, sources, built,
   };
 
   return (
-    <div className="rec" data-testid={tradesReady ? "records-ready" : "records-loading"}>
+    <div className="rec" data-testid={tradesReady && holdState !== "loading" ? "records-ready" : "records-loading"}>
       <div className="rec__actions">
         <button type="button" className="btn btn--paper" onClick={everything} disabled={!tradesReady} data-testid="rec-json">
           Download everything as JSON
@@ -101,7 +112,7 @@ export function RecordsView({ id, hasTrades, hasHoldings, names, sources, built,
         <a href="#rec-docs">Source documents</a>
         <a href="#rec-ids">Identifiers</a>
         <a href="#rec-cov">Coverage and caveats</a>
-        {hasHoldings && <a href="#rec-holdings">Holdings and net worth</a>}
+        <a href="#rec-holdings">Holdings and net worth</a>
       </nav>
 
       <section id="rec-ties" className="rec__sec" aria-labelledby="rec-ties-h">
@@ -155,14 +166,30 @@ export function RecordsView({ id, hasTrades, hasHoldings, names, sources, built,
         <DataTable id="coverage" title="Coverage by year" cols={COV_COLS} rows={coverage} file={`${m.id}-coverage`} />
       </section>
 
-      {/* Holdings and net worth: filled by a separate pipeline module. Renders only when holdings/<id>.json exists. */}
-      {hasHoldings && holdings !== null && (
-        <section id="rec-holdings" className="rec__sec" aria-labelledby="rec-holdings-h" data-testid="rec-holdings">
-          <h2 id="rec-holdings-h">Holdings and net worth</h2>
-          <p className="rec__note">As published in holdings/{m.id}.json.</p>
-          <pre className="rec__raw">{JSON.stringify(holdings, null, 2).slice(0, 200000)}</pre>
-        </section>
-      )}
+      {/* Holdings and net worth (House annual reports, holdings/<id>.json): a one-line note when absent. */}
+      <section id="rec-holdings" className="rec__sec" aria-labelledby="rec-holdings-h">
+        <h2 id="rec-holdings-h">Holdings and net worth</h2>
+        {holdState === "loading" ? (
+          <p className="rec__state" aria-busy="true">Loading the holdings file…</p>
+        ) : holdState === "error" ? (
+          <p className="rec__state" role="alert">The holdings file failed to load.</p>
+        ) : !holdings ? (
+          <p className="rec__note" data-testid="rec-holdings-none">{everHouse ? "No House annual report for this member is in the source data." : SENATE_NOTE}</p>
+        ) : (
+          <div data-testid="rec-holdings">
+            <p className="rec__note">
+              Every asset and liability row from the House annual reports used, {Object.keys(holdings.years).sort()[0]}–{Object.keys(holdings.years).sort().slice(-1)[0]}, as filed: owner as printed (a blank owner is &ldquo;unspecified&rdquo;), real property at city and state only, value bands not midpoints.
+              Disclosed net worth range by year: {Object.keys(holdings.years).sort().map((y) => `${y} ${netWorthText(holdings.years[y].net_worth)}`).join("; ")}.
+            </p>
+            <p className="rec__note">Coverage: {holdings.coverage.map((c) => `${c.year} ${coverageWords(c.status)}`).join("; ")}.</p>
+            <p className="rec__note">Excluded by law: {holdings.net_worth_definition.excludes.join("; ")}.</p>
+            <h3 className="rec__h3">Assets</h3>
+            <DataTable id="assets" title="Assets" cols={ASSET_COLS} rows={assets} file={`${m.id}-assets`} />
+            <h3 className="rec__h3">Liabilities</h3>
+            <DataTable id="liabilities" title="Liabilities" cols={LIABILITY_COLS} rows={liabilities} file={`${m.id}-liabilities`} />
+          </div>
+        )}
+      </section>
     </div>
   );
 }

@@ -1,9 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 import { notFound } from "next/navigation";
-import { DATA_DIR, getMemberFile, getMemberIndex, getMembers, getMeta, getOrgIndex, metaBuilt } from "@/lib/data";
+import { getHoldings, getMemberFile, getMemberIndex, getMembers, getMeta, getOrgIndex, metaBuilt } from "@/lib/data";
 import { metaSources } from "@/lib/meta";
 import { date, seat } from "@/lib/format";
 import { memberHref } from "@/lib/client";
@@ -54,7 +52,8 @@ export default async function RecordsPage({ params }: PageProps<"/m/[id]/records
     retrieved: s.retrieved ? String(s.retrieved) : null, url: typeof s.url === "string" ? s.url : null,
   }));
   const built = metaBuilt(meta);
-  const hasHoldings = existsSync(/*turbopackIgnore: true*/ join(DATA_DIR, "holdings", `${id}.json`));
+  const hasHoldings = getHoldings(id) !== null;
+  const everHouse = m.terms.some((t) => t.chamber === "rep");
 
   return (
     <article className="page records" data-testid="records-page">
@@ -72,6 +71,7 @@ export default async function RecordsPage({ params }: PageProps<"/m/[id]/records
           id={m.id}
           hasTrades={(file.trade_summary?.count ?? 0) > 0}
           hasHoldings={hasHoldings}
+          everHouse={everHouse}
           names={names}
           sources={sources}
           built={built}

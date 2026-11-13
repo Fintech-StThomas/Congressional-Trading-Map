@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef } from "react";
 import type { Edge, NodeRef } from "@/lib/types";
+import { notShown } from "@/lib/notshown";
 import { typeLabel, TYPE_RULE, FAMILY_LABEL, filteredAmount, plainStat, stringStyle } from "@/lib/edges";
 import { amountText, count, date, NOT_DISCLOSED } from "@/lib/format";
 import { IS_SAMPLE_CLIENT, memberHref, nodeName, orgHref, type NameBook } from "@/lib/client";
@@ -177,7 +178,6 @@ export function EvidenceDrawer({ edge, book, sources, range, onClose, loading, s
               <span className="mono">{edge.stat.lift}×</span> the baseline
               {typeof (edge.stat as { p?: number }).p === "number" ? <>, p = <span className="mono">{(edge.stat as { p?: number }).p!.toPrecision(2)}</span></> : null}. Method: {edge.stat.method}
             </p>
-            {edge.type === "traded_together" && <p className="stat__meta">Frequent traders overlap often; this is not evidence of coordination.</p>}
           </div>
         )}
 
@@ -185,6 +185,7 @@ export function EvidenceDrawer({ edge, book, sources, range, onClose, loading, s
 
         <h3>What the record says</h3>
         <p className="drawer__rule">{TYPE_RULE[edge.type]}</p>
+        <p className="notshown" data-testid="not-shown"><span className="notshown__k">What this does not show:</span> {notShown(edge.type)}</p>
 
         <h3>
           Records <span className="h-count mono">{shown < edge.evidence_total ? `${shown} of ${count(edge.evidence_total)}` : count(shown)}</span>

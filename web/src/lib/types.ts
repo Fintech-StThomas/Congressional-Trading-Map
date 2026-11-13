@@ -184,6 +184,14 @@ type Wall = {                 // wall.json, rows sorted by id, one per member in
   rows: unknown[][];
 };
 
+type WallYears = {            // wall-years.json, rows sorted by id, one per row of wall.json
+  years: [number, number];    // [2000, current year]
+  cols: ["id", "terms", "cases", "trades", "pac", "oppose"];
+  rows: unknown[][];          // terms: [start year, end year, chamber, party, state][]; measures: sparse flat
+                              // [year, value, ...] arrays (see docs/data-dictionary.md)
+  first: { trades: { rep: number; sen: number }; cases: number; money: number };
+};
+
 type OrgIndex = {             // org-index.json
   cols: ["id", "name", "kind", "ticker", "members_D", "members_I", "members_R", "dollars_D", "dollars_I", "dollars_R", "degree"];
   rows: unknown[][];
@@ -199,7 +207,7 @@ type Board = {
 export type {
   NodeRef, MemberSummary, Term, Committee, OrgSummary, EdgeType, Amount, Edge, Evidence, Trade,
   Table, LedgerRow, LedgerTotals, OrgTie, Case, MemberFile, TradeFile, OrgFile, Board,
-  PartySplit, Wall, OrgIndex,
+  PartySplit, Wall, WallYears, OrgIndex,
 };
 
 // ---------------------------------------------------------------------------

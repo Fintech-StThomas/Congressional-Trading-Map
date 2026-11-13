@@ -24,14 +24,6 @@
 .records__what strong {
   color: var(--text);
 }
-.crumbs--page {
-  font-size: 13.5px;
-  color: var(--text-3);
-  margin-top: 18px;
-}
-.crumbs--page a {
-  color: var(--text-2);
-}
 .rec__actions {
   display: flex;
   flex-wrap: wrap;
