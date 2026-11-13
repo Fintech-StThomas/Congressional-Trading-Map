@@ -38,7 +38,7 @@ export default function BoardPage() {
   if (fm && book[fm]) {
     const b = memberBoard(fm);
     Object.assign(book, b.members);
-    initialChunks[book[fm].state] = { strings: { [fm]: b.edges }, nodes: b.nodes, members: b.members, more: { [fm]: b.more } };
+    initialChunks[book[fm].state] = { strings: { [fm]: b.edges }, nodes: b.nodes, members: b.members, more: { [fm]: b.more }, againstMore: { [fm]: b.againstMore } };
   }
 
   const caseIndex: Record<string, string[]> = {};

@@ -41,6 +41,8 @@ export type StateChunk = {
   members: Record<string, BoardMember>;
   /** Ties per member beyond the drawn strings. */
   more: Record<string, number>;
+  /** Spenders against each member beyond the three shown in the "Spent against" zone. */
+  againstMore?: Record<string, number>;
 };
 
 type Props = {
@@ -103,7 +105,7 @@ export function BoardApp(props: Props) {
   const [memberBook, setMemberBook] = useState<Record<string, BoardMember>>(props.members);
   const [orgBook, setOrgBook] = useState<Record<string, OrgSummary>>(() => Object.assign({}, ...Object.values(props.initialChunks).map((c) => c.nodes)));
   const [orgFiles, setOrgFiles] = useState<Record<string, { org: OrgSummary; ties: TieEdge[]; total: number }>>({});
-  const [memberFiles, setMemberFiles] = useState<Record<string, { edges: Edge[]; more: number }>>({});
+  const [memberFiles, setMemberFiles] = useState<Record<string, { edges: Edge[]; more: number; againstMore?: number }>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -187,6 +189,7 @@ export function BoardApp(props: Props) {
                 nodes: { ...c[st]?.nodes, ...chunk.nodes },
                 members: { ...c[st]?.members, ...chunk.members },
                 more: { ...c[st]?.more, ...chunk.more },
+                againstMore: { ...c[st]?.againstMore, ...chunk.againstMore },
               },
             }));
             setOrgBook((b) => ({ ...b, ...chunk.nodes }));
@@ -195,11 +198,11 @@ export function BoardApp(props: Props) {
             // Former members are not on board.json: their strings are cut from
             // the case file at build time.
             setLoading(true);
-            const body = await getJSON<{ edges: Edge[]; nodes: Record<string, OrgSummary>; members: Record<string, BoardMember>; more: number }>(`/board-member/${sel.m}`);
+            const body = await getJSON<{ edges: Edge[]; nodes: Record<string, OrgSummary>; members: Record<string, BoardMember>; more: number; againstMore?: number }>(`/board-member/${sel.m}`);
             if (!live) return;
             setOrgBook((b) => ({ ...b, ...body.nodes }));
             setMemberBook((b) => ({ ...body.members, ...b }));
-            setMemberFiles((f) => ({ ...f, [sel.m!]: { edges: body.edges, more: body.more } }));
+            setMemberFiles((f) => ({ ...f, [sel.m!]: { edges: body.edges, more: body.more, againstMore: body.againstMore } }));
           }
         } else if (sel.o && !orgFiles[sel.o]) {
           setLoading(true);

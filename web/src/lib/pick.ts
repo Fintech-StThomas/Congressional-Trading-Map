@@ -25,16 +25,36 @@ export function spendingSide(e: Pick<Edge, "note" | "via">): "support" | "oppose
   return null;
 }
 
+/** Independent spending against the member: shown apart from the yarn, never as a tie. */
+export function isAgainst(e: Pick<Edge, "type" | "note" | "via">): boolean {
+  return e.type === "outside_spending" && spendingSide(e) === "oppose";
+}
+
+export const AGAINST_SHOWN = 3;
+
+/** The largest spenders against the member, for the board's separate zone, and how many more exist. */
+export function pickAgainst(edges: Edge[], n: number = AGAINST_SHOWN): { shown: Edge[]; more: number } {
+  const all = edges.filter(isAgainst).sort(byWeight);
+  return { shown: all.slice(0, n), more: Math.max(0, all.length - n) };
+}
+
+/** pickBoard and pickAgainst together: the strings, and the separate list of spenders against. */
+export function pickBoardSplit(self: string, edges: Edge[]): { strings: Edge[]; against: Edge[]; againstMore: number } {
+  const a = pickAgainst(edges);
+  return { strings: pickBoard(self, edges), against: a.shown, againstMore: a.more };
+}
+
 /**
  * Up to 5 case companies (a traded string and a PAC-money string to the same
  * company, both kept), then one string of each kind the record holds: largest
- * outside spending supporting and opposing, the top two member-to-member gifts
+ * outside spending supporting (spending against is never a string), the top two member-to-member gifts
  * (one received and one given when both exist), one statistical co-trading
  * tie; then the largest remaining money strings, then any other filed strings.
  * At most 12 cards and 14 strings; context strings are never picked.
  */
 export function pickBoard(self: string, edges: Edge[], limits: { cards: number; strings: number; cases: number } = PICK_LIMITS): Edge[] {
-  const pool = edges.filter((e) => e.family !== "context").sort(byWeight);
+  // Outside spending against the member is not a tie: it never takes a string slot (see pickAgainst).
+  const pool = edges.filter((e) => e.family !== "context" && !isAgainst(e)).sort(byWeight);
   const picked: Edge[] = [];
   const taken = new Set<string>();
   const cards = new Set<string>();
@@ -58,7 +78,6 @@ export function pickBoard(self: string, edges: Edge[], limits: { cards: number; 
   const fundPicks = incoming.length && outgoing.length ? [incoming[0], outgoing[0]] : funds.slice(0, 2);
   const variety = [
     spend.find((e) => spendingSide(e) === "support"),
-    spend.find((e) => spendingSide(e) === "oppose"),
     ...fundPicks,
     ofType("traded_together")[0],
   ].filter((e): e is Edge => Boolean(e));

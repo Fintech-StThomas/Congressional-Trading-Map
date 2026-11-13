@@ -131,7 +131,7 @@ export function decodeOrgTies(file: OrgFileWire & { ties?: Columnar }): TieEdge[
         from: ORG_PAYS.has(type) ? o : m,
         to: ORG_PAYS.has(type) ? m : o,
         directed: true,
-        via: null,
+        via: r.via ? { id: String(r.via), name: String(r.via) } : null,
         amount: { low: (r.low as number | null) ?? null, high: (r.high as number | null) ?? null, exact: (r.exact as number | null) ?? null },
         count,
         first, last,
@@ -140,7 +140,8 @@ export function decodeOrgTies(file: OrgFileWire & { ties?: Columnar }): TieEdge[
         evidence_total: count,
         stat: null,
         weak: false,
-        note: null,
+        // Org files carry no side for outside spending unless a `note` column exists; null means "not recorded here".
+        note: (r.note as string | null) ?? null,
         _tie: { member, org: orgId, edge: (r.edge as string | null) ?? null },
       } satisfies TieEdge;
     });

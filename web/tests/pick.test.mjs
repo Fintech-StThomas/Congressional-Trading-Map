@@ -2,7 +2,7 @@
 // built-in type stripping. No server needed.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { pickBoard } from "../src/lib/pick.ts";
+import { pickAgainst, pickBoard, pickBoardSplit } from "../src/lib/pick.ts";
 
 const SELF = "M1";
 let n = 0;
@@ -44,7 +44,7 @@ test("variety is guaranteed and limits hold", () => {
   assert.ok(picked.length <= 14);
   assert.ok(ends.size <= 12);
   const ids = (t) => picked.filter((e) => e.type === t);
-  assert.deepEqual(ids("outside_spending").map((e) => e.from.id).sort(), ["org:opp1", "org:sup2"]);
+  assert.deepEqual(ids("outside_spending").map((e) => e.from.id).sort(), ["org:sup2"], "spending against never takes a string");
   const funds = ids("funds");
   assert.equal(funds.length, 2);
   assert.ok(funds.some((e) => e.to.id === SELF) && funds.some((e) => e.from.id === SELF), "one received, one given");
@@ -70,4 +70,21 @@ test("a member without variety fills with the largest money", () => {
   n = 0;
   const edges = [edge("pac_money", "org:a", 100), edge("pac_money", "org:b", 900), edge("traded", "org:t", 50)];
   assert.deepEqual(pickBoard(SELF, edges).map((e) => e.from.id), ["org:b", "org:a", "org:t"]);
+});
+
+test("spending against is a separate list: largest three, with a count of the rest", () => {
+  const edges = fixture();
+  edges.push(edge("outside_spending", "org:opp2", 9000, { note: "oppose" }));
+  edges.push(edge("outside_spending", "org:opp3", 1000, { note: "oppose" }));
+  edges.push(edge("outside_spending", "org:opp4", 500, { note: "oppose" }));
+  const a = pickAgainst(edges);
+  assert.deepEqual(a.shown.map((e) => e.from.id), ["org:opp2", "org:opp1", "org:opp3"]);
+  assert.equal(a.more, 1);
+  const split = pickBoardSplit(SELF, edges);
+  assert.ok(split.strings.every((e) => e.note !== "oppose"));
+  assert.equal(split.against.length, 3);
+  assert.equal(split.againstMore, 1);
+  // The slot goes back to the fill rule: as many strings as before the opposers existed.
+  const without = fixture().filter((e) => e.note !== "oppose");
+  assert.equal(split.strings.length, pickBoard(SELF, without).length);
 });
