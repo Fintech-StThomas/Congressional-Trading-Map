@@ -82,6 +82,14 @@ const ORGS = [
   { id: "lda:registrant-90002", name: "Mockingbird Strategies", kind: "lobby", ticker: null, cik: null, sector: null },
   { id: "pac:C90000007", name: "Sample Leadership Fund (leadership PAC)", kind: "pac", ticker: null, cik: null, sector: null },
 ];
+// Small committees that only ever appear in ledgers (no full Edge objects).
+const LEDGER_PACS = Array.from({ length: 40 }, (_, i) => ({
+  id: `pac:C9100${String(i + 1).padStart(4, "0")}`,
+  name: `Sample Ledger Committee ${String(i + 1).padStart(2, "0")} PAC`,
+  kind: i % 9 === 0 ? "party" : "pac",
+  ticker: null, cik: null, sector: null,
+}));
+ORGS.push(...LEDGER_PACS);
 const orgById = Object.fromEntries(ORGS.map((o) => [o.id, o]));
 
 // Which records each source id stands for (listed in meta.json).
@@ -354,7 +362,8 @@ function makeTrades(memberId, n, pool) {
       asset_class,
       low, high,
       org: nullTicker ? null : o.id,
-      url: `https://example.org/sample-record/ptr/${memberId}-${i}`,
+      ticker_source: nullTicker ? null : o.id.startsWith("tk:") ? "filed" : "resolved",
+      doc: `S${memberId.slice(-3)}${String(Math.floor(i / 6)).padStart(4, "0")}`,
     });
     out[out.length - 1].amended = out[out.length - 1].version > 1;
   }
@@ -405,6 +414,30 @@ for (const m of MEMBERS) {
 }
 cases.sort((a, b) => b.score - a.score);
 
+// ---- ledgers: money ties shipped without evidence arrays ----------------------
+const MEMBER_LEDGER = { X000001: 34, X000002: 12, X000005: 22, X000007: 3, X000011: 8 };
+const ledgerRows = []; // [member, type, org, via, exact, low, high, count, first, last, note]
+for (const [mid, n] of Object.entries(MEMBER_LEDGER)) {
+  for (let i = 0; i < n; i++) {
+    const org = LEDGER_PACS[(i * 7 + mid.charCodeAt(6)) % LEDGER_PACS.length];
+    const type = i % 11 === 5 ? "outside_spending" : "pac_money";
+    const cnt = between(1, 9);
+    const exact = Math.round((cnt * (250 + rand() * 2500)) / 50) * 50;
+    const y0 = between(2004, 2022);
+    const y1 = Math.min(2026, y0 + between(0, 4));
+    ledgerRows.push([mid, type, org.id, null, exact, exact, exact, cnt, iso(y0, between(1, 12), between(1, 28)), iso(y1, between(1, 12), between(1, 28)), i === 3 ? "SAMPLE: one receipt amended after filing" : null]);
+  }
+}
+function ledgerTotalsOf(rows, typeIdx, exactIdx, countIdx) {
+  const t = {};
+  for (const r of rows) {
+    const k = r[typeIdx];
+    const x = (t[k] ??= { edges: 0, records: 0, low: 0, high: 0, exact: 0 });
+    x.edges++; x.records += r[countIdx]; x.low += r[exactIdx]; x.high += r[exactIdx]; x.exact += r[exactIdx];
+  }
+  return t;
+}
+
 // ---- assemble ----------------------------------------------------------------------
 const touches = (e, id) => [e.from, e.to].some((n) => n.kind === "member" && n.id === id);
 const touchesOrg = (e, id) => [e.from, e.to].some((n) => n.kind === "org" && n.id === id);
@@ -413,6 +446,7 @@ const degree = {};
 for (const o of ORGS) {
   const ms = new Set();
   for (const e of edges) if (touchesOrg(e, o.id)) for (const n of [e.from, e.to]) if (n.kind === "member") ms.add(n.id);
+  for (const r of ledgerRows) if (r[2] === o.id) ms.add(r[0]);
   degree[o.id] = ms.size;
 }
 const orgSummaries = ORGS.filter((o) => degree[o.id] > 0).map((o) => ({ ...o, degree: degree[o.id] }));
@@ -432,6 +466,7 @@ function summary(m) {
     if (n.kind === "org") orgSet.add(n.id);
     else if (n.id !== m.id) memSet.add(n.id);
   }
+  for (const r of ledgerRows) if (r[0] === m.id) orgSet.add(r[2]);
   return {
     id: m.id,
     name: `${m.first} ${m.last}`,
@@ -485,10 +520,17 @@ mkdirSync(OUT, { recursive: true });
 write("members.json", summaries);
 for (const m of MEMBERS) {
   const s = summaries.find((x) => x.id === m.id);
+  const TCOLS = ["id", "version", "amended", "date", "available", "lag_days", "late", "owner", "action", "partial", "ticker", "ticker_source", "asset", "asset_class", "low", "high", "org", "doc"];
+  const filings = {};
+  for (const t of TRADES[m.id]) filings[t.doc] = `https://example.org/sample-record/ptr/${t.doc}.pdf`;
+  const mine = ledgerRows.filter((r) => r[0] === m.id).map((r) => r.slice(1));
   write(`members/${m.id}.json`, {
     member: { ...s, terms: terms(m), committees: COMMITTEES[m.id] ?? [], fec_ids: [`H0SAMPLE${m.id.slice(-3)}`] },
     edges: edges.filter((e) => touches(e, m.id)),
-    trades: TRADES[m.id],
+    trades: { cols: TCOLS, rows: TRADES[m.id].map((t) => TCOLS.map((c) => t[c] ?? null)) },
+    filings,
+    ledger: { cols: ["type", "org", "via", "exact", "low", "high", "count", "first", "last", "note"], rows: mine },
+    ledger_totals: ledgerTotalsOf(mine, 0, 3, 6),
     cases: cases.filter((c) => c.member === m.id),
     coverage: coverage(m),
   });
@@ -497,7 +539,13 @@ write("orgs.json", orgSummaries);
 const shards = {};
 for (const o of orgSummaries) {
   const shard = sha1(o.id).slice(0, 2);
-  (shards[shard] ??= {})[o.id] = { org: o, edges: edges.filter((e) => touchesOrg(e, o.id)) };
+  const lrows = ledgerRows.filter((r) => r[2] === o.id).map((r) => [r[1], r[0], r[4], r[7], r[8], r[9], r[10]]);
+  (shards[shard] ??= {})[o.id] = {
+    org: o,
+    edges: edges.filter((e) => touchesOrg(e, o.id)),
+    ledger: { cols: ["type", "member", "exact", "count", "first", "last", "note"], rows: lrows },
+    ledger_totals: ledgerTotalsOf(lrows, 0, 2, 3),
+  };
 }
 for (const [shard, body] of Object.entries(shards)) write(`orgs/${shard}.json`, body);
 
@@ -516,7 +564,7 @@ for (const s of summaries.filter((x) => x.current)) {
   for (const e of my) for (const n of [e.from, e.to]) if (n.kind === "org") nodes[n.id] = orgSummaryById[n.id];
 }
 write("board.json", { states: boardStates, strings, nodes });
-write("member-ties.json", edges.filter((e) => e.from.kind === "member" && e.to.kind === "member"));
+write("member-ties.json", edges.filter((e) => e.from.kind === "member" && e.to.kind === "member" && e.family !== "context"));
 write("cases.json", cases);
 
 const counts = {

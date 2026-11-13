@@ -238,6 +238,9 @@ def classify_rows(con: duckdb.DuckDBPyConnection, cycles: list[int], today: str)
           WHEN dt IS NULL THEN 'drop:date_missing_or_invalid'
           WHEN dt < DATE '{MIN_DATE}' OR dt > DATE '{today}' THEN 'drop:date_out_of_range'
           WHEN dup_rank > 1 THEN 'drop:duplicate_rereport'
+          WHEN tp IN ({contrib}) AND amt >= 10000
+               AND amt = try_cast(regexp_replace(coalesce(OTHER_ID, ''), '^C0*', '') AS DECIMAL(18,2))
+               THEN 'drop:amount_equals_recipient_committee_id'
           WHEN tp IN ({contrib}) AND (CMTE_ID IN ({conduits}) OR upper(coalesce(MEMO_TEXT,'')) LIKE '%EARMARK%')
                THEN 'drop:earmarked_via_conduit'
           WHEN tp IN ({contrib}) AND rcpt_cmte_member IS NULL AND OTHER_ID IS NOT NULL AND rcpt_is_cand_cmte
@@ -438,8 +441,14 @@ def fundraises_with(con: duckdb.DuckDBPyConnection, members: Members, cycles: li
     cyc = ",".join(str(c) for c in cycles)
     names = dict(q(con, "SELECT CMTE_ID, CMTE_NM FROM cm_latest"))
     part: dict[tuple[int, str], dict[str, list[dict]]] = {}
+    # A linkage row is current for the cycle only if the candidate's election year is this cycle or a
+    # later one (Senate: up to six years on). Rows whose election year is already past are carried over
+    # from old cycles (e.g. a 1994 JFC still listed in 2006) and are not evidence of participation.
+    cur = f"""cycle IN ({cyc}) AND CMTE_DSGN = 'J' AND CMTE_ID IS NOT NULL"""
+    fresh = """try_cast(CAND_ELECTION_YR AS INT) BETWEEN cycle - 1 AND cycle + 6"""
+    stale = q(con, f"SELECT count(*) FROM ccl WHERE {cur} AND NOT coalesce({fresh}, false)")[0][0]
     links = q(con, f"""SELECT DISTINCT cycle, CMTE_ID, CAND_ID, LINKAGE_ID FROM ccl
-                       WHERE cycle IN ({cyc}) AND CMTE_DSGN = 'J' AND CMTE_ID IS NOT NULL ORDER BY 1, 2, 3, 4""")
+                       WHERE {cur} AND {fresh} ORDER BY 1, 2, 3, 4""")
     nonmember_links = 0
     for cycle, cmte, cand, link in links:
         bio = members.cand_to_bio.get(cand)
@@ -484,7 +493,8 @@ def fundraises_with(con: duckdb.DuckDBPyConnection, members: Members, cycles: li
         })
     multi = {c for (cy, c), bs in part.items() if len(bs) > 1}
     report["fundraises_with"] = {
-        "jfc_linkage_rows": len(links), "jfc_linkage_rows_non_member": nonmember_links,
+        "jfc_linkage_rows_used": len(links), "jfc_linkage_rows_stale_dropped": stale,
+        "jfc_linkage_rows_non_member": nonmember_links,
         "jfc_cycles_with_member_participants": len(part),
         "jfcs_with_two_or_more_members": len(multi),
         "pairs_edges": len(edges),

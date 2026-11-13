@@ -2,7 +2,7 @@
 // Real data: web/public/data (written by the pipeline). Fallback: web/fixtures/data.
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Board, Case, Edge, MemberFile, MemberSummary, Meta, OrgSummary } from "./types";
+import type { Board, Case, Edge, MemberFileWire, MemberSummary, Meta, OrgSummary } from "./types";
 import { toBoardMember, type NameBook } from "./client";
 
 const ROOT = process.cwd();
@@ -37,9 +37,9 @@ export function getMemberIndex(): Map<string, MemberSummary> {
   return memberIndex;
 }
 
-export function getMemberFile(id: string): MemberFile | null {
+export function getMemberFile(id: string): MemberFileWire | null {
   try {
-    return read<MemberFile>(`members/${id}.json`);
+    return read<MemberFileWire>(`members/${id}.json`);
   } catch {
     return null;
   }
@@ -73,7 +73,8 @@ export function getMeta(): Meta {
 
 /** Build date as an ISO string, from whichever key the pipeline used. */
 export function metaBuilt(meta: Meta = getMeta()): string | null {
-  const v = meta.built ?? meta.build_time ?? (meta as Record<string, unknown>).generated_at ?? (meta as Record<string, unknown>).built_at;
+  const build = (meta as Record<string, unknown>).build as { time?: string } | undefined;
+  const v = build?.time ?? meta.built ?? meta.build_time ?? (meta as Record<string, unknown>).generated_at ?? (meta as Record<string, unknown>).built_at;
   return typeof v === "string" ? v : null;
 }
 

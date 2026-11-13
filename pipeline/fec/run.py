@@ -168,6 +168,18 @@ def _audit_tables(con, report: dict) -> None:
                      GROUP BY 1 ORDER BY 4 DESC LIMIT 15""")
     report["earmarked_top_conduits"] = [{"committee": c, "name": nm, "rows": n, "dollars": round(float(s), 2)}
                                         for c, nm, n, s in earm]
+    big = q(con, """SELECT r.cycle, r.CMTE_ID, c.CMTE_NM, r.from_member, r.to_member, r.NAME, r.dt, r.amt,
+                           r.ENTITY_TP, r.IMAGE_NUM FROM p_rules r LEFT JOIN cm_latest c USING (CMTE_ID)
+                    WHERE r.rule = 'keep:funds' AND r.amt > 10000 ORDER BY r.amt DESC, r.SUB_ID""")
+    report["review_large_funds_rows"] = [
+        {"cycle": cy, "committee": c, "committee_name": nm, "from": f, "to": t, "payee_as_filed": pn,
+         "date": d.isoformat(), "amount": float(a), "entity_type": et,
+         "url": f"https://docquery.fec.gov/cgi-bin/fecimg/?{img}" if img else None}
+        for cy, c, nm, f, t, pn, d, a, et, img in big]
+    print(f"\nfunds rows over $10,000 from one committee in one transaction (kept, listed for review): {len(big)}")
+    for r in report["review_large_funds_rows"][:12]:
+        print(f"  {r['date']} {r['committee']} {r['committee_name'][:34]:34} -> {r['to']} payee={r['payee_as_filed'][:30]!s:30} "
+              f"${r['amount']:,.0f}")
     table("earmarked contributions forwarded by conduits (excluded), top 15", ("committee", "name", "rows", "dollars"),
           [(c, (nm or "")[:60], n, float(s)) for c, nm, n, s in earm])
 
@@ -186,9 +198,17 @@ def _sanity(con, members: refs.Members, report: dict, edges: list[dict], sizes: 
     if big:
         print(f"\nWARNING: over 150 MB: {big}. Nothing was truncated; consider --min-total.")
         # what a threshold would do
-        for thr in (200, 500, 1000, 2500):
-            keep = [e for e in edges if e["amount"]["exact"] is None or e["amount"]["exact"] >= thr]
-            print(f"  --min-total {thr}: {len(keep):,} of {len(edges):,} edges kept")
+        pm = [(e["amount"]["exact"], len(dumps(e)) + 1, e["to"]["id"] in current)
+              for e in edges if e["type"] == "pac_money"]
+        report["size_options_pac_money"] = []
+        for thr in (0, 1000, 2500, 5000, 10000):
+            keep = [x for x in pm if x[0] >= thr]
+            cur_b = sum(x[1] for x in keep if x[2])
+            row = {"min_total": thr, "edges": len(keep), "bytes": sum(x[1] for x in keep),
+                   "edges_current_members_only": sum(1 for x in keep if x[2]), "bytes_current_members_only": cur_b}
+            report["size_options_pac_money"].append(row)
+            print(f"  pac_money --min-total {thr}: {row['edges']:,} edges, {row['bytes'] / 2**20:,.0f} MiB; "
+                  f"current members only: {row['edges_current_members_only']:,} edges, {cur_b / 2**20:,.0f} MiB")
     report["size_warning"] = big
 
     # match rate for pac_money by dollars and committees

@@ -57,6 +57,12 @@ export default function BoardPage() {
     // the state when another member of it is picked.
   }
 
+  const tieTotals: Record<string, number> = {};
+  for (const id of current) {
+    const m = members.get(id);
+    if (m) tieTotals[id] = (m.counts?.orgs ?? 0) + (m.counts?.members ?? 0);
+  }
+
   const caseIndex: Record<string, string[]> = {};
   for (const c of allCases) if (current.has(c.member)) (caseIndex[c.member] ??= []).push(c.org);
 
@@ -73,6 +79,7 @@ export default function BoardPage() {
           cases={allCases.filter((c) => book[c.member]).slice(0, 40).map(lite)}
           caseTotal={allCases.length}
           caseIndex={caseIndex}
+          tieTotals={tieTotals}
           sources={sourceNames(meta)}
           asOf={metaBuilt(meta)}
         />

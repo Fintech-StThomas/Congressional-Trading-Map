@@ -83,3 +83,27 @@ export function boardHref(params: { m?: string; s?: string; o?: string; focus?: 
   const s = q.toString();
   return s ? `/?${s}` : "/";
 }
+
+export type OrgLite = { id: string; name: string; kind: OrgSummary["kind"]; degree: number; ticker: string | null };
+export type SearchIndex = { members: (BoardMember & { counts?: never })[]; orgs: OrgLite[] };
+
+type RawIndex = {
+  m: [string, string, string, MemberSummary["party"], string, MemberSummary["chamber"], number | null, number, number, number][];
+  o: [string, string, OrgSummary["kind"], number, string | null][];
+};
+
+let indexPromise: Promise<SearchIndex> | null = null;
+
+/** The compact member and organisation index built at /search-index. */
+export function loadSearchIndex(): Promise<SearchIndex> {
+  if (!indexPromise) {
+    indexPromise = getJSON<RawIndex>("/search-index").then((raw) => ({
+      members: raw.m.map(([id, name, last, party, state, chamber, district, current, photo, cases]) => ({
+        id, name, last, party, state, chamber, district, current: current === 1, photo: photo === 1, cases,
+      })),
+      orgs: raw.o.map(([id, name, kind, degree, ticker]) => ({ id, name, kind, degree, ticker })),
+    }));
+    indexPromise.catch(() => (indexPromise = null));
+  }
+  return indexPromise;
+}

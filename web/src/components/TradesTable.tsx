@@ -1,13 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import type { Trade } from "@/lib/types";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { MemberFileWire, Trade } from "@/lib/types";
+import { decodeTrades, type TradeRow } from "@/lib/decode";
 import { count, date, money, NOT_DISCLOSED } from "@/lib/format";
+import { getJSON } from "@/lib/client";
 import { ExternalIcon } from "./EvidenceDrawer";
 
-type Props = { initial: Trade[]; total: number; fullUrl: string };
+type Props = { initial: TradeRow[]; total: number; fullUrl: string };
 type Key = "date" | "available" | "lag_days" | "owner" | "action" | "asset" | "ticker" | "low";
-const PAGE = 25;
+
+const ROW = 44; // px, fixed so the list can be windowed
+const VIEW_ROWS = 14;
+const OVERSCAN = 8;
 
 const OWNER_LABEL: Record<Trade["owner"], string> = {
   self: "Self", spouse: "Spouse", joint: "Joint", dependent: "Dependent", unspecified: "Unspecified",
@@ -17,9 +22,8 @@ const CLASS_LABEL: Record<Trade["asset_class"], string> = {
   stock: "Stock", option: "Option", fund: "Fund", bond: "Bond", crypto: "Crypto", private: "Private", other: "Other", unknown: "Unknown",
 };
 
-function cmp(a: Trade, b: Trade, k: Key): number {
+function cmp(a: TradeRow, b: TradeRow, k: Key): number {
   const va = a[k], vb = b[k];
-  // Missing values sort last in either direction.
   if (va == null && vb == null) return 0;
   if (va == null) return 1;
   if (vb == null) return -1;
@@ -27,10 +31,25 @@ function cmp(a: Trade, b: Trade, k: Key): number {
   return String(va).localeCompare(String(vb));
 }
 
-function Nd() {
-  return <span className="nd">{NOT_DISCLOSED}</span>;
+function Nd({ text = NOT_DISCLOSED }: { text?: string }) {
+  return <span className="nd">{text}</span>;
 }
 
+const COLS: { k: Key; label: string; cls?: string }[] = [
+  { k: "date", label: "Traded" },
+  { k: "available", label: "Disclosed" },
+  { k: "lag_days", label: "Lag", cls: "num" },
+  { k: "owner", label: "Owner" },
+  { k: "action", label: "Action" },
+  { k: "asset", label: "Asset" },
+  { k: "ticker", label: "Ticker" },
+  { k: "low", label: "Range", cls: "num" },
+];
+
+/**
+ * Every periodic transaction report row, sortable and filterable. The list is
+ * windowed: only the rows in view are in the DOM, so tens of thousands stay fast.
+ */
 export function TradesTable({ initial, total, fullUrl }: Props) {
   const [trades, setTrades] = useState(initial);
   const [status, setStatus] = useState<"ok" | "loading" | "error">(total > initial.length ? "loading" : "ok");
@@ -38,18 +57,18 @@ export function TradesTable({ initial, total, fullUrl }: Props) {
   const [year, setYear] = useState("all");
   const [owner, setOwner] = useState("all");
   const [cls, setCls] = useState("all");
-  const [page, setPage] = useState(0);
+  const [late, setLate] = useState(false);
+  const [top, setTop] = useState(0);
+  const scroller = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (total <= initial.length) return;
     let live = true;
-    fetch(fullUrl)
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
-      .then((body: { trades: Trade[] }) => {
-        if (live) {
-          setTrades(body.trades);
-          setStatus("ok");
-        }
+    getJSON<MemberFileWire>(fullUrl)
+      .then((file) => {
+        if (!live) return;
+        setTrades(decodeTrades(file));
+        setStatus("ok");
       })
       .catch(() => live && setStatus("error"));
     return () => {
@@ -57,11 +76,7 @@ export function TradesTable({ initial, total, fullUrl }: Props) {
     };
   }, [fullUrl, total, initial.length]);
 
-  const years = useMemo(() => {
-    const s = new Set<string>();
-    for (const t of trades) s.add(t.date?.slice(0, 4) ?? "undated");
-    return [...s].sort().reverse();
-  }, [trades]);
+  const years = useMemo(() => [...new Set(trades.map((t) => t.date?.slice(0, 4) ?? "undated"))].sort().reverse(), [trades]);
   const owners = useMemo(() => [...new Set(trades.map((t) => t.owner))], [trades]);
   const classes = useMemo(() => [...new Set(trades.map((t) => t.asset_class))], [trades]);
 
@@ -70,49 +85,34 @@ export function TradesTable({ initial, total, fullUrl }: Props) {
       (t) =>
         (year === "all" || (t.date?.slice(0, 4) ?? "undated") === year) &&
         (owner === "all" || t.owner === owner) &&
-        (cls === "all" || t.asset_class === cls),
+        (cls === "all" || t.asset_class === cls) &&
+        (!late || t.late === true),
     );
     return f.sort((a, b) => {
       const c = cmp(a, b, sort.k);
-      const missing = a[sort.k] == null || b[sort.k] == null;
-      return missing ? c : c * sort.dir;
+      return a[sort.k] == null || b[sort.k] == null ? c : c * sort.dir;
     });
-  }, [trades, year, owner, cls, sort]);
+  }, [trades, year, owner, cls, late, sort]);
 
-  const pages = Math.max(1, Math.ceil(rows.length / PAGE));
-  const p = Math.min(page, pages - 1);
-  const slice = rows.slice(p * PAGE, p * PAGE + PAGE);
-  const late = rows.filter((t) => t.late).length;
+  const lateCount = useMemo(() => rows.reduce((n, t) => n + (t.late ? 1 : 0), 0), [rows]);
 
-  const th = (k: Key, label: string, cls?: string) => {
-    const active = sort.k === k;
-    return (
-      <th scope="col" className={cls} aria-sort={active ? (sort.dir === 1 ? "ascending" : "descending") : "none"}>
-        <button
-          type="button"
-          className="sortbtn"
-          onClick={() => {
-            setSort((s) => ({ k, dir: s.k === k ? (s.dir === 1 ? -1 : 1) : k === "date" || k === "available" || k === "lag_days" || k === "low" ? -1 : 1 }));
-            setPage(0);
-          }}
-        >
-          {label}
-          <svg viewBox="0 0 10 10" width="9" height="9" aria-hidden="true" className={active ? `sorticon is-${sort.dir === 1 ? "up" : "down"}` : "sorticon"}>
-            <path d="M2 4l3-3 3 3M2 6l3 3 3-3" fill="none" stroke="currentColor" strokeWidth="1.3" />
-          </svg>
-        </button>
-      </th>
-    );
-  };
+  useEffect(() => {
+    scroller.current?.scrollTo({ top: 0 });
+    setTop(0);
+  }, [year, owner, cls, late, sort]);
 
   if (!total) return <p className="empty">No periodic transaction reports on file for this member. Reports exist only from July 2012.</p>;
+
+  const first = Math.max(0, Math.floor(top / ROW) - OVERSCAN);
+  const last = Math.min(rows.length, Math.ceil((top + ROW * VIEW_ROWS) / ROW) + OVERSCAN);
+  const slice = rows.slice(first, last);
 
   return (
     <div className="trades" data-testid="trades-table">
       <div className="filters">
         <label>
           <span>Year</span>
-          <select value={year} onChange={(e) => { setYear(e.target.value); setPage(0); }}>
+          <select value={year} onChange={(e) => setYear(e.target.value)}>
             <option value="all">All years</option>
             {years.map((y) => (
               <option key={y} value={y}>{y === "undated" ? "Date not disclosed" : y}</option>
@@ -121,7 +121,7 @@ export function TradesTable({ initial, total, fullUrl }: Props) {
         </label>
         <label>
           <span>Owner</span>
-          <select value={owner} onChange={(e) => { setOwner(e.target.value); setPage(0); }}>
+          <select value={owner} onChange={(e) => setOwner(e.target.value)}>
             <option value="all">Any owner</option>
             {owners.map((o) => (
               <option key={o} value={o}>{OWNER_LABEL[o]}</option>
@@ -130,81 +130,95 @@ export function TradesTable({ initial, total, fullUrl }: Props) {
         </label>
         <label>
           <span>Asset class</span>
-          <select value={cls} onChange={(e) => { setCls(e.target.value); setPage(0); }}>
+          <select value={cls} onChange={(e) => setCls(e.target.value)}>
             <option value="all">Any class</option>
             {classes.map((c) => (
-              <option key={c} value={c}>{CLASS_LABEL[c]}</option>
+              <option key={c} value={c}>{CLASS_LABEL[c] ?? c}</option>
             ))}
           </select>
         </label>
+        <label className="check">
+          <input type="checkbox" checked={late} onChange={(e) => setLate(e.target.checked)} />
+          <span>Late only</span>
+        </label>
         <p className="filters__count mono" aria-live="polite">
-          {status === "loading" ? `Loading all ${count(total)} trades…` : status === "error" ? `Showing ${count(trades.length)} of ${count(total)}; the rest failed to load.` : `${count(rows.length)} trades · ${count(late)} filed late`}
+          {status === "loading"
+            ? `Loading all ${count(total)} trades…`
+            : status === "error"
+              ? `Showing ${count(trades.length)} of ${count(total)}; the rest failed to load.`
+              : `${count(rows.length)} ${rows.length === 1 ? "trade" : "trades"} · ${count(lateCount)} disclosed late`}
         </p>
       </div>
-      <div className="tablewrap">
-        <table className="tradetable">
-          <caption className="visually-hidden">Periodic transaction reports, sortable. Column headers sort the table.</caption>
+      <div
+        className="vtable"
+        ref={scroller}
+        onScroll={(e) => setTop(e.currentTarget.scrollTop)}
+        style={{ "--row": `${ROW}px`, maxHeight: ROW * VIEW_ROWS + 42 } as React.CSSProperties}
+        tabIndex={0}
+        aria-label="Trades. Scroll to see more rows."
+      >
+        <table className="tradetable" aria-rowcount={rows.length + 1}>
+          <caption className="visually-hidden">Periodic transaction reports. Column buttons sort the table.</caption>
           <thead>
-            <tr>
-              {th("date", "Traded")}
-              {th("available", "Disclosed")}
-              {th("lag_days", "Lag", "num")}
-              {th("owner", "Owner")}
-              {th("action", "Action")}
-              {th("asset", "Asset")}
-              {th("ticker", "Ticker")}
-              {th("low", "Range", "num")}
+            <tr aria-rowindex={1}>
+              {COLS.map(({ k, label, cls: c }) => {
+                const active = sort.k === k;
+                return (
+                  <th key={k} scope="col" className={c} aria-sort={active ? (sort.dir === 1 ? "ascending" : "descending") : "none"}>
+                    <button
+                      type="button"
+                      className="sortbtn"
+                      onClick={() => setSort((s) => ({ k, dir: s.k === k ? (s.dir === 1 ? -1 : 1) : ["date", "available", "lag_days", "low"].includes(k) ? -1 : 1 }))}
+                    >
+                      {label}
+                      <svg viewBox="0 0 10 10" width="9" height="9" aria-hidden="true" className={active ? `sorticon is-${sort.dir === 1 ? "up" : "down"}` : "sorticon"}>
+                        <path d="M2 4l3-3 3 3M2 6l3 3 3-3" fill="none" stroke="currentColor" strokeWidth="1.3" />
+                      </svg>
+                    </button>
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
-            {slice.map((t) => (
-              <tr key={t.id}>
-                <td data-label="Traded" className="mono">{t.date ? date(t.date) : <Nd />}</td>
-                <td data-label="Disclosed" className="mono">{t.available ? date(t.available) : <Nd />}</td>
-                <td data-label="Lag" className="num mono">
+            {first > 0 && <tr className="vspacer" style={{ height: first * ROW }} aria-hidden="true"><td colSpan={8} /></tr>}
+            {slice.map((t, i) => (
+              <tr key={t.id} aria-rowindex={first + i + 2}>
+                <td className="mono">{t.date ? date(t.date) : <Nd />}</td>
+                <td className="mono">{t.available ? date(t.available) : <Nd />}</td>
+                <td className="num mono">
                   {t.lag_days == null ? <Nd /> : <>{count(t.lag_days)} d</>}
                   {t.late && <span className="late" title="Disclosed more than 45 days after the trade">late</span>}
                 </td>
-                <td data-label="Owner">{t.owner === "unspecified" ? <span className="nd">unspecified</span> : OWNER_LABEL[t.owner]}</td>
-                <td data-label="Action">
-                  {ACTION_LABEL[t.action]}
-                  {t.partial && <span className="ties__sub"> partial</span>}
+                <td>{t.owner === "unspecified" ? <Nd text="unspecified" /> : OWNER_LABEL[t.owner]}</td>
+                <td>
+                  {ACTION_LABEL[t.action] ?? t.action}
+                  {t.partial ? <span className="sub"> partial</span> : null}
                 </td>
-                <td data-label="Asset" className="trades__asset">
+                <td className="trades__asset" title={t.asset}>
                   {t.url ? (
                     <a href={t.url} target="_blank" rel="noopener noreferrer">
-                      {t.asset} <ExternalIcon />
+                      <span className="trades__assettext">{t.asset}</span> <ExternalIcon />
                     </a>
                   ) : (
-                    t.asset
+                    <span className="trades__assettext">{t.asset}</span>
                   )}
-                  <span className="ties__sub">
-                    {CLASS_LABEL[t.asset_class]}
-                    {t.amended ? ` · amended, version ${t.version}` : ""}
+                  <span className="sub">
+                    {CLASS_LABEL[t.asset_class] ?? t.asset_class}
+                    {t.amended ? ` · amended v${t.version}` : ""}
                   </span>
                 </td>
-                <td data-label="Ticker" className="mono">{t.ticker ?? <Nd />}</td>
-                <td data-label="Range" className="num mono">
+                <td className="mono">{t.ticker ?? <Nd />}</td>
+                <td className="num mono">
                   {t.low == null && t.high == null ? <Nd /> : t.low != null && t.high != null ? `${money(t.low)}–${money(t.high)}` : money(t.low ?? t.high)}
                 </td>
               </tr>
             ))}
+            {last < rows.length && <tr className="vspacer" style={{ height: (rows.length - last) * ROW }} aria-hidden="true"><td colSpan={8} /></tr>}
           </tbody>
         </table>
+        {rows.length === 0 && status !== "loading" && <p className="empty">No trades match these filters.</p>}
       </div>
-      {pages > 1 && (
-        <nav className="pager" aria-label="Trade pages">
-          <button type="button" className="btn btn--small" onClick={() => setPage(p - 1)} disabled={p === 0}>
-            Previous
-          </button>
-          <span className="mono">
-            Page {p + 1} of {pages}
-          </span>
-          <button type="button" className="btn btn--small" onClick={() => setPage(p + 1)} disabled={p >= pages - 1}>
-            Next
-          </button>
-        </nav>
-      )}
     </div>
   );
 }

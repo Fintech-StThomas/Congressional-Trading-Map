@@ -136,6 +136,34 @@ export type {
 };
 
 // ---------------------------------------------------------------------------
+// Wire shapes announced by the pipeline (2026-11-13) ahead of the data
+// dictionary update: columnar trades, a filings map, and a compact ledger for
+// money ties that are not shipped as full Edge objects. The decoders in
+// decode.ts accept both these and the original shapes above.
+// ---------------------------------------------------------------------------
+
+export type Columnar = { cols: string[]; rows: unknown[][] };
+
+export type TradeWire = Omit<Trade, "url"> & {
+  url?: string | null;
+  doc?: string | null;
+  ticker_source?: string | null;
+};
+
+export type LedgerTotals = {
+  [type: string]: { edges: number; records: number; low: number | null; high: number | null; exact: number | null };
+};
+
+export type MemberFileWire = Omit<MemberFile, "trades"> & {
+  trades: Trade[] | TradeWire[] | Columnar;
+  filings?: { [doc: string]: string };
+  ledger?: Columnar;
+  ledger_totals?: LedgerTotals;
+};
+
+export type OrgFileWire = OrgFile & { ledger?: Columnar; ledger_totals?: LedgerTotals };
+
+// ---------------------------------------------------------------------------
 // Not in the contract. meta.json has no published type in the data dictionary,
 // so the site reads it defensively through this loose shape and shows any
 // other keys it finds as plain facts on /method.

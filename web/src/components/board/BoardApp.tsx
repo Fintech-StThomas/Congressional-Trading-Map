@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Edge, EdgeType, MemberFile, MemberSummary, NodeRef, OrgFile, OrgSummary } from "@/lib/types";
+import type { Edge, EdgeType, NodeRef, OrgFileWire, OrgSummary } from "@/lib/types";
 import type { MapGeometry } from "@/lib/geo";
 import { FAMILIES, FAMILY_HINT, FAMILY_LABEL, TYPE_LABEL, inYears, sortEdges, type Family } from "@/lib/edges";
 import { date, plural, seat, stateName, TERRITORIES } from "@/lib/format";
-import { dataUrl, getJSON, memberHref, orgHref, toBoardMember, type BoardMember, type NameBook } from "@/lib/client";
+import { dataUrl, getJSON, loadSearchIndex, memberHref, orgHref, type BoardMember, type NameBook } from "@/lib/client";
+import { ledgerSize } from "@/lib/decode";
 import { orgShard } from "@/lib/hash";
 import { YEAR_MAX, YEAR_MIN } from "@/lib/site";
 import { Print, PartyTag } from "../Print";
@@ -40,6 +41,8 @@ type Props = {
   cases: CaseLite[];
   caseTotal: number;
   caseIndex: Record<string, string[]>;
+  /** Distinct organisations and members each current member is tied to. */
+  tieTotals: Record<string, number>;
   sources: Record<string, string>;
   asOf: string | null;
 };
@@ -65,7 +68,7 @@ function toQuery(sel: Sel): string {
 }
 
 export function BoardApp(props: Props) {
-  const { geo, states, featured, cases, caseTotal, caseIndex, sources, asOf } = props;
+  const { geo, states, featured, cases, caseTotal, caseIndex, tieTotals, sources, asOf } = props;
 
   const featuredSel: Sel = useMemo(() => {
     if (featured?.kind === "case") {
@@ -88,8 +91,8 @@ export function BoardApp(props: Props) {
   const [chunks, setChunks] = useState<Record<string, StateChunk>>(props.initialChunks);
   const [memberBook, setMemberBook] = useState<Record<string, BoardMember>>(props.members);
   const [orgBook, setOrgBook] = useState<Record<string, OrgSummary>>(() => Object.assign({}, ...Object.values(props.initialChunks).map((c) => c.nodes)));
-  const [orgFiles, setOrgFiles] = useState<Record<string, OrgFile>>({});
-  const [memberFiles, setMemberFiles] = useState<Record<string, Edge[]>>({});
+  const [orgFiles, setOrgFiles] = useState<Record<string, OrgFileWire>>({});
+  const [memberFiles, setMemberFiles] = useState<Record<string, { edges: Edge[]; more: number }>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -145,10 +148,10 @@ export function BoardApp(props: Props) {
 
   const ensureMembers = useCallback(async (ids: string[]) => {
     if (ids.every((id) => memberBook[id])) return;
-    const all = await getJSON<MemberSummary[]>(dataUrl("members.json"));
+    const idx = await loadSearchIndex();
     setMemberBook((prev) => {
       const next = { ...prev };
-      for (const m of all) if (!next[m.id]) next[m.id] = toBoardMember(m);
+      for (const m of idx.members) if (!next[m.id]) next[m.id] = m;
       return next;
     });
   }, [memberBook]);
@@ -169,21 +172,19 @@ export function BoardApp(props: Props) {
             setChunks((c) => ({ ...c, [st]: { strings: { ...c[st]?.strings, ...chunk.strings }, nodes: { ...c[st]?.nodes, ...chunk.nodes } } }));
             setOrgBook((b) => ({ ...b, ...chunk.nodes }));
           } else if (!current.has(sel.m) && memberBook[sel.m] && !memberFiles[sel.m]) {
-            // Former members are not on board.json: use their case file.
+            // Former members are not on board.json: their strings are cut from
+            // the case file at build time.
             setLoading(true);
-            const file = await getJSON<MemberFile>(dataUrl(`members/${sel.m}.json`));
-            const top = sortEdges(file.edges).slice(0, MAX_STRINGS);
-            const orgs = await getJSON<OrgSummary[]>(dataUrl("orgs.json"));
+            const body = await getJSON<{ edges: Edge[]; nodes: Record<string, OrgSummary>; more: number }>(`/board-member/${sel.m}`);
             if (!live) return;
-            const need = new Set(top.flatMap((e) => [e.from, e.to]).filter((n) => n.kind === "org").map((n) => n.id));
-            setOrgBook((b) => ({ ...b, ...Object.fromEntries(orgs.filter((o) => need.has(o.id)).map((o) => [o.id, o])) }));
-            await ensureMembers(top.flatMap((e) => [e.from, e.to]).filter((n) => n.kind === "member").map((n) => n.id));
-            setMemberFiles((f) => ({ ...f, [sel.m!]: top }));
+            setOrgBook((b) => ({ ...b, ...body.nodes }));
+            await ensureMembers(body.edges.flatMap((e) => [e.from, e.to]).filter((n) => n.kind === "member").map((n) => n.id));
+            setMemberFiles((f) => ({ ...f, [sel.m!]: { edges: body.edges, more: body.more } }));
           }
         } else if (sel.o && !orgFiles[sel.o]) {
           setLoading(true);
           const shard = await orgShard(sel.o);
-          const body = await getJSON<Record<string, OrgFile>>(dataUrl(`orgs/${shard}.json`));
+          const body = await getJSON<Record<string, OrgFileWire>>(dataUrl(`orgs/${shard}.json`));
           const file = body[sel.o];
           if (!live) return;
           if (!file) throw new Error("not-found");
@@ -207,10 +208,13 @@ export function BoardApp(props: Props) {
   const center: Center = useMemo(() => {
     if (sel.m && centerMember) {
       const st = centerMember.state;
-      const all = current.has(sel.m) ? chunks[st]?.strings[sel.m] : memberFiles[sel.m];
+      const all = current.has(sel.m) ? chunks[st]?.strings[sel.m] : memberFiles[sel.m]?.edges;
       return all ? { kind: "member", member: centerMember, total: all.length } : null;
     }
-    if (sel.o && orgFiles[sel.o]) return { kind: "org", org: orgFiles[sel.o].org, total: orgFiles[sel.o].edges.length };
+    if (sel.o && orgFiles[sel.o]) {
+      const f = orgFiles[sel.o];
+      return { kind: "org", org: f.org, total: f.edges.length + ledgerSize(f) };
+    }
     return null;
   }, [sel.m, sel.o, centerMember, chunks, memberFiles, orgFiles, current]);
 
@@ -218,7 +222,7 @@ export function BoardApp(props: Props) {
     if (!center) return [];
     if (center.kind === "member") {
       const id = center.member.id;
-      return (current.has(id) ? chunks[center.member.state]?.strings[id] : memberFiles[id]) ?? [];
+      return (current.has(id) ? chunks[center.member.state]?.strings[id] : memberFiles[id]?.edges) ?? [];
     }
     return orgFiles[center.org.id]?.edges ?? [];
   }, [center, chunks, memberFiles, orgFiles, current]);
@@ -241,6 +245,18 @@ export function BoardApp(props: Props) {
     for (const [m, orgs] of Object.entries(caseIndex)) if (orgs.includes(center.org.id)) s.add(m);
     return s;
   }, [center, caseIndex]);
+
+  // Ties not drawn: the rest of the member's organisations and colleagues, which
+  // live in the case file (full edges and the money ledger).
+  const moreTies = useMemo(() => {
+    if (!center) return 0;
+    if (center.kind === "org") return Math.max(0, center.total - visible.length);
+    const id = center.member.id;
+    if (!current.has(id)) return memberFiles[id]?.more ?? 0;
+    const drawnNodes = new Set(allStrings.flatMap((e) => [e.from.id, e.to.id]));
+    drawnNodes.delete(id);
+    return Math.max(0, (tieTotals[id] ?? 0) - drawnNodes.size);
+  }, [center, visible.length, current, memberFiles, allStrings, tieTotals]);
 
   const drawKey = `${center?.kind ?? "none"}-${center ? (center.kind === "member" ? center.member.id : center.org.id) : ""}`;
   const selfId = center?.kind === "member" ? center.member.id : center?.kind === "org" ? center.org.id : "";
@@ -275,6 +291,7 @@ export function BoardApp(props: Props) {
       featuredMember={isFeatured && featured?.kind === "member"}
       asOf={asOf}
       shown={visible.length}
+      more={moreTies}
       onClear={() => go(EMPTY)}
       onState={(s) => go({ ...EMPTY, s })}
     />
@@ -450,9 +467,9 @@ function Sep() {
 }
 
 function Slip({
-  sel, center, featuredCase, featuredMember, asOf, shown, onClear, onState,
+  sel, center, featuredCase, featuredMember, asOf, shown, more, onClear, onState,
 }: {
-  sel: Sel; center: Center; featuredCase: CaseLite | null; featuredMember: boolean; asOf: string | null; shown: number;
+  sel: Sel; center: Center; featuredCase: CaseLite | null; featuredMember: boolean; asOf: string | null; shown: number; more: number;
   onClear: () => void; onState: (s: string) => void;
 }) {
   if (center?.kind === "member") {
@@ -475,8 +492,13 @@ function Slip({
           </p>
         )}
         <p className="slip__meta">
-          <span className="mono">{shown}</span> of <span className="mono">{center.total}</span> top strings shown ·{" "}
-          <Link href={memberHref(m.id)}>Open case file</Link>
+          <span className="mono">{shown}</span> {shown === 1 ? "string" : "strings"}
+          {more > 0 && (
+            <>
+              , plus <span className="mono">{more.toLocaleString("en-US")}</span> more {more === 1 ? "tie" : "ties"} in the full list
+            </>
+          )}{" "}
+          · <Link href={memberHref(m.id)}>Open case file</Link>
           {featuredCase || featuredMember ? (
             <>
               {" · "}
@@ -495,7 +517,8 @@ function Slip({
       <div className="slip">
         <h2 className="slip__title">{o.name}</h2>
         <p className="slip__sub">
-          Tied to {plural(o.degree, "member")}. Showing the {shown} largest of {plural(center.total, "tie")}.
+          Tied to {plural(o.degree, "member")}. The {shown} largest {shown === 1 ? "tie is" : "ties are"} drawn
+          {more > 0 ? `, plus ${more.toLocaleString("en-US")} more in the full list` : ""}.
         </p>
         <p className="slip__meta">
           <Link href={orgHref(o.id)}>Every tie to {o.name}</Link> ·{" "}

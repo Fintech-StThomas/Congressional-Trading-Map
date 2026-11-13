@@ -25,12 +25,15 @@ EDGE_KEYS = {"type", "family", "basis", "from", "to", "directed", "via", "amount
              "by_year", "evidence", "evidence_total", "stat", "weak", "note"}
 CASE_FAMILIES = ("money", "holding", "people")
 BOARD_EDGES = 12
-# Publication budget: money edges beyond these per-endpoint ranks stay in pipeline/build and are
-# summarised in `omitted` (see the contract's "Publication budget").
-MONEY_EDGES_PER_MEMBER = 25
-MONEY_EDGES_PER_ORG = 10
+# Publication budget: money edges beyond these per-endpoint ranks are published as compact ledger
+# rows without evidence (see the contract's "Publication budget").
+MONEY_EDGES_PER_MEMBER = 10
+MONEY_EDGES_PER_ORG = 0
+ORG_LEDGER = False  # set False (ledger null, totals kept) if the org-side ledger pushes output past ~150 MB
 FAMILY_ORDER = {"money": 0, "holding": 1, "people": 2, "context": 3}
 STOCK_ACT_YEAR = 2012
+MEMBER_LEDGER_COLS = ["type", "org", "via", "exact", "low", "high", "count", "first", "last", "note", "dir"]
+ORG_LEDGER_COLS = ["type", "member", "exact", "count", "first", "last", "note"]
 
 
 def shard(org_id: str) -> str:
@@ -191,7 +194,30 @@ def publishable(edges: list[dict[str, Any]], cases: list[dict[str, Any]]) -> set
     return keep
 
 
-def omitted_summary(edges: list[dict[str, Any]]) -> dict[str, Any]:
+def member_ledger(mid: str, edges: list[dict[str, Any]]) -> dict[str, Any]:
+    """Money ties beyond the budget, largest first. `org` is the other endpoint (an org id, or a bioguide
+    id for member-to-member types); `dir` is "out" when this member is the payer, "in" when the payee,
+    "both" for undirected ties."""
+    rows = []
+    for e in sorted(edges, key=lambda e: (-edge_size(e), e["id"])):
+        mine_from = e["from"]["id"] == mid
+        other = e["to"]["id"] if mine_from else e["from"]["id"]
+        a = e["amount"]
+        rows.append([e["type"], other, (e["via"] or {}).get("id"), num(a["exact"]), num(a["low"]), num(a["high"]),
+                     e["count"], e["first"], e["last"], e["note"],
+                     "both" if not e["directed"] else ("out" if mine_from else "in")])
+    return {"cols": MEMBER_LEDGER_COLS, "rows": rows}
+
+
+def org_ledger(edges: list[dict[str, Any]]) -> dict[str, Any]:
+    rows = []
+    for e in sorted(edges, key=lambda e: (-edge_size(e), e["id"])):
+        member = e["to"]["id"] if e["to"]["kind"] == "member" else e["from"]["id"]
+        rows.append([e["type"], member, num(e["amount"]["exact"]), e["count"], e["first"], e["last"], e["note"]])
+    return {"cols": ORG_LEDGER_COLS, "rows": rows}
+
+
+def ledger_totals(edges: list[dict[str, Any]]) -> dict[str, Any]:
     groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for e in edges:
         groups[e["type"]].append(e)
@@ -287,8 +313,7 @@ def run() -> None:
         orgs[o]["degree"] = len({end["id"] for e in es for end in (e["from"], e["to"]) if end["kind"] == "member"})
     cases = find_cases(edges)
     keep = publishable(edges, cases)
-    published = {o: [e for e in es if e["id"] in keep] for o, es in org_edges.items()}
-    used_orgs = {o: orgs[o] for o in sorted(published) if published[o]}
+    used_orgs = {o: orgs[o] for o in sorted(org_edges)}
     member_cases: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for c in cases:
         member_cases[c["member"]].append(c)
@@ -311,15 +336,19 @@ def run() -> None:
         ts = sorted(by_member_trades.get(mid, []), key=lambda t: (t["date"] or date.min, t["id"]), reverse=True)
         member_files.append((f"members/{mid}.json", {
             "member": {**summary, "terms": m["terms"], "committees": m["committees"], "fec_ids": m["fec_ids"]},
-            "edges": [e for e in es if e["id"] in keep], "omitted": omitted_summary([e for e in es if e["id"] not in keep]), "trades": {"cols": TRADE_COLUMNS, "rows": [trade_row(t) for t in ts]},
+            "edges": [e for e in es if e["id"] in keep],
+            "ledger": member_ledger(mid, [e for e in es if e["id"] not in keep]),
+            "ledger_totals": ledger_totals([e for e in es if e["id"] not in keep]),
+            "trades": {"cols": TRADE_COLUMNS, "rows": [trade_row(t) for t in ts]},
             "filings": {t["doc_id"]: t["url"] for t in ts},
             "cases": member_cases.get(mid, []),
             "coverage": coverage(m, trades_report["coverage"], failed[mid], money_cov, this_year)}))
 
     shards: dict[str, dict[str, Any]] = defaultdict(dict)
-    for o in used_orgs:
-        shards[shard(o)][o] = {"org": used_orgs[o], "edges": published[o],
-                               "omitted": omitted_summary([e for e in org_edges[o] if e["id"] not in keep])}
+    for o, es in org_edges.items():
+        rest = [e for e in es if e["id"] not in keep]
+        shards[shard(o)][o] = {"org": used_orgs[o], "edges": [e for e in es if e["id"] in keep],
+                               "ledger": org_ledger(rest) if ORG_LEDGER else None, "ledger_totals": ledger_totals(rest)}
 
     case_edges = {eid for c in cases for eid in c["edges"]}
     states: dict[str, list[str]] = defaultdict(list)
@@ -342,7 +371,9 @@ def run() -> None:
         "counts": {"members": len(summaries), "current_members": len(current), "trades": len(trades),
                    "orgs": len(used_orgs), "edges": len(edges), "edges_by_type": dict(sorted(edge_types.items())),
                    "edges_published": len(keep), "edges_published_by_type": dict(sorted(published_types.items())),
-                   "publication_budget": {"money_edges_per_member": MONEY_EDGES_PER_MEMBER, "money_edges_per_org": MONEY_EDGES_PER_ORG},
+                   "publication_budget": {"money_edges_per_member": MONEY_EDGES_PER_MEMBER, "money_edges_per_org": MONEY_EDGES_PER_ORG,
+                                          "org_ledger": ORG_LEDGER},
+                   "ledger_rows": len(edges) - len(keep),
                    "member_ties": len(member_ties), "cases": len(cases), "org_shards": len(shards)},
         "unmatched": {
             "trades_without_ticker": trades_report.get("null_ticker"),
