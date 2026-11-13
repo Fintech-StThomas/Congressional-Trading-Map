@@ -15,7 +15,8 @@ from typing import Any, Callable
 
 import pyarrow.parquet as pq
 
-from .assemble import FORMER_MEMBER_LEDGER_ROWS, LEDGER_ONLY_TYPES, MEMBER_LEDGER_COLS, ORG_TIE_COLS, TRADE_COLUMNS, shard
+from .assemble import (FORMER_MEMBER_LEDGER_ROWS, LEDGER_ONLY_TYPES, MEMBER_LEDGER_COLS, ORG_INDEX_COLS, ORG_INDEX_TOP,
+                       ORG_TIE_COLS, PARTIES, SPLIT_MEASURES, TRADE_COLUMNS, WALL_COLS, shard)
 from .edges import FAMILY, MAX_EVIDENCE, edge_id, sum_amounts
 from .util import BUILD, OUT, read_json
 
@@ -78,7 +79,72 @@ MEMBER_SUMMARY = {
 }
 ORG_SUMMARY = {"id": lambda v: isinstance(v, str), "name": lambda v: isinstance(v, str), "kind": lambda v: v in ORG_KINDS,
                "ticker": opt(lambda v: isinstance(v, str)), "cik": opt(lambda v: isinstance(v, int)),
-               "sector": opt(lambda v: isinstance(v, str)), "degree": lambda v: isinstance(v, int) and v >= 1}
+               "sector": opt(lambda v: isinstance(v, str)), "degree": lambda v: isinstance(v, int) and v >= 1,
+               "split": lambda v: isinstance(v, dict) and set(v) <= set(SPLIT_MEASURES) and all(
+                   set(x) == set(PARTIES) and all(isinstance(c, list) and len(c) == 2 and isinstance(c[0], int)
+                                                  and (c[1] is None if m == "traded" else is_num(c[1])) for c in x.values())
+                   for m, x in v.items())}
+SPLIT_TYPE = {"given": "pac_money", "support": "outside_spending", "oppose": "outside_spending", "traded": "traded"}
+
+
+def check_split(c: Checker, of: dict[str, Any], ties: list[dict[str, Any]], party: dict[str, str], where: str) -> None:
+    """Split totals equal the sum of the org's ties (listed ties plus ledger_totals for the rest)."""
+    split, lt = of["org"].get("split", {}), of["ledger_totals"]
+    for t in ("pac_money", "outside_spending", "traded"):
+        listed = [r for r in ties if r["type"] == t]
+        measures = [m for m in SPLIT_MEASURES if SPLIT_TYPE[m] == t]
+        n_split = sum(n for m in measures for n, _ in split.get(m, {}).values())
+        n_edges = len(listed) + lt.get(t, {}).get("edges", 0)
+        c.check((n_split == 0) == (n_edges == 0) and n_split <= n_edges, "split members bounded by ties", f"{where}:{t}")
+        if t != "traded":
+            total = sum(r["exact"] or r["high"] or r["low"] or 0 for r in listed) + (lt.get(t, {}).get("exact") or 0)
+            got = sum(d for m in measures for _, d in split.get(m, {}).values())
+            c.check(abs(total - got) < 0.5, "split dollars equal the sum of ties", f"{where}:{t} {got} vs {total}")
+        if listed and t not in lt and t != "outside_spending":
+            by_party = {p: set() for p in PARTIES}
+            for r in listed:
+                by_party[party[r["member"]]].add(r["member"])
+            want = {p: len(v) for p, v in by_party.items()}
+            have = {p: v[0] for p, v in split.get(measures[0], {}).items()}
+            c.check(want == have, "split member counts match listed ties by party", f"{where}:{t}")
+
+
+def check_wall(c: Checker, wall: Any, members_list: list[dict[str, Any]]) -> None:
+    ok = isinstance(wall, dict) and wall.get("cols") == WALL_COLS and isinstance(wall.get("rows"), list)
+    c.check(ok, "schema", "wall.json columnar")
+    if not ok:
+        return
+    rows = [dict(zip(WALL_COLS, r)) for r in wall["rows"]]
+    c.check([r["id"] for r in rows] == sorted(m["id"] for m in members_list), "wall.json: one row per member, by id", "")
+    by_id = {m["id"]: m for m in members_list}
+    for r in rows:
+        m = by_id.get(r["id"])
+        c.check(m is not None and r["party"] == m["party"] and r["chamber"] == m["chamber"] and r["state"] == m["state"]
+                and bool(r["current"]) == m["current"] and bool(r["photo"]) == m["photo"]
+                and r["cases"] == m["counts"]["cases"] and r["trades"] == m["counts"]["trades"]
+                and r["orgs"] == m["counts"]["orgs"], "wall.json rows match members.json", r["id"])
+        c.check(all(is_num(r[k]) and r[k] >= 0 for k in ("pac", "support", "oppose")), "schema", f"wall:{r['id']} dollars")
+
+
+def check_org_index(c: Checker, idx: Any, orgs_by_id: dict[str, dict[str, Any]]) -> None:
+    ok = isinstance(idx, dict) and idx.get("cols") == ORG_INDEX_COLS and set(idx) == {"cols", "rows", "by_members", "by_dollars"}
+    c.check(ok, "schema", "org-index.json")
+    if not ok:
+        return
+    rows = [dict(zip(ORG_INDEX_COLS, r)) for r in idx["rows"]]
+    c.check([r["id"] for r in rows] == sorted({r["id"] for r in rows}), "org-index rows unique, by id", "")
+    for key, val in (("by_members", lambda r: sum(r[f"members_{p}"] for p in PARTIES)),
+                     ("by_dollars", lambda r: sum(r[f"dollars_{p}"] for p in PARTIES))):
+        order = [val(rows[i]) for i in idx[key]]
+        c.check(len(idx[key]) <= ORG_INDEX_TOP and order == sorted(order, reverse=True), f"org-index {key} ranked", key)
+    for r in rows:
+        o = orgs_by_id.get(r["id"])
+        c.check(o is not None and o["name"] == r["name"] and o["degree"] == r["degree"], "org-index rows match orgs.json", r["id"])
+        if o is not None:
+            given = o["split"].get("given", {})
+            c.check(all(r[f"dollars_{p}"] <= given.get(p, [0, 0])[1] + 0.5 for p in PARTIES)
+                    and all(r[f"members_{p}"] <= o["degree"] for p in PARTIES),
+                    "org-index current figures within all-time split", r["id"])
 CASE = {"id": lambda v: isinstance(v, str), "member": lambda v: isinstance(v, str), "org": lambda v: isinstance(v, str),
         "types": lambda v: isinstance(v, list) and len(v) >= 2, "edges": lambda v: isinstance(v, list) and len(v) >= 2,
         "years": lambda v: isinstance(v, list) and len(v) == 2 and v[0] <= v[1], "score": is_num, "money": is_num, "trades": lambda v: isinstance(v, int)}
@@ -209,6 +275,10 @@ def main() -> int:
     for o in orgs_list:
         shape(c, o, ORG_SUMMARY, f"orgs.json:{o.get('id')}")
     c.check(len(orgs) == len(orgs_list) and len(members) == len(members_list), "ids unique in summaries", "")
+    orgs_by_id = {o["id"]: o for o in orgs_list}
+    party = {m["id"]: m["party"] for m in members_list}
+    check_wall(c, read_json(OUT / "wall.json"), members_list)
+    check_org_index(c, read_json(OUT / "org-index.json"), orgs_by_id)
     cases = read_json(OUT / "cases.json")
     for k in cases:
         shape(c, k, CASE, f"cases.json:{k.get('id')}")
@@ -244,9 +314,14 @@ def main() -> int:
         doc = read_json(OUT / "orgs" / f"{k}.json")
         for oid, of in doc.items():
             c.check(shard(oid) == k, "org in the right shard", oid)
-            c.check(set(of) == {"org", "ties", "ledger_totals"}, "schema", f"orgs/{k}:{oid} keys")
+            c.check(set(of) == {"org", "ties", "ledger_totals", "chambers", "years"}, "schema", f"orgs/{k}:{oid} keys")
             shape(c, of["org"], ORG_SUMMARY, f"orgs/{k}:{oid}")
+            c.check(of["org"] == orgs_by_id.get(oid), "org file summary equals orgs.json", oid)
+            c.check(set(of["chambers"]) == {"rep", "sen"} and sum(of["chambers"].values()) == of["org"]["degree"],
+                    "org chambers sum to degree", oid)
+            c.check(isinstance(of["years"], list) and len(of["years"]) == 2 and of["years"][0] <= of["years"][1], "schema", f"{oid} years")
             ties = check_table(c, of["ties"], ORG_TIE_COLS, f"orgs/{k}:{oid}.ties")
+            check_split(c, of, ties, party, oid)
             for t in ties:
                 c.check(t["member"] in members and t["type"] in FAMILY, "org tie endpoint exists", f"{oid}:{t['member']}")
                 c.check(t["edge"] is None or (t["member"], t["edge"]) in full_pairs, "org tie edge id is in that member's file",
