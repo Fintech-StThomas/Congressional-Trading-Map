@@ -6,6 +6,7 @@ import time
 from typing import Callable
 
 from . import assemble, companies, edges_committees, edges_trades, spine, trades, validate
+from .holdings import run as holdings
 
 
 def fec() -> None:
@@ -23,6 +24,7 @@ STAGES: dict[str, Callable[[], None]] = {
     "edges_trades": edges_trades.run,
     "edges_committees": edges_committees.run,
     "assemble": assemble.run,
+    "holdings": holdings.run,  # after assemble: it swaps web/public/data wholesale; holdings reads its member files
 }
 
 
