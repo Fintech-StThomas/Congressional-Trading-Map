@@ -13,3 +13,6 @@ pipeline/build/
 .DS_Store
 
 # Generated data: ignored until the pipeline regenerates it at the capped size. Remove this line then.
+
+# Agent worktrees are local scratch checkouts
+.claude/worktrees/
