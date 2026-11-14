@@ -208,6 +208,37 @@ against the OpenFEC reports and Schedule A endpoints for the recipient committee
 What the site shows is therefore "what committees reported giving", which can exceed what the recipient reports
 receiving. Recipient-side refunds (22Z) and reclassifications are invisible in pas2 (see below).
 
+## Payees: individuals are never named
+
+About 29% of the kept independent-expenditure rows (24E/24A, and 24F/24N communication costs) are coded as paid to
+an individual (`IND`: vendors, consultants, staff reimbursements), and more individuals hide behind other codes. Private individuals who are not the subject of the site are
+not published. An `outside_spending` evidence label ends with "(paid to <payee>)" only when `util.public_payee` keeps
+the payee, i.e. both:
+
+1. the row's FEC entity type (`ENTITY_TP`) is not `IND` (individual) or `CAN` (candidate); and
+2. the name carries a clear organisational marker: a word such as LLC, INC, CORP, CO, COMPANY, MEDIA, GROUP,
+   PARTNERS, STRATEGIES, CONSULTING, COMMUNICATIONS, PRODUCTIONS, ASSOCIATES, USPS, COMMITTEE, PAC, FUND, CLUB, HOTEL,
+   ACTION, a party committee acronym (DSCC, NRCC, ...), a phrase such as "FRIENDS OF" / "FOR CONGRESS", or a domain
+   (".com", ".net", ".org"); the full list is `util.ORG_MARKER_WORDS`.
+
+Otherwise the payee is dropped (the label simply ends after the date). The entity type can only drop a name, never
+keep one, so an organisation coded `ORG` but without a marker ("CLUB FOR GROWTH" is kept by CLUB; "BUDGET-CLEVELAND",
+"SHELL", "AVIS" are dropped) loses its name too: when unsure, drop. The same rule applies to the payee in
+`meta.json.reports.fec.review_large_funds_rows` (`payee_as_filed` is null when dropped). `pac_money` and `funds`
+labels name only the recipient, which is the member's own committee or the member.
+
+Full run (cycles 2000-2026), kept `outside_spending` rows (`meta.json.reports.fec.outside_spending_payees`):
+
+| | rows |
+|---|---:|
+| payee named (kept) | 187,738 |
+| payee dropped | 201,856 (IND 124,315; ORG without marker 72,392; no entity type 3,214; committee codes 1,777; CAN 158) |
+| no payee on the row | 41,668 |
+| total | 431,262 |
+
+`python -m pipeline.validate` fails if any `outside_spending` evidence label has "paid to" followed by a name without
+an organisational marker.
+
 ## Known limitations
 
 - **Senate paper filings.** Senate committees filed on paper with the Secretary of the Senate until 2019, and a

@@ -60,7 +60,10 @@ export default async function config(phase: string): Promise<NextConfig> {
     async rewrites() {
       const org = { source: "/o/:id", destination: "/org" };
       if (!remote) return [org];
-      return { beforeFiles: [remoteRewrite(remote)], afterFiles: [org], fallback: [] };
+      // Remote mode: the data proxy, and the per-member, per-state and paged routes served by their
+      // on-demand twins under app/live (route segment config is literal, so the twins carry dynamicParams).
+      const live = ["/m/:id", "/m/:id/records", "/board-data/:state", "/board-member/:id", "/cases/:slug+"].map((source) => ({ source, destination: `/live${source}` }));
+      return { beforeFiles: [remoteRewrite(remote), ...live], afterFiles: [org], fallback: [] };
     },
     async headers() {
       return [

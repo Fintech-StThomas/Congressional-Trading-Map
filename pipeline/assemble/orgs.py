@@ -112,11 +112,33 @@ def tie_parties(e: Edge, spine: dict[str, SpineMember], stats: SplitStats | None
             stats.out_of_term_edges.add(e.get("id", ""))
             if e["type"] != "traded":
                 stats.out_of_term_dollars += v
-        if stats is not None and p != m["party"] and e["type"] != "traded":
-            stats.moved[(mid, m["party"], p)] += v
-    if not out:
-        out[m["party"]] += 0.0
-    return out
+    shares = _net(out, e, spine)
+    if stats is not None and e["type"] != "traded":
+        for p, v in shares.items():
+            if p != m["party"]:
+                stats.moved[(mid, m["party"], p)] += v
+    return shares
+
+
+def _net(out: Counter[str], e: Edge, spine: dict[str, SpineMember]) -> Counter[str]:
+    """A party's share can be negative when refunds in its years exceed gifts (by_year is net per year). Such a
+    deficit is netted against the tie's other parties, largest first, so every share is >= 0 and the shares still
+    sum to the tie's size. Only parties left with a positive share are returned (a traded tie keeps every party of
+    its years); a tie with nothing positive counts under the party of its latest year."""
+    if e["type"] == "traded":
+        return out
+    deficit = -sum(v for v in out.values() if v < 0)
+    pos = Counter({p: v for p, v in out.items() if v > 0})
+    for p, v in sorted(pos.items(), key=lambda kv: (-kv[1], kv[0])):
+        take = min(v, deficit)
+        pos[p] -= take
+        deficit -= take
+    pos = Counter({p: v for p, v in pos.items() if v > 1e-9})
+    if not pos:
+        m = spine[member_end(e)]
+        last = max(year_sizes(e))[0]
+        pos[year_party(m["terms"], last, m["party"])[0]] = 0.0
+    return pos
 
 
 def party_split(edges: list[Edge], spine: dict[str, SpineMember], stats: SplitStats | None = None) -> dict[str, Any]:

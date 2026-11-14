@@ -239,7 +239,8 @@ test("featured example explains itself and steps to another", async () => {
   const before = await slip.locator(".slip__title").innerText();
   await slip.getByRole("button", { name: /Show another/ }).click();
   await p.waitForFunction((b) => document.querySelector(".slip .slip__title")?.textContent !== b, before);
-  assert.match(await p.locator(".slip").first().innerText(), /Featured example/i);
+  // The next pick may be in another state whose strings are still loading (on demand in remote data mode).
+  await p.locator(".slip").first().getByText(/Featured example/i).waitFor({ timeout: 20000 });
   await p.close();
 });
 

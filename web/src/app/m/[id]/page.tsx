@@ -27,9 +27,9 @@ import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 import { CorrectionLink } from "@/components/shared/CorrectionLink";
 import { AssumeCase, AssumeCount, AssumptionProvider, PageAssumptionBar } from "@/components/shared/Assume";
 
-// Local data: every member is prerendered and unknown ids are 404s. Remote data (DATA_BASE_URL): none
-// is prerendered; each page renders on first request and is revalidated with the data (ISR).
-export const dynamicParams = IS_REMOTE;
+// Every path is prerendered from local data and other paths are 404s. With DATA_BASE_URL nothing is
+// prerendered here: next.config.ts rewrites this URL to the on-demand twin under app/live/m/[id] (ISR).
+export const dynamicParams = false;
 
 export async function generateStaticParams() {
   if (IS_REMOTE) return [];

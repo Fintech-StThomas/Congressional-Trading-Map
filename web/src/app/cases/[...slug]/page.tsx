@@ -6,8 +6,9 @@ import { IS_REMOTE, getCases, getMemberIndex } from "@/lib/data/server";
 import { allCasePaths, casesSlug, parseCasesPath, pageOf } from "@/lib/domain/casepages";
 import { CasesView } from "@/components/cases/CasesView";
 
-// Local data: every filter and page prerendered, other paths 404. Remote data: on first request (ISR).
-export const dynamicParams = IS_REMOTE;
+// Every path is prerendered from local data and other paths are 404s. With DATA_BASE_URL nothing is
+// prerendered here: next.config.ts rewrites this URL to the on-demand twin under app/live/cases/[...slug] (ISR).
+export const dynamicParams = false;
 
 export async function generateStaticParams() {
   if (IS_REMOTE) return [];

@@ -350,6 +350,8 @@ computed from **every** tie between the org and a member, full edges and ledger 
 Each tie counts under the member's party **at the time of the tie**, not their latest party: the tie's `by_year`
 amounts (each year's `exact`, else `high`, else `low`; any remainder against the tie's size goes to its latest year,
 and a tie without `by_year` counts in the year of `last`) are split by the party of the member's term in that year.
+`by_year` is net per year, so a party's share of one tie can come out negative (refunds); that deficit is netted
+against the tie's other parties, largest first, so no share is negative and the shares still sum to the tie.
 
 - A year inside a term follows the coverage rule (a term ending on 3 January does not count that year). When two terms
   in different parties share a year, the term covering more days of it wins; equal days go to the later term.

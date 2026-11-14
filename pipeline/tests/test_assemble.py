@@ -223,3 +223,13 @@ def test_two_pass_evidence_equals_one_pass(tmp_path, monkeypatch) -> None:
     merged = next(e for e in one if e["type"] == "pac_money")
     assert merged["count"] == 2 and merged["amount"]["exact"] == 12.0 and merged["evidence"][0]["label"] == "later"
     assert sum(rep["edges_dropped"].values()) == 1 and Counter(rep["edges_read"]) == Counter({"a.jsonl": 2, "b.jsonl": 2})
+
+
+def test_party_split_nets_a_refund_year_against_the_other_party() -> None:
+    """by_year is net per year: a year of refunds under one party is netted against the tie's other party, so no
+    party gets negative dollars and the member counts only where a positive share is left."""
+    sw = _m("R", [_t("2017-01-03", "2021-01-03", "D"), _t("2021-01-03", "2025-01-03", "R")])
+    e = edge("pac_money", O, ("member", "S000001"), "2019-01-01", "2022-01-01", 0.0)
+    e["by_year"] = [{"y": 2019, "n": 2, "low": 100, "high": 100, "exact": 100}, {"y": 2022, "n": 1, "low": -20, "high": -20, "exact": -20}]
+    e["amount"] = {"low": 80, "high": 80, "exact": 80}
+    assert assemble.party_split([e], {"S000001": sw})["given"] == {"D": [1, 80], "I": [0, 0], "R": [0, 0]}

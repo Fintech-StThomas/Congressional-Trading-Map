@@ -2,8 +2,9 @@
 import { IS_REMOTE, getBoard, getMemberIndex, getMembers, memberBoard } from "@/lib/data/server";
 
 export const dynamic = "force-static";
-// As /board-data: all prebuilt locally, on first request with DATA_BASE_URL.
-export const dynamicParams = IS_REMOTE;
+// Every path is prerendered from local data and other paths are 404s. With DATA_BASE_URL nothing is
+// prerendered here: next.config.ts rewrites this URL to the on-demand twin under app/live/board-member/[id] (ISR).
+export const dynamicParams = false;
 
 export async function generateStaticParams() {
   if (IS_REMOTE) return [];
