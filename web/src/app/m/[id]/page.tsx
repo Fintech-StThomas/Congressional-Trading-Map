@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { IS_SAMPLE, getMemberFile, getMemberIndex, getMembers, getMeta, getOrgIndex, getTradeFile, metaBuilt, orgNodesOf } from "@/lib/data";
+import { IS_SAMPLE, getHoldings, getMemberFile, getMemberIndex, getMembers, getMeta, getOrgIndex, getTradeFile, metaBuilt, orgNodesOf } from "@/lib/data";
 import { decodeLedger, decodeTradeFile, ledgerTotals } from "@/lib/decode";
 import { sortEdges, TYPE_LABEL } from "@/lib/edges";
-import { count, date, PARTY_NAMES, plural, seat, served } from "@/lib/format";
+import { count, date, PARTY_NAMES, plural, seat, served, stateName } from "@/lib/format";
 import { boardHref, dataUrl, toBoardMember, type NameBook } from "@/lib/client";
 import { metaSources, sourceNames } from "@/lib/meta";
 import { SITE } from "@/lib/site";
@@ -15,7 +15,13 @@ import { TradesTable } from "@/components/TradesTable";
 import { LedgerTable } from "@/components/LedgerTable";
 import { Timeline } from "@/components/Timeline";
 import { PrintButton } from "@/components/PrintButton";
+import { CaseFile, caseNumber } from "@/components/CaseFile";
+import { pickAgainst, pickBoard } from "@/lib/pick";
+import "../../casefile.css";
+import { HoldingsSection } from "@/components/HoldingsSection";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { CASE_NOT_SHOWN } from "@/lib/notshown";
+import { AssumeCase, AssumeCount, AssumptionProvider, PageAssumptionBar } from "@/components/assume/Assume";
 
 export const dynamicParams = false;
 
@@ -100,8 +106,21 @@ export default async function MemberPage({ params }: PageProps<"/m/[id]">) {
   const owners = ts?.by_owner ?? {};
   const ownTrades = owners.self ?? 0;
 
+  // Only what the assumption switches need: traded strings and case orgs.
+  const tradedEdges = file.edges.filter((e) => e.type === "traded").map((e) => ({ id: e.id, type: e.type, from: e.from, to: e.to }));
+  const caseOrgs = file.cases.map((c) => c.org);
+
+  const caseNo = caseNumber(m.id, built);
+  const nameOf = (x: string) => memberIndex.get(x)?.name ?? file.nodes?.[x]?.name ?? ledgerNames[x] ?? orgIndex.get(x)?.name ?? x;
+
   return (
+    <AssumptionProvider member={m.id} hasTrades={nTrades > 0} edges={tradedEdges} caseOrgs={caseOrgs}>
     <article className="page dossier" data-testid="member-page">
+      <nav className="crumbs crumbs--page no-print" aria-label="Breadcrumb">
+        <Link href="/">United States</Link> <span aria-hidden="true">/</span>{" "}
+        {m.current ? <Link href={boardHref({ s: m.state })}>{stateName(m.state)}</Link> : <Link href="/wall?former=1">Former members</Link>}{" "}
+        <span aria-hidden="true">/</span> <span aria-current="page">{m.name}</span>
+      </nav>
       <header className="dossier__head">
         <Print id={m.id} name={m.name} photo={m.photo} size="xl" />
         <div className="dossier__id">
@@ -112,12 +131,17 @@ export default async function MemberPage({ params }: PageProps<"/m/[id]">) {
             {seat(m)} · {PARTY_NAMES[m.party]} · {m.current ? "Serving" : "Former member"}, {served(m.served)}
           </p>
           <dl className="dossier__counts">
-            <div><dt>Household trades reported</dt><dd className="mono">{count(m.counts.trades)}</dd></div>
+            <div><dt>Household trades reported</dt><dd className="mono"><AssumeCount kind="trades" total={m.counts.trades} /></dd></div>
             <div><dt>Organisations tied</dt><dd className="mono">{count(m.counts.orgs)}</dd></div>
             <div><dt>Members tied</dt><dd className="mono">{count(m.counts.members)}</dd></div>
-            <div><dt>Cases</dt><dd className="mono">{count(m.counts.cases)}</dd></div>
+            <div><dt>Cases</dt><dd className="mono"><AssumeCount kind="cases" total={m.counts.cases} /></dd></div>
             {nTrades > 0 && <div><dt>Disclosed late</dt><dd className="mono">{count(lateCount)}</dd></div>}
           </dl>
+          {nTrades > 0 && (
+            <div className="no-print dossier__assume">
+              <PageAssumptionBar scope={m.name} />
+            </div>
+          )}
           <div className="dossier__actions no-print">
             {m.current ? (
               <Link className="btn btn--paper" href={boardHref({ s: m.state, m: m.id })}>Open on the board</Link>
@@ -155,7 +179,7 @@ export default async function MemberPage({ params }: PageProps<"/m/[id]">) {
           <p className="section__note">Companies whose stock this member&rsquo;s household traded while the member received money from the company&rsquo;s PAC, in the same years. A reason to read the filings, not a finding.</p>
           <ol className="dossier__cases">
             {file.cases.map((c) => (
-              <li key={c.id}>
+              <AssumeCase key={c.id} org={c.org}>
                 <span className="tag">Case</span>
                 <span className="dossier__casename">{orgName(c.org)}</span>
                 <span className="dossier__casetypes">
@@ -164,7 +188,8 @@ export default async function MemberPage({ params }: PageProps<"/m/[id]">) {
                 </span>
                 <span className="mono">{c.years[0] === c.years[1] ? c.years[0] : `${c.years[0]}–${c.years[1]}`}</span>
                 <Link className="no-print" href={boardHref({ s: m.current ? m.state : undefined, m: m.id, focus: c.org })}>On the board</Link>
-              </li>
+                <span className="notshown dossier__notshown">{CASE_NOT_SHOWN}</span>
+              </AssumeCase>
             ))}
           </ol>
         </section>
@@ -208,6 +233,8 @@ export default async function MemberPage({ params }: PageProps<"/m/[id]">) {
         <Timeline tradeByYear={tradeByYear} moneyByYear={moneyByYear} coverage={file.coverage} served={m.served} />
       </section>
 
+      <HoldingsSection h={getHoldings(m.id)} everHouse={m.terms.some((t) => t.chamber === "rep")} memberId={m.id} />
+
       <section className="section" aria-labelledby="trades-h">
         <h2 id="trades-h">Trades reported by this member&rsquo;s household</h2>
         <p className="section__note">
@@ -225,6 +252,9 @@ export default async function MemberPage({ params }: PageProps<"/m/[id]">) {
         {nTrades > initialTrades.length && <p className="print-only">The full list of {count(nTrades)} trades is on the website; this dossier prints the {initialTrades.length} most recent.</p>}
       </section>
 
+      <style>{`@media print { @page { @top-left { content: "${SITE.name} · ${caseNo}"; } } }`}</style>
+      <CaseFile file={file} board={pickBoard(m.id, file.edges)} against={pickAgainst(file.edges)} names={nameOf} ledger={ledger} trades={initialTrades} sources={metaSources(meta)} built={built} orgName={orgName} />
+
       <footer className="provenance">
         <h2>Provenance</h2>
         <p>
@@ -234,11 +264,17 @@ export default async function MemberPage({ params }: PageProps<"/m/[id]">) {
         <p>
           {SITE.disclaimer} Not investment advice. Use is restricted by 5 U.S.C. 13107(c): no commercial use other than by news media, and no use for soliciting money.
         </p>
+        <p className="dossier__fullfile">
+          <Link href={`/m/${m.id}/records`} className="no-print">Open the full file</Link>
+          <span className="print-only">The full file (every record, unfiltered): /m/{m.id}/records</span>
+          <span className="sub"> · every record held for this member, unfiltered, with CSV downloads</span>
+        </p>
         <p className="mono">
           {SITE.name} · member {m.id}
           {m.fec_ids.length ? ` · FEC ${m.fec_ids.join(", ")}` : ""}
         </p>
       </footer>
     </article>
+    </AssumptionProvider>
   );
 }

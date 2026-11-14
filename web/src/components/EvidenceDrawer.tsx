@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useEffect, useRef } from "react";
 import type { Edge, NodeRef } from "@/lib/types";
+import { notShown } from "@/lib/notshown";
+import { weakTag, WEAK_WHY } from "@/lib/edges";
 import { typeLabel, TYPE_RULE, FAMILY_LABEL, filteredAmount, plainStat, stringStyle } from "@/lib/edges";
 import { amountText, count, date, NOT_DISCLOSED } from "@/lib/format";
 import { IS_SAMPLE_CLIENT, memberHref, nodeName, orgHref, type NameBook } from "@/lib/client";
@@ -19,6 +21,9 @@ type Props = {
   onClose: () => void;
   /** The full record is being fetched. */
   loading?: boolean;
+  /** Every string to the same card, when the drawer was opened from a card. */
+  siblings?: Edge[];
+  onPick?: (e: Edge) => void;
 };
 
 function NodeLink({ n, book }: { n: NodeRef; book: NameBook }) {
@@ -53,14 +58,14 @@ function LedgerOnly({ edge }: { edge: Edge }) {
   );
 }
 
-export function EvidenceDrawer({ edge, book, sources, range, onClose, loading }: Props) {
+export function EvidenceDrawer({ edge, book, sources, range, onClose, loading, siblings, onPick }: Props) {
   const ref = useRef<HTMLElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
   const open = Boolean(edge);
 
   useEffect(() => {
     if (!open) return;
-    titleRef.current?.focus();
+    if (!(document.activeElement instanceof HTMLElement && document.activeElement.classList.contains("drawer__tab"))) titleRef.current?.focus();
     const onKey = (ev: KeyboardEvent) => {
       if (ev.key === "Escape") {
         ev.stopPropagation();
@@ -88,6 +93,33 @@ export function EvidenceDrawer({ edge, book, sources, range, onClose, loading }:
           </svg>
         </button>
       </div>
+      {siblings && siblings.length > 1 && onPick && (
+        <div className="drawer__tabs" role="tablist" aria-label="Strings to this card">
+          {siblings.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              role="tab"
+              aria-selected={s.id === edge.id}
+              className="drawer__tab"
+              onClick={() => onPick(s)}
+              onKeyDown={(ev) => {
+                if (ev.key !== "ArrowRight" && ev.key !== "ArrowLeft") return;
+                ev.preventDefault();
+                const i = siblings.findIndex((x) => x.id === s.id);
+                const next = siblings[(i + (ev.key === "ArrowRight" ? 1 : siblings.length - 1)) % siblings.length];
+                onPick(next);
+                const tabs = (ev.currentTarget.parentElement?.children ?? []) as HTMLCollectionOf<HTMLElement>;
+                tabs[siblings.indexOf(next)]?.focus();
+              }}
+            >
+              <LineSample style={stringStyle(s)} width={18} />
+              {typeLabel(s)}
+              <span className="mono">{amountText(filteredAmount(s, range), true) ?? `${count(s.count)} rec.`}</span>
+            </button>
+          ))}
+        </div>
+      )}
       <div className="drawer__body">
         <h2 id="drawer-title" ref={titleRef} tabIndex={-1}>
           {typeLabel(edge)}
@@ -147,7 +179,6 @@ export function EvidenceDrawer({ edge, book, sources, range, onClose, loading }:
               <span className="mono">{edge.stat.lift}×</span> the baseline
               {typeof (edge.stat as { p?: number }).p === "number" ? <>, p = <span className="mono">{(edge.stat as { p?: number }).p!.toPrecision(2)}</span></> : null}. Method: {edge.stat.method}
             </p>
-            {edge.type === "traded_together" && <p className="stat__meta">Frequent traders overlap often; this is not evidence of coordination.</p>}
           </div>
         )}
 
@@ -155,6 +186,10 @@ export function EvidenceDrawer({ edge, book, sources, range, onClose, loading }:
 
         <h3>What the record says</h3>
         <p className="drawer__rule">{TYPE_RULE[edge.type]}</p>
+        {weakTag(edge) && (
+          <p className="drawer__weak" data-testid="weak-why"><span className="tag tag--weak">{weakTag(edge)}</span> {WEAK_WHY[weakTag(edge)!]}</p>
+        )}
+        <p className="notshown" data-testid="not-shown"><span className="notshown__k">What this does not show:</span> {notShown(edge.type)}</p>
 
         <h3>
           Records <span className="h-count mono">{shown < edge.evidence_total ? `${shown} of ${count(edge.evidence_total)}` : count(shown)}</span>

@@ -66,7 +66,7 @@ export function typeLabel(e: Pick<Edge, "type" | "note" | "via">): string {
   if (e.type === "outside_spending") {
     const side = e.note === "oppose" || e.via?.id.endsWith(":oppose") ? "oppose" : e.note === "support" || e.via?.id.endsWith(":support") ? "support" : null;
     if (side === "oppose") return "Outside spending opposing";
-    if (side === "support") return "Outside spending supporting";
+    if (side === "support") return "Outside spending to support (independent)";
   }
   return TYPE_LABEL[e.type];
 }
@@ -154,4 +154,81 @@ export function sortEdges(edges: Edge[]): Edge[] {
 export function plainStat(stat: NonNullable<Edge["stat"]>): string {
   const exp = stat.expected < 1 ? "less than 1" : `about ${Math.round(stat.expected).toLocaleString("en-US")}`;
   return `Seen ${stat.observed.toLocaleString("en-US")} ${stat.observed === 1 ? "time" : "times"}; ${exp} expected by chance.`;
+}
+
+/** Weak or derived strings are drawn frayed. Never the only signal: see `frayCue`. */
+export function isFrayed(e: Pick<Edge, "basis" | "weak" | "family">): boolean {
+  return e.family !== "context" && (e.basis === "derived" || e.weak);
+}
+
+/** The one reason a string is frayed, as a stamped word: STATISTICAL (derived) or INCOMPLETE (weak). */
+export type WeakTag = "STATISTICAL" | "INCOMPLETE";
+export function weakTag(e: Pick<Edge, "basis" | "weak">): WeakTag | null {
+  if (e.basis === "derived") return "STATISTICAL";
+  if (e.weak) return "INCOMPLETE";
+  return null;
+}
+export const WEAK_WHY: Record<WeakTag, string> = {
+  STATISTICAL: "Not a filed record: this tie meets a published statistical rule against a shuffled baseline.",
+  INCOMPLETE: "A filed record whose evidence is thin or incomplete, such as a trade without a date or an amount range with no top.",
+};
+
+/** The word that goes with a frayed string, so appearance is never the only cue. */
+export function frayCue(e: Pick<Edge, "basis" | "weak">): string | null {
+  return weakTag(e);
+}
+
+function surname(name: string): string {
+  const parts = name.replace(/,.*$/, "").trim().split(/\s+/).filter((p) => !/^(jr\.?|sr\.?|ii|iii|iv)$/i.test(p));
+  return parts[parts.length - 1] ?? name;
+}
+
+/**
+ * What a string says, with the card at its far end as the subject:
+ * "gave $2K to Rooney", "spent $238 opposing Rooney", "received $5K from its PAC".
+ * `centre` is the name of the board's centre (member or organisation).
+ */
+export function tiePhrase(e: Edge, cardId: string, centre: string, range?: [number, number], full = false): string {
+  const amt = amountText(filteredAmount(e, range), true);
+  const $ = amt ? ` ${amt}` : "";
+  const cardIsFrom = e.from.id === cardId;
+  const cardIsOrg = (cardIsFrom ? e.from : e.to).kind === "org";
+  // On a card the centre is implied by the string; spoken labels name it.
+  const to = full ? ` to ${surname(centre)}` : "";
+  const of = full ? ` ${surname(centre)}` : "";
+  switch (e.type) {
+    case "funds":
+      return cardIsFrom ? `gave${$} to ${surname(centre)}` : `received${$} from ${surname(centre)}`;
+    case "outside_spending": {
+      const side = spendingSideOf(e);
+      if (!cardIsOrg) return `${amt ?? "money"} spent ${side === "oppose" ? "opposing" : "independently to support"} them`;
+      return `spent${$} ${side === "oppose" ? "opposing" : side === "support" ? "independently to support" : "in the race of"}${of}`;
+    }
+    case "pac_money":
+      return cardIsOrg ? `PAC gave${$}${to}` : `received${$} from its PAC`;
+    case "employee_money":
+      return cardIsOrg ? `employees gave${$}${to}` : `received${$} from its employees`;
+    case "lobbyist_money":
+      return cardIsOrg ? `lobbyists gave${$}${to}` : `received${$} from its lobbyists`;
+    case "paid_travel":
+      return cardIsOrg ? `paid${$} for travel` : `travel paid${$}`;
+    case "traded":
+      return `household traded the stock${amt ? `, ${amt}` : ""}`;
+    case "owns":
+      return `holding${amt ? `, ${amt}` : ""}`;
+    case "traded_together":
+      return `statistical co-trading`;
+    case "shared_donors":
+      return `statistical: shared donors`;
+    case "fundraises_with":
+      return `joint fundraising committee`;
+    default:
+      return typeLabel(e).toLowerCase();
+  }
+}
+
+function spendingSideOf(e: Pick<Edge, "note" | "via">): "support" | "oppose" | null {
+  if (e.note === "oppose" || e.via?.id.endsWith(":oppose")) return "oppose";
+  if (e.note === "support" || e.via?.id.endsWith(":support")) return "support";
+  return null;
 }

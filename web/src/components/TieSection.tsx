@@ -5,6 +5,7 @@ import type { Edge } from "@/lib/types";
 import type { NameBook } from "@/lib/client";
 import { FAMILIES, FAMILY_LABEL, sortEdges, type Family } from "@/lib/edges";
 import { TieTable } from "./TieTable";
+import { isAgainst } from "@/lib/pick";
 import { EvidenceDrawer } from "./EvidenceDrawer";
 
 type Props = {
@@ -29,7 +30,9 @@ export function TieSection({ edges: initial, selfId, book: initialBook, sources,
   const trigger = useRef<HTMLElement | null>(null);
   const cases = useMemo(() => new Set(caseEdges ?? []), [caseEdges]);
   const present = useMemo(() => FAMILIES.filter((f) => edges.some((e) => e.family === f)), [edges]);
-  const shown = useMemo(() => sortEdges(edges.filter((e) => families.has(e.family))), [edges, families]);
+  // Spending against the member is not a tie: listed in its own section below.
+  const shown = useMemo(() => sortEdges(edges.filter((e) => families.has(e.family) && !isAgainst(e))), [edges, families]);
+  const against = useMemo(() => sortEdges(edges.filter(isAgainst)), [edges]);
 
   const close = useCallback(() => {
     setOpen(null);
@@ -90,6 +93,13 @@ export function TieSection({ edges: initial, selfId, book: initialBook, sources,
         groupBy="family"
         emptyText="No ties in the selected families."
       />
+      {against.length > 0 && (
+        <div className="tablezone" data-testid="ties-against">
+          <h3>Spent against this member</h3>
+          <p className="section__note">Independent spending by groups opposing this member. Not a relationship with the member.</p>
+          <TieTable edges={against} selfId={selfId} book={book} onOpen={(e, t) => { trigger.current = t; setOpen(e); }} activeId={open?.id} caption="Spent against this member" />
+        </div>
+      )}
       {total != null && total > edges.length && fullUrl && (
         <p className="more">
           Showing the {edges.length} largest of {total} ties.{" "}

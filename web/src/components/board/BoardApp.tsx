@@ -18,6 +18,10 @@ import { ErrorBoundary } from "../ErrorBoundary";
 import { BoardCanvas, type Center } from "./BoardCanvas";
 import { YearRange } from "./YearRange";
 import { Legend } from "./Legend";
+import { AgainstZone } from "./AgainstZone";
+import { AGAINST_SHOWN, isAgainst } from "@/lib/pick";
+import { CASE_NOT_SHOWN } from "@/lib/notshown";
+import { AssumptionBar, useAssumptions } from "../assume/Assume";
 
 export type CaseLite = {
   id: string;
@@ -30,7 +34,8 @@ export type CaseLite = {
   trades: number;
 };
 
-export type Featured = { kind: "case"; c: CaseLite } | { kind: "member"; member: string } | null;
+/** Featured examples, most varied first: `reason` is the one sentence shown on the slip. */
+export type Featured = { picks: { member: string; reason: string; kinds: number }[] } | null;
 
 export type StateChunk = {
   strings: Record<string, Edge[]>;
@@ -38,6 +43,8 @@ export type StateChunk = {
   members: Record<string, BoardMember>;
   /** Ties per member beyond the drawn strings. */
   more: Record<string, number>;
+  /** Spenders against each member beyond the three shown in the "Spent against" zone. */
+  againstMore?: Record<string, number>;
 };
 
 type Props = {
@@ -69,6 +76,9 @@ function toQuery(sel: Sel): string {
   if (sel.m) q.set("m", sel.m);
   if (sel.o) q.set("o", sel.o);
   if (sel.focus) q.set("focus", sel.focus);
+  // Assumption switches travel with every board URL.
+  const as = new URLSearchParams(window.location.search).get("as");
+  if (as) q.set("as", as);
   const s = q.toString();
   return s ? `/?${s}` : "/";
 }
@@ -76,14 +86,12 @@ function toQuery(sel: Sel): string {
 export function BoardApp(props: Props) {
   const { geo, states, featured, cases, caseTotal, caseIndex, sources, asOf } = props;
 
+  const [featIdx, setFeatIdx] = useState(0);
+  const featPick = featured?.picks[featIdx] ?? null;
   const featuredSel: Sel = useMemo(() => {
-    if (featured?.kind === "case") {
-      const m = props.members[featured.c.member];
-      return { s: m?.state ?? null, m: featured.c.member, o: null, focus: featured.c.org };
-    }
-    if (featured?.kind === "member") return { s: props.members[featured.member]?.state ?? null, m: featured.member, o: null, focus: null };
+    if (featPick) return { s: props.members[featPick.member]?.state ?? null, m: featPick.member, o: null, focus: null };
     return EMPTY;
-  }, [featured, props.members]);
+  }, [featPick, props.members]);
 
   const [sel, setSel] = useState<Sel>(featuredSel);
   const [isFeatured, setIsFeatured] = useState(Boolean(featured));
@@ -92,13 +100,14 @@ export function BoardApp(props: Props) {
   const [view, setView] = useState<"board" | "table">("board");
   const [panel, setPanel] = useState<"delegation" | "cases">("delegation");
   const [open, setOpen] = useState<Edge | null>(null);
+  const [openGroup, setOpenGroup] = useState<Edge[] | null>(null);
   const trigger = useRef<Element | null>(null);
 
   const [chunks, setChunks] = useState<Record<string, StateChunk>>(props.initialChunks);
   const [memberBook, setMemberBook] = useState<Record<string, BoardMember>>(props.members);
   const [orgBook, setOrgBook] = useState<Record<string, OrgSummary>>(() => Object.assign({}, ...Object.values(props.initialChunks).map((c) => c.nodes)));
   const [orgFiles, setOrgFiles] = useState<Record<string, { org: OrgSummary; ties: TieEdge[]; total: number }>>({});
-  const [memberFiles, setMemberFiles] = useState<Record<string, { edges: Edge[]; more: number }>>({});
+  const [memberFiles, setMemberFiles] = useState<Record<string, { edges: Edge[]; more: number; againstMore?: number }>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -182,6 +191,7 @@ export function BoardApp(props: Props) {
                 nodes: { ...c[st]?.nodes, ...chunk.nodes },
                 members: { ...c[st]?.members, ...chunk.members },
                 more: { ...c[st]?.more, ...chunk.more },
+                againstMore: { ...c[st]?.againstMore, ...chunk.againstMore },
               },
             }));
             setOrgBook((b) => ({ ...b, ...chunk.nodes }));
@@ -190,11 +200,11 @@ export function BoardApp(props: Props) {
             // Former members are not on board.json: their strings are cut from
             // the case file at build time.
             setLoading(true);
-            const body = await getJSON<{ edges: Edge[]; nodes: Record<string, OrgSummary>; members: Record<string, BoardMember>; more: number }>(`/board-member/${sel.m}`);
+            const body = await getJSON<{ edges: Edge[]; nodes: Record<string, OrgSummary>; members: Record<string, BoardMember>; more: number; againstMore?: number }>(`/board-member/${sel.m}`);
             if (!live) return;
             setOrgBook((b) => ({ ...b, ...body.nodes }));
             setMemberBook((b) => ({ ...body.members, ...b }));
-            setMemberFiles((f) => ({ ...f, [sel.m!]: { edges: body.edges, more: body.more } }));
+            setMemberFiles((f) => ({ ...f, [sel.m!]: { edges: body.edges, more: body.more, againstMore: body.againstMore } }));
           }
         } else if (sel.o && !orgFiles[sel.o]) {
           setLoading(true);
@@ -245,24 +255,44 @@ export function BoardApp(props: Props) {
     return orgFiles[center.org.id]?.ties ?? [];
   }, [center, chunks, memberFiles, orgFiles, current]);
 
+  // Spending against (member board) or outside spending of unrecorded side (org board) is never yarn.
+  const inZone = useCallback(
+    (e: Edge) => (center?.kind === "org" ? e.type === "outside_spending" && e.note !== "support" : isAgainst(e)),
+    [center?.kind],
+  );
+  const zoneAll = useMemo(() => sortEdges(allStrings.filter(inZone)), [allStrings, inZone]);
+  const zoneMore = useMemo(() => {
+    if (!center) return 0;
+    if (center.kind === "org") return Math.max(0, zoneAll.length - AGAINST_SHOWN);
+    const id = center.member.id;
+    return (current.has(id) ? chunks[center.member.state]?.againstMore?.[id] : memberFiles[id]?.againstMore) ?? 0;
+  }, [center, zoneAll.length, current, chunks, memberFiles]);
+
   const visible = useMemo(() => {
-    const filtered = allStrings.filter((e) => families.has(e.family) && inYears(e, range));
+    const filtered = allStrings.filter((e) => !inZone(e) && families.has(e.family) && inYears(e, range));
     return center?.kind === "org" ? sortEdges(filtered).slice(0, MAX_STRINGS) : sortEdges(filtered);
-  }, [allStrings, families, range, center]);
+  }, [allStrings, families, range, center, inZone]);
+
+  // Assumption switches (owner, asset class, size, lateness) for a member's board.
+  const assumeMember = center?.kind === "member" ? center.member.id : null;
+  const assumeEdges = useMemo(() => (assumeMember ? allStrings.filter((e) => e.type === "traded") : []), [assumeMember, allStrings]);
+  const assumeCases = useMemo(() => (assumeMember ? caseIndex[assumeMember] ?? [] : []), [assumeMember, caseIndex]);
+  const assumption = useAssumptions(assumeMember, true, assumeEdges, assumeCases);
+  const excluded = assumption.effect?.excluded;
 
   const familyCounts = useMemo(() => {
     const c: Record<Family, number> = { money: 0, holding: 0, people: 0, context: 0 };
-    for (const e of allStrings) if (inYears(e, range)) c[e.family]++;
+    for (const e of allStrings) if (inYears(e, range) && !excluded?.has(e.id) && !inZone(e)) c[e.family]++;
     return c;
-  }, [allStrings, range]);
+  }, [allStrings, range, excluded, inZone]);
 
   const caseNodes = useMemo(() => {
     if (!center) return new Set<string>();
-    if (center.kind === "member") return new Set(caseIndex[center.member.id] ?? []);
+    if (center.kind === "member") return assumption.effect ? new Set(assumption.effect.cases) : new Set(caseIndex[center.member.id] ?? []);
     const s = new Set<string>();
     for (const [m, orgs] of Object.entries(caseIndex)) if (orgs.includes(center.org.id)) s.add(m);
     return s;
-  }, [center, caseIndex]);
+  }, [center, caseIndex, assumption.effect]);
 
   // Ties not drawn: the rest of the member's organisations and colleagues, which
   // live in the case file (full edges and the money ledger).
@@ -278,8 +308,7 @@ export function BoardApp(props: Props) {
   const selfId = center?.kind === "member" ? center.member.id : center?.kind === "org" ? center.org.id : "";
 
   const [resolving, setResolving] = useState(false);
-  const openEdge = useCallback((e: Edge, el: Element) => {
-    trigger.current = el;
+  const showEdge = useCallback((e: Edge) => {
     setOpen(e);
     const tie = (e as TieEdge)._tie;
     if (tie?.edge) {
@@ -291,6 +320,14 @@ export function BoardApp(props: Props) {
         .finally(() => setResolving(false));
     }
   }, []);
+  const openEdge = useCallback(
+    (e: Edge, el: Element, group?: Edge[]) => {
+      trigger.current = el;
+      setOpenGroup(group && group.length > 1 ? group : null);
+      showEdge(e);
+    },
+    [showEdge],
+  );
   const closeEdge = useCallback(() => {
     setOpen(null);
     const t = trigger.current as HTMLElement | SVGElement | null;
@@ -308,13 +345,22 @@ export function BoardApp(props: Props) {
   const selectState = useCallback((code: string) => go({ s: code, m: null, o: null, focus: null }), [go]);
 
   // ---- slip: what the board is showing -------------------------------------------
-  const featuredCase = isFeatured && featured?.kind === "case" ? featured.c : null;
+  const nextFeatured = featured && featured.picks.length > 1
+    ? () => {
+        const i = (featIdx + 1) % featured.picks.length;
+        const m = featured.picks[i].member;
+        setFeatIdx(i);
+        setSel({ s: memberBook[m]?.state ?? null, m, o: null, focus: null });
+        setIsFeatured(true);
+        setOpen(null);
+      }
+    : null;
   const slip = (
     <Slip
       sel={sel}
       center={center}
-      featuredCase={featuredCase}
-      featuredMember={isFeatured && featured?.kind === "member"}
+      featured={isFeatured && featPick && featPick.member === sel.m ? { ...featPick, n: featIdx + 1, of: featured!.picks.length } : null}
+      onNextFeatured={nextFeatured}
       asOf={asOf}
       shown={visible.length}
       more={moreTies}
@@ -401,6 +447,11 @@ export function BoardApp(props: Props) {
       </div>
 
       <div className="board__main">
+        {center?.kind === "member" && (
+          <div className="board__assume">
+            <AssumptionBar state={assumption} scope={center.member.name} />
+          </div>
+        )}
         <div className="board__stage">
           {error && (
             <p className="board__error" role="alert">
@@ -418,6 +469,7 @@ export function BoardApp(props: Props) {
                 edges={visible}
                 book={book}
                 caseNodes={caseNodes}
+                excluded={excluded}
                 focusNode={sel.focus}
                 drawKey={drawKey}
                 range={range}
@@ -427,6 +479,18 @@ export function BoardApp(props: Props) {
                 slip={slip}
                 loading={loading}
               />
+              {center && (
+                <AgainstZone
+                  edges={zoneAll.slice(0, AGAINST_SHOWN)}
+                  more={zoneMore}
+                  selfId={selfId}
+                  book={book}
+                  title={center.kind === "member" ? "Spent against this member" : "Outside spending on members (side not recorded in this file)"}
+                  line={center.kind === "member" ? "Independent spending by groups opposing this member. Not a relationship with the member." : "Independent spending for or against members. Not a relationship with them; open a card for the record."}
+                  onOpen={(e, el) => openEdge(e, el)}
+                  onRecenter={recenter}
+                />
+              )}
             </div>
           </ErrorBoundary>
           <div className="stage__table">
@@ -441,11 +505,19 @@ export function BoardApp(props: Props) {
                   onOpen={openEdge}
                   activeId={open?.id}
                   caption="Strings on the board"
+                  excluded={excluded}
                   caseEdges={new Set(visible.filter((e) => caseNodes.has(e.from.id) || caseNodes.has(e.to.id)).map((e) => e.id))}
                   groupBy="family"
                   emptyText={loading ? "Pulling the records…" : "No strings match the current filters. Turn on more families or widen the years."}
                 />
-              ) : viewState ? (
+              ) : null}
+              {center && zoneAll.length > 0 ? (
+                <div className="tablezone">
+                  <h3>{center.kind === "member" ? "Spent against this member" : "Outside spending, side not recorded"}</h3>
+                  <p className="section__note">Independent spending{center.kind === "member" ? " by groups opposing this member" : ""}. Not a relationship.</p>
+                  <TieTable edges={zoneAll} selfId={selfId} book={book} range={range} onOpen={openEdge} activeId={open?.id} caption="Spent against" />
+                </div>
+              ) : center ? null : viewState ? (
                 <p className="empty">Choose a member of the {stateName(viewState)} delegation to list their ties.</p>
               ) : (
                 <StateTable states={states} onPick={selectState} />
@@ -479,7 +551,7 @@ export function BoardApp(props: Props) {
         </aside>
       </div>
 
-      <EvidenceDrawer edge={open} book={book} sources={sources} range={range} onClose={closeEdge} loading={resolving} />
+      <EvidenceDrawer edge={open} book={book} sources={sources} range={range} onClose={closeEdge} loading={resolving} siblings={openGroup ?? undefined} onPick={showEdge} />
     </div>
   );
 }
@@ -493,16 +565,16 @@ function Sep() {
 }
 
 function Slip({
-  sel, center, featuredCase, featuredMember, asOf, shown, more, onClear, onState,
+  sel, center, featured, onNextFeatured, asOf, shown, more, onClear, onState,
 }: {
-  sel: Sel; center: Center; featuredCase: CaseLite | null; featuredMember: boolean; asOf: string | null; shown: number; more: number;
+  sel: Sel; center: Center; featured: { reason: string; n: number; of: number } | null; onNextFeatured: (() => void) | null; asOf: string | null; shown: number; more: number;
   onClear: () => void; onState: (s: string) => void;
 }) {
   if (center?.kind === "member") {
     const m = center.member;
     return (
       <div className="slip">
-        {(featuredCase || featuredMember) && (
+        {featured && (
           <p className="slip__kicker">
             <span className="stamp-label">Featured example</span>
             {asOf && <span className="mono">as of {date(asOf)}</span>}
@@ -512,7 +584,7 @@ function Slip({
           {m.name} <PartyTag party={m.party} />
         </h2>
         <p className="slip__sub">{seat(m)}</p>
-        {featuredCase && <CaseSentence c={featuredCase} />}
+        {featured && <p className="slip__why">{featured.reason}</p>}
         <p className="slip__meta">
           <span className="mono">{shown}</span> {shown === 1 ? "string" : "strings"}
           {more > 0 && (
@@ -521,12 +593,20 @@ function Slip({
             </>
           )}{" "}
           · <Link href={memberHref(m.id)}>Open case file</Link>
-          {featuredCase || featuredMember ? (
+          {featured ? (
             <>
               {" · "}
               <button type="button" className="linkbtn" onClick={() => onState(m.state)}>
                 Browse {stateName(m.state)}
               </button>
+              {featured && onNextFeatured && (
+                <>
+                  {" · "}
+                  <button type="button" className="linkbtn slip__next" onClick={onNextFeatured} aria-label={`Show another featured example (${featured.n} of ${featured.of})`}>
+                    Show another <span className="mono">{featured.n}/{featured.of}</span>
+                  </button>
+                </>
+              )}
             </>
           ) : null}
         </p>
@@ -760,6 +840,7 @@ function CaseList({ cases, total, book, onOpen }: { cases: CaseLite[]; total: nu
                   {c.money ? `$${Math.round(c.money).toLocaleString("en-US")} PAC · ` : ""}
                   {c.years[0]}–{c.years[1]}
                 </span>
+                <span className="casebtn__not">{CASE_NOT_SHOWN}</span>
               </button>
             </li>
           );

@@ -149,13 +149,21 @@ export default function MethodPage() {
         <p>A string is marked thin (short dashes) when its records are incomplete: a missing date, an amount not disclosed, or a single record.</p>
         <h3 className="method__h3">Cases</h3>
         <p>
-          A case is a member and an organisation with at least three distinct kinds of filed tie whose dates overlap. Context ties (same committee, co-sponsored bills) never count. Cases are ranked by the
+          A case is a member and an organisation with at least two distinct kinds of filed tie in the same years: one holding tie (the household traded its stock) and one money or people tie (for example, its PAC gave the member money). Context ties (same committee, co-sponsored bills) never count. Cases are ranked by the
           number of kinds, then by money, as a reading aid.
         </p>
         <h3 className="method__h3">Amounts</h3>
         <p>
           Trades are disclosed as ranges and shown as ranges: <span className="mono">$15,001–$50,000</span>. Sums add the low ends and the high ends separately; no midpoint is ever stored or shown.
           Missing values are shown as &ldquo;not disclosed&rdquo;, never as zero. An unlabelled owner is shown as unspecified, never assumed to be the member.
+        </p>
+        <h3 className="method__h3" id="party-split">Party split</h3>
+        <p>
+          An organisation&rsquo;s split by party counts every tie between it and a member, including ties shown only as totals: PAC contributions to the member&rsquo;s campaign, outside
+          spending supporting the member, outside spending opposing the member, and trades of its stock reported by the member&rsquo;s household (members only, no dollars). Former members
+          are included in these totals. Each member is counted once per measure, under the party of their most recent term, so a member who changed party is counted under the later party
+          for every year. Dollars are the filed FEC amounts. The rankings on the Organisations page count current members only. Party is shown as a letter and a pattern (solid D, dotted I,
+          hatched R), never as a colour.
         </p>
       </section>
 
