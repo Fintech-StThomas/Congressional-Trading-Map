@@ -85,6 +85,12 @@ test("a string opens the evidence drawer with links to records", async () => {
   await drawer.waitFor();
   assert.match(await drawer.innerText(), /A tie is not a finding/);
   assert.ok((await drawer.locator(".evidence__link, .evidence__nolink").count()) > 0);
+  const fix = drawer.getByTestId("correction-link");
+  assert.equal((await fix.innerText()).trim(), "Something wrong with this record?");
+  const body = new URL(await fix.getAttribute("href")).searchParams.get("body");
+  assert.match(body, /Tie: \w+ .*edge \S+/);
+  assert.match(body, /From: .*\nTo: /);
+  assert.match(body, /Records: /);
   await p.keyboard.press("Escape");
   await drawer.waitFor({ state: "detached" });
   await p.close();

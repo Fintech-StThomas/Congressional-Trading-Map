@@ -55,7 +55,7 @@ Join holdings and liabilities 1:1 to filings (asserted). Assign each document to
 the filing's district is one that member held in the report year or the next; otherwise a unique exact match on
 surname + state/district + term; otherwise exclude. Per member and report year, require an annual report ("O") and
 use the latest filed document (an amendment if one exists; amendments are full restatements, median row ratio 1.0).
-Drop personal residences, redact street addresses and beneficiary names (FBO / UTMA / UGMA / UTA accounts often name
-minor children), cut locations to city/state. Resolve printed tickers with the
+Drop personal residences, redact street addresses and minors' names (custodial, 529/education and dependent-child rows only;
+adults are published as filed: see the data dictionary's "Privacy"), cut locations to city/state. Resolve printed tickers with the
 `companies.py` rules. Sum ranges (no midpoints), compute the disclosed net worth range, build the latest-year
 portfolio, same-year overlaps with the member's `traded` and `pac_money` edges, and the `owns` plug-in edges.

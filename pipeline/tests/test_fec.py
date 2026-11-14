@@ -93,19 +93,3 @@ def test_column_guard_counts_delimiters(tmp_path) -> None:
     p.write_bytes(b"a|b|c\nd|e|f\n")
     assert load._count_lines_and_encoding(p)[:2] == (2, 4)
 
-
-def test_outside_spending_labels_name_only_organisation_payees() -> None:
-    from datetime import date as _date
-    from pipeline.util import public_payee
-    # FEC entity type for an individual or candidate always drops; otherwise an organisational marker is required
-    assert public_payee("ACME MEDIA LLC", "IND") is None and public_payee("SMITH, JOHN", "CAN") is None
-    assert public_payee("SMITH, JOHN", "ORG") is None and public_payee("JANE DOE", None) is None
-    assert public_payee("Strategic Media Placement, Inc.", "ORG") == "Strategic Media Placement, Inc."
-    for org in ("MAIL.COM", "USPS", "BLUE STATE DIGITAL", "L.L.C. HOLDINGS", "MAJORITY STRATEGIES", "SMITH & CO"):
-        assert public_payee(org, None) == org, org
-    assert public_payee("", "ORG") is None and public_payee(None, None) is None
-    r = {"type": "outside_spending", "to_id": "A000001", "direction": "oppose", "tp": "24A", "amt": 1000, "dt": _date(2020, 1, 2),
-         "giver_name": "X PAC", "counterparty": "JOHN Q CONSULTANT", "counterparty_tp": "IND"}
-    assert "paid to" not in build._evidence_label(r, {"A000001": "Ann Member"})
-    r |= {"counterparty": "ADS GROUP LLC", "counterparty_tp": "ORG"}
-    assert build._evidence_label(r, {"A000001": "Ann Member"}).endswith("(paid to ADS GROUP LLC)")

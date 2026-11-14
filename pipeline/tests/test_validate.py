@@ -50,21 +50,6 @@ def test_case_check_rederives_the_rule() -> None:
     assert "case window inside every type's span" in c.errors
 
 
-def test_validator_catches_an_individual_payee_in_outside_spending_labels() -> None:
-    def ie(label: str) -> dict:
-        e = _edge(1.0)
-        e["type"], e["evidence"][0]["label"] = "outside_spending", label
-        return e
-    base = "X PAC reported an independent expenditure of $1 supporting A on 2020-01-01"
-    c = validate.Checker()
-    for ok in (base, base + " (paid to ACME MEDIA LLC)", base + " (paid to MAIL.COM)",
-               "X PAC reported ... on 2020-01-01 (filing date; no transaction date on the record) (paid to BLUE GROUP INC.)"):
-        validate.check_payees(c, ie(ok), "t")
-    assert not c.errors
-    validate.check_payees(c, ie(base + " (paid to JANE Q DOE)"), "t")
-    assert "outside_spending evidence names no individual payee" in c.errors
-
-
 def test_validator_split_bounds_follow_the_party_at_the_time() -> None:
     terms = {"S000001": [{"start": "2017-01-03", "end": "2021-01-03", "party": "D", "chamber": "rep", "state": "NJ", "district": 2},
                          {"start": "2021-01-03", "end": "2025-01-03", "party": "R", "chamber": "rep", "state": "NJ", "district": 2}]}

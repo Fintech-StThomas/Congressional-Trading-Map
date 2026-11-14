@@ -458,6 +458,32 @@ up to 5 filings listing that lobbyist for that client, with the position text qu
 `{ "<filing year>": "full" | "partial" }`, `full` when every cached slice of that year is complete. Years not listed
 were not loaded. `report.cache.stale_days` is the age of the newest posting cutoff.
 
+## Privacy
+
+Public data stays public: everything here comes from public filings (FEC reports, House and Senate disclosure
+reports, congress-legislators), and adults named in them are published as filed. Only minors are redacted, because
+they did not choose public life.
+
+- **Published as filed:** members and their spouses; adults named in account titles (an IRA "FBO" an adult, trusts
+  named after adults, the member's or spouse's own name); FEC committees, and independent-expenditure payees
+  (the vendors and consultants a committee paid, individuals and organisations alike, in the "(paid to ...)"
+  evidence labels and `meta.json.reports.fec.review_large_funds_rows`); liability creditors and types (no change
+  to the creditor name, whether a bank or a person).
+- **Redacted (minors only):** a beneficiary's name becomes `[name redacted]` only when the filing row itself
+  indicates a minor: (1) a custodial account form (`UTMA`, `UGMA`, `UTA` but not `UTA DTD`, "custodian (for)",
+  "cust", "minor" / "a minor"); (2) a 529 or education-savings account (`529`, Coverdell, `ESA`, "education
+  savings") naming a beneficiary; (3) any row whose owner is filed as a dependent child (owner `dependent`), where
+  person-shaped names in the account title are redacted as well. On rows (1) and (2) the name after `FBO`, `f/b/o`,
+  "for the benefit of", "custodian for" or "beneficiary", and a "First [M.] Last" name directly before
+  `UTMA`/`UGMA`/`UTA`, are redacted. When the filing gives no way to tell and the owner is not a dependent child, the
+  text is published as filed. Counts per rule: `meta.json.reports.holdings` (`asset_minor_name_redacted_<rule>`).
+- **Never published:** street addresses (locations are cut to "City, ST"; street addresses in asset, creditor and
+  liability-type text become `[street address redacted]`) and personal residences (rows that name a personal
+  residence or non-rental second home are dropped). The pipeline never reads the FEC individual-contributions file,
+  so no individual contributor is published.
+
+Both validators check that no published asset or trade text still carries a minor's name under these indicators.
+
 ## Intermediate plug-in format
 
 Each source module writes, under `pipeline/build/`:
@@ -528,7 +554,7 @@ type HoldingsYear = {
 // companies.py rules, else null; category = the dataset's bucket (stock | bond | option | other), not a filed code;
 // owner as below; low/high = value band (both null: no value; high null alone: open-ended "Over $X");
 // income_type and income band as filed (null when not filed); location = "City, ST" for real property, else null.
-// Liability row: creditor and type as filed (redacted), incurred = date incurred as filed (free text),
+// Liability row: creditor and type as filed (only street addresses redacted), incurred = date incurred as filed (free text),
 // residence_secured = rule below.
 
 type BandSum = { n: number; unvalued: number; open_ended: number; low: number;
@@ -583,11 +609,8 @@ type Overlap = {              // a holding and a filed tie with the same org in 
   a personal residence or non-rental second home is never published (counted as `personal_residence`).
   `residence_secured` marks a liability whose type or creditor names a residence, home mortgage or home equity
   (and not rental, investment, commercial, farm or business).
-- **Beneficiary names.** Custodial and FBO accounts often name a filer's minor children. In asset text, the name
-  after `FBO`, `f/b/o`, `for the benefit of` or `custodian for`, and a "First [Middle] Last" name directly before
-  `UTMA`, `UGMA` or `UTA` (but not `UTA DTD`, a trust agreement), become `[name redacted]` (counted as
-  `asset_beneficiary_name_redacted`). Adults named this way are redacted too; the owner column still says whose
-  asset it is. An `other` org's name is the last segment of the asset text (the issuer, not the account path).
+- **Names in asset text.** See "Privacy" below: only minors' names are redacted. An `other` org's name is the last
+  segment of the asset text (the issuer, not the account path).
 - **Portfolio.** Latest report year; rows grouped by `org` when resolved, else by the asset text (`asset:<text>`);
   `share_low` = group low / total low, `share_high` = group high / total high (null when either is null); `sector`
   is the SIC major-group label from `companies.json` when SEC lists a SIC code.
@@ -603,7 +626,7 @@ type Overlap = {              // a holding and a filed tie with the same org in 
 - **Joins.** Holdings → filings and liabilities → filings are asserted 1:1; every document maps to one bioguide id;
   published rows + residence exclusions equal the rows of the used documents.
 - **Validation.** `python -m pipeline.holdings.validate` re-derives every total and net-worth range, checks owners,
-  document URLs, redaction (street addresses and beneficiary names) and edges, and writes
+  document URLs, redaction (street addresses and minors' names) and edges, and writes
   `pipeline/build/holdings-sample.csv` (25 rows, seed 20261113, with a machine check that the asset words and the band
   figures occur in the PDF text, and empty columns for a human). It creates `docs/validation/holdings-sample.csv` from
   it only when that reviewed file does not exist, and never overwrites it.

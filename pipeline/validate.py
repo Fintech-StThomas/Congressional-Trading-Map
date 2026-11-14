@@ -3,7 +3,7 @@
 Reads the published tree and pipeline/build/trades*.parquet. Checks (a) the schema of every output file, (b)
 invariants: row counts across joins, evidence and endpoints, by_year sums and order, owner never defaulted, ledger
 completeness and caps, the Case rule re-derived from published edges, cross-file counts (members, wall, wall-years,
-org index, meta), no beneficiary names in trade text; and writes (c) a reproducible sample of 25 trades for hand
+org index, meta), no minor's name in trade text; and writes (c) a reproducible sample of 25 trades for hand
 checking (pipeline/build/validation_sample.csv). Exits non-zero on any failure. Holdings: pipeline/holdings/validate.py.
 """
 from __future__ import annotations
@@ -27,7 +27,7 @@ from .assemble.orgs import year_party
 from .config import MONEY_EDGES_PER_MEMBER
 from .edges import edge_id, sum_amounts
 from .holdings.rules import redact_beneficiary
-from .util import BUILD, OUT, has_org_marker, read_json
+from .util import BUILD, OUT, read_json
 
 DATE = "date"
 OWNERS = {"self", "spouse", "joint", "dependent", "unspecified"}
@@ -100,26 +100,6 @@ def tie_party_bounds(r: dict[str, Any], terms: list[dict[str, Any]], latest: str
     year. A tie's split parties must be a non-empty subset of this; when it has one element the tie is forced."""
     a, b = int(str(r["first"])[:4]), int(str(r["last"])[:4])
     return {year_party(terms, y, latest)[0] for y in range(a, b + 1)}
-
-
-def payee_named(label: str) -> str | None:
-    """The name after "paid to " in an evidence label (to the closing parenthesis), or None."""
-    i = label.find("paid to ")
-    if i < 0:
-        return None
-    rest = label[i + len("paid to "):]
-    return rest[:-1] if rest.endswith(")") else rest
-
-
-def check_payees(c: Checker, e: dict[str, Any], where: str) -> None:
-    """No outside_spending evidence names a payee that lacks an organisational marker (private individuals are
-    never named; util.public_payee)."""
-    if e["type"] != "outside_spending":
-        return
-    for ev in e["evidence"]:
-        name = payee_named(ev["label"])
-        c.check(name is None or has_org_marker(name), "outside_spending evidence names no individual payee",
-                f"{where}:{e['id']}")  # the name itself is not printed
 
 
 def check_split(c: Checker, of: dict[str, Any], ties: list[dict[str, Any]], party: dict[str, str],
@@ -316,7 +296,7 @@ def check_trades(c: Checker, mf: dict[str, Any], where: str, orgs: set[str]) -> 
     for r in t.get("rows", []):
         row = dict(zip(TRADE_COLUMNS, r))
         c.check(len(r) == len(TRADE_COLUMNS), "schema", f"{where}.trade width")
-        c.check(not redact_beneficiary(row["asset"])[1], "no beneficiary name in trade asset text", row["id"])
+        c.check(not redact_beneficiary(row["asset"], row["owner"])[1], "no minor's name in trade asset text", row["id"])
         c.check(row["owner"] in OWNERS and row["action"] in ACTIONS and row["asset_class"] in CLASSES
                 and row["ticker_source"] in TICKER_SOURCES, "trade enums", f"{where}:{row['id']}")
         c.check(opt(is_date)(row["date"]) and opt(is_date)(row["available"]), "schema", f"{where}:{row['id']} dates")
@@ -410,7 +390,6 @@ def main() -> int:
         terms[mid] = mf["member"]["terms"]
         for e in mf["edges"]:
             check_edge(c, e, where, sources, members, orgs)
-            check_payees(c, e, where)
             c.check(mid in (e["from"]["id"], e["to"]["id"]), "member file edges touch the member", f"{where}:{e['id']}")
             seen_edges[e["id"]] = e
             full_pairs.add((mid, e["id"]))

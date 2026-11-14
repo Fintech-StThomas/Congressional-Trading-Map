@@ -120,7 +120,7 @@ person checked. `util.read_overrides` is the only reader: rows without `reviewed
 
 `python -m pipeline.run` ends with `validate.py` (12 million checks: schemas, row counts across joins, evidence and
 endpoints, by_year sums, ledger completeness and caps, the Case rule re-derived from published edges, cross-file
-counts, no beneficiary names in trade text). `python -m pipeline.holdings.validate` checks the holdings files. Both
+counts, no minor's name in trade text). `python -m pipeline.holdings.validate` checks the holdings files. Both
 exit 1 on any failure. The hand-check samples are written to `pipeline/build/`; the copies in `docs/validation/` are
 filled in by people and are never overwritten (see `docs/validation/README.md`).
 
@@ -169,6 +169,35 @@ Without the first four the script prints "R2 upload skipped" and exits 0 (local 
 Any failed upload exits 1 before `meta.json`, the manifest and deletions, so the bucket keeps the previous manifest
 and `meta.json`; files that did upload are sent again next run because the old manifest still lists their old hashes.
 The script never prints secrets or the endpoint. Tests: `pipeline/tests/test_publish_r2.py` (moto's fake S3).
+
+## Privacy
+
+Public data stays public: everything here comes from public filings (FEC reports, House and Senate disclosure
+reports, congress-legislators), and adults named in them are published as filed. Only minors are redacted, because
+they did not choose public life.
+
+- **Published as filed:** members and their spouses; adults named in account titles (an IRA "FBO" an adult, trusts
+  named after adults, the member's or spouse's own name); FEC committees, and independent-expenditure payees
+  (the vendors and consultants a committee paid, individuals and organisations alike, in the "(paid to ...)"
+  evidence labels and `meta.json.reports.fec.review_large_funds_rows`); liability creditors and types (no change
+  to the creditor name, whether a bank or a person).
+- **Redacted (minors only):** a beneficiary's name becomes `[name redacted]` only when the filing row itself
+  indicates a minor: (1) a custodial account form (`UTMA`, `UGMA`, `UTA` but not `UTA DTD`, "custodian (for)",
+  "cust", "minor" / "a minor"); (2) a 529 or education-savings account (`529`, Coverdell, `ESA`, "education
+  savings") naming a beneficiary; (3) any row whose owner is filed as a dependent child (owner `dependent`), where
+  person-shaped names in the account title are redacted as well. On rows (1) and (2) the name after `FBO`, `f/b/o`,
+  "for the benefit of", "custodian for" or "beneficiary", and a "First [M.] Last" name directly before
+  `UTMA`/`UGMA`/`UTA`, are redacted. When the filing gives no way to tell and the owner is not a dependent child, the
+  text is published as filed. Counts per rule: `meta.json.reports.holdings` (`asset_minor_name_redacted_<rule>`).
+- **Never published:** street addresses (locations are cut to "City, ST"; street addresses in asset, creditor and
+  liability-type text become `[street address redacted]`) and personal residences (rows that name a personal
+  residence or non-rental second home are dropped). The pipeline never reads the FEC individual-contributions file,
+  so no individual contributor is published.
+
+Both validators check that no published asset or trade text still carries a minor's name under these indicators.
+
+The binding version is the data dictionary's "Privacy" section; the code is `holdings/rules.py`
+(`minor_rule`, `redact_beneficiary`, `redact`, `city_state`, `is_personal_residence`).
 
 ## Sources and licences
 

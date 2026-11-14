@@ -350,8 +350,10 @@ def run() -> None:
             residence_rows.append(r["id"])
             continue
         text, hit = rules.redact(asset, True, bool(r["location"]))
-        text, named = rules.redact_beneficiary(text)
-        c["asset_beneficiary_name_redacted"] += named
+        text, named = rules.redact_beneficiary(text, rules.OWNER[r["owner"]])
+        c["asset_beneficiary_name_redacted"] += bool(named)
+        if named:
+            c[f"asset_minor_name_redacted_{named}"] += 1
         loc, loc_hit = rules.city_state(r["location"]) if r["location"] else (None, False)
         if hit:
             c["asset_text_redacted"] += 1
