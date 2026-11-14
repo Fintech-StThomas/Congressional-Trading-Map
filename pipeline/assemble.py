@@ -37,7 +37,19 @@ MONEY_MEMBERS_PER_ORG = 200          # members listed per org for money ties; th
 FAMILY_ORDER = {"money": 0, "holding": 1, "people": 2, "context": 3}
 STOCK_ACT_YEAR = 2012
 MEMBER_LEDGER_COLS = ["type", "kind", "other", "via", "exact", "low", "high", "count", "first", "last", "note", "dir"]
-ORG_TIE_COLS = ["type", "member", "exact", "low", "high", "count", "first", "last", "edge"]
+CARRIED_OVER = ("holdings", "holdings-index.json")  # written by the holdings stage, not by the assembler
+ORG_TIE_COLS = ["type", "member", "exact", "low", "high", "count", "first", "last", "edge", "note"]
+# Party split per org (contract: OrgSummary.split). Measure -> the ties it counts.
+PARTIES = ("D", "I", "R")
+SPLIT_MEASURES = ("given", "support", "oppose", "traded")
+WALL_COLS = ["id", "name", "last", "party", "state", "chamber", "district", "current", "photo", "cases", "trades",
+             "pac", "support", "oppose", "orgs"]
+ORG_INDEX_COLS = ["id", "name", "kind", "ticker", "members_D", "members_I", "members_R", "dollars_D", "dollars_I",
+                  "dollars_R", "degree"]
+ORG_INDEX_TOP = 300
+# Wall by year (contract: WallYears). Members serving each year, with sparse per-year measures.
+WALL_YEARS_COLS = ["id", "terms", "cases", "trades", "pac", "oppose"]
+WALL_YEAR_MIN = 2000
 
 
 def shard(org_id: str) -> str:
@@ -255,9 +267,140 @@ def org_ties(edges: list[dict[str, Any]], full_in_member_file: set[tuple[str, st
     for e in rank(edges):
         (listed if e["family"] != "money" or member_of(e) in top else rest).append(e)
     rows = [[e["type"], member_of(e), num(e["amount"]["exact"]), num(e["amount"]["low"]), num(e["amount"]["high"]),
-             e["count"], e["first"], e["last"], e["id"] if (member_of(e), e["id"]) in full_in_member_file else None]
+             e["count"], e["first"], e["last"], e["id"] if (member_of(e), e["id"]) in full_in_member_file else None,
+             e["note"]]
             for e in listed]
     return {"cols": ORG_TIE_COLS, "rows": rows}, rest
+
+
+def member_end(e: dict[str, Any]) -> str:
+    return e["to"]["id"] if e["to"]["kind"] == "member" else e["from"]["id"]
+
+
+def split_measure(e: dict[str, Any]) -> str | None:
+    """Which party-split measure an org-member tie counts toward, if any."""
+    if e["type"] == "pac_money":
+        return "given"
+    if e["type"] == "outside_spending":
+        return "support" if e["note"] == "support" else "oppose" if e["note"] == "oppose" else None
+    if e["type"] == "traded":
+        return "traded"
+    return None
+
+
+def party_split(edges: list[dict[str, Any]], party: dict[str, str]) -> dict[str, Any]:
+    """{measure: {party: [distinct members, dollars]}} over every tie (current and former members); dollars are
+    null for traded. Only measures with at least one tie are present."""
+    members: dict[str, dict[str, set[str]]] = defaultdict(lambda: {p: set() for p in PARTIES})
+    dollars: dict[str, Counter[str]] = defaultdict(Counter)
+    for e in edges:
+        m = split_measure(e)
+        if m is None:
+            continue
+        mid = member_end(e)
+        members[m][party[mid]].add(mid)
+        dollars[m][party[mid]] += edge_size(e)
+    return {m: {p: [len(members[m][p]), None if m == "traded" else num(float(dollars[m][p]))] for p in PARTIES}
+            for m in SPLIT_MEASURES if m in members}
+
+
+def wall_rows(summaries: dict[str, dict[str, Any]], member_edges: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
+    rows = []
+    for mid in sorted(summaries):
+        s = summaries[mid]
+        got: Counter[str] = Counter()
+        for e in member_edges.get(mid, []):
+            if e["to"]["id"] != mid:
+                continue
+            if e["type"] == "pac_money":
+                got["pac"] += edge_size(e)
+            elif e["type"] == "outside_spending" and e["note"] in ("support", "oppose"):
+                got[e["note"]] += edge_size(e)
+        rows.append([mid, s["name"], s["last"], s["party"], s["state"], s["chamber"], s["district"], int(s["current"]),
+                     int(s["photo"]), s["counts"]["cases"], s["counts"]["trades"], num(float(got["pac"])),
+                     num(float(got["support"])), num(float(got["oppose"])), s["counts"]["orgs"]])
+    return {"cols": WALL_COLS, "rows": rows}
+
+
+def served_years(t: dict[str, Any]) -> tuple[int, int]:
+    """Calendar years a term covers under the coverage rule (a term ending on 3 January does not count that year)."""
+    end_y = int(t["end"][:4])
+    return int(t["start"][:4]), end_y if t["end"] > f"{end_y}-01-03" else end_y - 1
+
+
+def wall_years(spine: dict[str, dict[str, Any]], member_edges: dict[str, list[dict[str, Any]]],
+               member_cases: dict[str, list[dict[str, Any]]], trades: dict[str, list[dict[str, Any]]],
+               this_year: int, trade_first: dict[str, int]) -> dict[str, Any]:
+    """wall-years.json: per member, merged terms [start year, end year, chamber, party, state] and sparse flat
+    [year, value, year, value, ...] arrays for cases active, household trades, PAC dollars received and outside
+    spending against, so the wall can be redrawn for any year with one fetch."""
+    rows = []
+    for mid in sorted(spine):
+        terms: list[list[Any]] = []
+        for t in sorted(spine[mid]["terms"], key=lambda t: t["start"]):
+            a, b = served_years(t)
+            if b < max(a, WALL_YEAR_MIN):
+                continue
+            a = max(a, WALL_YEAR_MIN)
+            last = terms[-1] if terms else None
+            if last and last[2:] == [t["chamber"], t["party"], t["state"]] and a <= last[1] + 1:
+                last[1] = max(last[1], b)
+            else:
+                terms.append([a, b, t["chamber"], t["party"], t["state"]])
+        cases: Counter[int] = Counter()
+        for c in member_cases.get(mid, []):
+            for y in range(c["years"][0], c["years"][1] + 1):
+                cases[y] += 1
+        tr: Counter[int] = Counter()
+        for t in trades.get(mid, []):
+            d = t["date"] or t["available"]
+            if d:
+                tr[d.year] += 1
+        pac: Counter[int] = Counter()
+        opp: Counter[int] = Counter()
+        for e in member_edges.get(mid, []):
+            if e["to"]["id"] != mid:
+                continue
+            into = pac if e["type"] == "pac_money" else opp if e["type"] == "outside_spending" and e["note"] == "oppose" else None
+            if into is not None:
+                for b in e["by_year"]:
+                    into[b["y"]] += b["exact"] or b["high"] or b["low"] or 0
+
+        def flat(c: Counter[int]) -> list[int]:
+            return [v for y in sorted(c) if round(c[y]) for v in (y, int(round(c[y])))]
+        rows.append([mid, terms, flat(cases), flat(tr), flat(pac), flat(opp)])
+    return {"years": [WALL_YEAR_MIN, this_year], "cols": WALL_YEARS_COLS, "rows": rows,
+            "first": {"trades": trade_first, "cases": STOCK_ACT_YEAR, "money": WALL_YEAR_MIN - 1}}
+
+
+def org_index(used_orgs: dict[str, dict[str, Any]], org_edges: dict[str, list[dict[str, Any]]],
+              spine: dict[str, Any]) -> dict[str, Any]:
+    """Top organisations by distinct current members tied by money (pac_money or outside_spending) and by
+    pac_money dollars to current members, with both split by party."""
+    stats = {}
+    for o, es in org_edges.items():
+        reached: dict[str, set[str]] = {p: set() for p in PARTIES}
+        given: Counter[str] = Counter()
+        for e in es:
+            if e["type"] not in ("pac_money", "outside_spending"):
+                continue
+            m = spine[member_end(e)]
+            if not m["current"]:
+                continue
+            reached[m["party"]].add(member_end(e))
+            if e["type"] == "pac_money":
+                given[m["party"]] += edge_size(e)
+        n, d = sum(len(v) for v in reached.values()), sum(given.values())
+        if n:
+            stats[o] = (n, d, [len(reached[p]) for p in PARTIES], [num(float(given[p])) for p in PARTIES])
+    by_members = sorted(stats, key=lambda o: (-stats[o][0], -stats[o][1], o))[:ORG_INDEX_TOP]
+    by_dollars = sorted((o for o in stats if stats[o][1] > 0), key=lambda o: (-stats[o][1], -stats[o][0], o))[:ORG_INDEX_TOP]
+    ids = sorted(set(by_members) | set(by_dollars))
+    pos = {o: i for i, o in enumerate(ids)}
+    rows = [[o, used_orgs[o]["name"], used_orgs[o]["kind"], used_orgs[o]["ticker"], *stats[o][2], *stats[o][3],
+             used_orgs[o]["degree"]] for o in ids]
+    return {"cols": ORG_INDEX_COLS, "rows": rows, "by_members": [pos[o] for o in by_members],
+            "by_dollars": [pos[o] for o in by_dollars]}
 
 
 def ledger_totals(edges: list[dict[str, Any]]) -> dict[str, Any]:
@@ -321,6 +464,11 @@ def swap_into_place(staging: Path) -> None:
     if old.exists():
         shutil.rmtree(old)
     if OUT.exists():
+        # Files written by other stages (holdings) live beside the assembled tree; carry them over.
+        for name in CARRIED_OVER:
+            src = OUT / name
+            if src.exists() and not (staging / name).exists():
+                src.rename(staging / name)
         OUT.rename(old)
     staging.rename(OUT)
     if old.exists():
@@ -353,7 +501,9 @@ def run() -> None:
     for e in edges:
         for end in {e["from"]["id"]: e["from"], e["to"]["id"]: e["to"]}.values():
             (member_edges if end["kind"] == "member" else org_edges)[end["id"]].append(e)
-    used_orgs = {o: {**orgs[o], "degree": len({end["id"] for e in es for end in (e["from"], e["to"]) if end["kind"] == "member"})}
+    party = {mid: m["party"] for mid, m in spine.items()}
+    used_orgs = {o: {**orgs[o], "degree": len({end["id"] for e in es for end in (e["from"], e["to"]) if end["kind"] == "member"}),
+                     "split": party_split(es, party)}
                  for o, es in sorted(org_edges.items())}
     cases = find_cases(edges)
     case_edges = {eid for c in cases for eid in c["edges"]}
@@ -401,7 +551,10 @@ def run() -> None:
     shards: dict[str, dict[str, Any]] = defaultdict(dict)
     for o, es in org_edges.items():
         ties, rest = org_ties(es, full_pairs)
-        shards[shard(o)][o] = {"org": used_orgs[o], "ties": ties, "ledger_totals": ledger_totals(rest)}
+        chambers = Counter(spine[mid]["chamber"] for mid in {member_end(e) for e in es})
+        shards[shard(o)][o] = {"org": used_orgs[o], "ties": ties, "ledger_totals": ledger_totals(rest),
+                               "chambers": {ch: chambers[ch] for ch in ("rep", "sen")},
+                               "years": [min(int(e["first"][:4]) for e in es), max(int(e["last"][:4]) for e in es)]}
 
     states: dict[str, list[str]] = defaultdict(list)
     current = sorted((s for s in summaries.values() if s["current"]),
@@ -453,6 +606,9 @@ def run() -> None:
         ("orgs.json", list(used_orgs.values())),
         ("board.json", {"states": dict(sorted(states.items()))}),
         ("member-ties.json", member_ties), ("cases.json", cases),
+        ("wall.json", wall_rows(summaries, member_edges)), ("org-index.json", org_index(used_orgs, org_edges, spine)),
+        ("wall-years.json", wall_years(spine, member_edges, member_cases, by_member_trades, this_year,
+                                       {ch: int(str(trades_report["coverage"][ch]["first_filing"])[:4]) for ch in ("rep", "sen")})),
         *member_files, *((f"orgs/{k}.json", dict(sorted(v.items()))) for k, v in sorted(shards.items())),
     ]
     staging = OUT.with_name(OUT.name + ".staging")

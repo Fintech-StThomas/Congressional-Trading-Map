@@ -5,6 +5,7 @@ import { join } from "node:path";
 import type { Board, Case, Edge, MemberFileWire, MemberSummary, Meta, OrgSummary, TradeFile } from "./types";
 import { toBoardMember, type BoardMember, type NameBook } from "./client";
 import { isRealDataBuild } from "./source";
+import { pickBoardSplit } from "./pick";
 
 const ROOT = process.cwd();
 const REAL_DIR = join(ROOT, "public", "data");
@@ -78,6 +79,11 @@ export function getMeta(): Meta {
   return read<Meta>("meta.json", {});
 }
 
+/** Any data file by path, or the fallback when it is missing (files newer than some builds and the fixtures). */
+export function readData<T>(rel: string, fallback: T): T {
+  return read<T>(rel, fallback);
+}
+
 /** Build date as an ISO string, from whichever key the pipeline used. */
 export function metaBuilt(meta: Meta = getMeta()): string | null {
   const build = (meta as Record<string, unknown>).build as { time?: string } | undefined;
@@ -118,15 +124,15 @@ export function orgNodesOf(file: MemberFileWire): Record<string, OrgSummary> {
   return out;
 }
 
-export type MemberBoard = { edges: Edge[]; nodes: Record<string, OrgSummary>; members: Record<string, BoardMember>; more: number };
+/** `edges` holds the strings plus up to 3 spenders against (told apart by pick.ts isAgainst); `againstMore` counts the rest. */
+export type MemberBoard = { edges: Edge[]; nodes: Record<string, OrgSummary>; members: Record<string, BoardMember>; more: number; againstMore: number };
 
-/** The strings the board draws for one member: the file's `board` ids, in order. */
+/** The strings the board draws for one member, chosen by `pickBoard` from every edge in the file. */
 export function memberBoard(id: string): MemberBoard {
   const file = getMemberFile(id);
-  if (!file) return { edges: [], nodes: {}, members: {}, more: 0 };
-  const byId = new Map(file.edges.map((e) => [e.id, e]));
-  const ids = file.board ?? [];
-  const edges = (ids.length ? ids.map((x) => byId.get(x)).filter((e): e is Edge => Boolean(e)) : file.edges.slice(0, 12));
+  if (!file) return { edges: [], nodes: {}, members: {}, more: 0, againstMore: 0 };
+  const split = pickBoardSplit(id, file.edges);
+  const edges = [...split.strings, ...split.against];
   const all = orgNodesOf(file);
   const nodes: Record<string, OrgSummary> = {};
   const members: Record<string, BoardMember> = {};
@@ -141,5 +147,20 @@ export function memberBoard(id: string): MemberBoard {
     }
   const m = file.member;
   const more = Math.max(0, (m.counts?.orgs ?? 0) + (m.counts?.members ?? 0) - drawn.size);
-  return { edges, nodes, members, more };
+  return { edges, nodes, members, more, againstMore: split.againstMore };
+}
+
+/**
+ * A member's holdings file (House annual reports), or null. PT_HOLDINGS_DIR points
+ * at another folder of holdings/<id>.json files (testing against unmerged data).
+ */
+export function getHoldings(id: string): import("./holdings").HoldingsFile | null {
+  const dir = process.env.PT_HOLDINGS_DIR || join(DATA_DIR, "holdings");
+  const p = join(dir, `${id}.json`);
+  if (!existsSync(/*turbopackIgnore: true*/ p)) return null;
+  try {
+    return JSON.parse(readFileSync(/*turbopackIgnore: true*/ p, "utf8"));
+  } catch {
+    return null;
+  }
 }

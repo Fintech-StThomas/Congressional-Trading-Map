@@ -11,6 +11,7 @@ import { orgShard } from "@/lib/hash";
 import { EvidenceDrawer, ExternalIcon } from "./EvidenceDrawer";
 import { PartyTag } from "./Print";
 import { LineSample } from "./LineSample";
+import { OrgReach, OrgSplit } from "./OrgReach";
 
 type Key = "member" | "type" | "amount" | "count" | "last";
 
@@ -140,6 +141,8 @@ export function OrgView({ sources }: { sources: Record<string, string> }) {
           {o.ticker ? ` · ${o.ticker}` : ""}
           {o.sector ? ` · ${o.sector}` : ""}
           {o.cik ? ` · CIK ${o.cik}` : ""} · tied to {count(o.degree)} {o.degree === 1 ? "member" : "members"}
+          {file.chambers ? ` (${count(file.chambers.rep)} House, ${count(file.chambers.sen)} Senate)` : ""}
+          {file.years ? ` · ${file.years[0] === file.years[1] ? file.years[0] : `${file.years[0]}–${file.years[1]}`}` : ""}
         </p>
         <div className="dossier__actions">
           <Link className="btn btn--paper" href={boardHref({ o: o.id })}>Open on the board</Link>
@@ -150,6 +153,9 @@ export function OrgView({ sources }: { sources: Record<string, string> }) {
           )}
         </div>
       </header>
+
+      <OrgSplit file={file} />
+      <OrgReach file={file} ties={ties} members={members} record={record} onOpen={openTie} />
 
       {file.ledger_totals && Object.keys(file.ledger_totals).length > 0 && (
         <ul className="ledger__totals ledger__totals--wide">

@@ -31,6 +31,10 @@
   --red-hot: oklch(0.72 0.19 32);
   --red-under: oklch(0.32 0.11 26);
   --red-ink: oklch(0.47 0.175 27);
+  --yarn-ply-lite: oklch(0.8 0.12 38 / 0.75);
+  --yarn-ply-dark: oklch(0.36 0.13 26 / 0.75);
+  --yarn-fibre: oklch(0.72 0.15 34);
+  --yarn-worn: oklch(0.64 0.09 32);
   --context: oklch(0.6 0.006 80);
   --context-under: oklch(0.28 0.004 70);
 
@@ -74,9 +78,15 @@ body {
   display: flex;
   flex-direction: column;
   background-color: var(--bg);
-  background-image: var(--felt-grain);
-  background-size: 240px;
-  background-blend-mode: soft-light;
+  /* The room: the lamp's spill reaches the page faintly, darker toward the corners. */
+  background-image:
+    radial-gradient(ellipse 70% 60% at 50% 30%, oklch(0.24 0.014 62 / 0.55), transparent 100%),
+    radial-gradient(ellipse 110% 90% at 50% 32%, transparent 55%, oklch(0.07 0.006 50 / 0.7) 100%),
+    var(--felt-grain);
+  background-size: 100% 100vh, 100% 100vh, 240px;
+  background-repeat: no-repeat, no-repeat, repeat;
+  background-attachment: fixed, fixed, scroll;
+  background-blend-mode: normal, normal, soft-light;
   color: var(--text);
   font-family: var(--sans);
   font-size: 15px;
@@ -526,22 +536,60 @@ input[type="checkbox"] {
   height: 15px;
 }
 
-/* line samples: the legend's vocabulary, reused everywhere */
+/* line samples: the legend's vocabulary, reused everywhere. Drawn like the yarn. */
 .linesample path {
   fill: none;
   stroke-linecap: round;
-  stroke-width: 2.4;
+}
+.linesample__shadow {
+  stroke: oklch(0 0 0 / 0.5);
+  stroke-width: 3;
+}
+.linesample__core {
   stroke: var(--red);
+  stroke-width: 2.6;
 }
-.linesample--derived path {
-  stroke-dasharray: 7 4;
+.linesample__ply {
+  stroke: var(--yarn-ply-lite);
+  stroke-width: 0.8;
+  opacity: 0.6;
 }
-.linesample--weak path {
-  stroke-dasharray: 2 3.5;
+.linesample--derived .linesample__shadow,
+.linesample--weak .linesample__shadow {
+  stroke-width: 2.2;
 }
-.linesample--context path {
+.linesample--derived .linesample__core,
+.linesample--weak .linesample__core {
+  stroke-width: 1.6;
+}
+.linesample--derived .linesample__ply,
+.linesample--weak .linesample__ply {
+  stroke-width: 0.6;
+  opacity: 0.7;
+}
+.linesample__fibre {
+  stroke: var(--yarn-fibre);
+  stroke-width: 0.4;
+  opacity: 0.9;
+}
+.linesample path.linesample__corefill {
+  fill: color-mix(in oklch, var(--red) 86%, var(--felt));
+  stroke: none;
+}
+.linesample path.linesample__shadowfill {
+  fill: oklch(0 0 0 / 0.45);
+  stroke: none;
+}
+.linesample__thread {
+  stroke: var(--yarn-worn);
+  stroke-width: 0.45;
+}
+.linesample--context .linesample__core {
   stroke: var(--context);
   stroke-width: 1.3;
+}
+.linesample--context .linesample__shadow {
+  stroke-width: 1.6;
 }
 
 .party {
@@ -716,3 +764,61 @@ input[type="checkbox"] {
   max-width: 72ch;
 }
 
+
+/* "What this does not show": a fixed, quiet line per tie type (lib/notshown.ts). */
+.notshown {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-3);
+  font-style: italic;
+}
+.notshown__k {
+  font-style: normal;
+  font-weight: 600;
+}
+.casebtn__not {
+  display: block;
+  margin-top: 3px;
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--text-3);
+  font-style: italic;
+}
+.dossier__notshown {
+  flex-basis: 100%;
+  display: block;
+}
+
+/* Page breadcrumbs (member page, full file). */
+.crumbs--page {
+  font-size: 13.5px;
+  color: var(--text-3);
+  margin: 18px 0 6px;
+}
+.crumbs--page a {
+  color: var(--text-2);
+}
+
+/* The reason a string is frayed, stamped in words (never in the stroke). */
+.tag--weak {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 4px;
+  border: 1px solid currentColor;
+  border-radius: 1px;
+  font: 700 9.5px/1.45 var(--type);
+  letter-spacing: 0.08em;
+  color: var(--ink-2);
+  background: transparent;
+  transform: rotate(-1.5deg);
+  vertical-align: 1px;
+}
+.ties .tag--weak,
+.tablezone .tag--weak {
+  color: var(--text-2);
+}
+.drawer__weak {
+  font-size: 13px;
+  line-height: 1.45;
+}

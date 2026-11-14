@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Edge, NodeRef, OrgSummary } from "@/lib/types";
 import type { MapGeometry } from "@/lib/geo";
-import { arrange, yarn, type Rect } from "@/lib/layout";
-import { typeLabel, amountLabel, filteredAmount, otherEnd, stringStyle, strokeWidth } from "@/lib/edges";
+import { arrange, yarn, yarnAt, yarnPoint, type Rect, type Yarn } from "@/lib/layout";
+import { typeLabel, amountLabel, filteredAmount, otherEnd, stringStyle, strokeWidth, isFrayed, frayCue, tiePhrase, weakTag } from "@/lib/edges";
 import { count, seat } from "@/lib/format";
 import { nodeName, ORG_KIND_LABEL, type BoardMember, type NameBook } from "@/lib/client";
-import { tiltFor } from "@/lib/hash";
+import { fnv1a, tiltFor } from "@/lib/hash";
+import { frayed as fray } from "@/lib/fray";
 import { Print, PartyTag } from "../Print";
 import { USMap } from "./USMap";
 
@@ -25,11 +26,14 @@ type Props = {
   edges: Edge[];
   book: NameBook;
   caseNodes: Set<string>;
+  /** Edge ids the assumption switches exclude: drawn faded, not removed. */
+  excluded?: Set<string>;
   focusNode: string | null;
   drawKey: string;
   range: [number, number];
   activeEdge: string | null;
-  onOpenEdge: (e: Edge, el: Element) => void;
+  /** Open the evidence for `e`; `group` holds every string to the same card. */
+  onOpenEdge: (e: Edge, el: Element, group?: Edge[]) => void;
   onRecenter: (n: NodeRef) => void;
   slip: ReactNode;
   loading: boolean;
@@ -39,14 +43,117 @@ const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayout
 
 type NodeCard = { ref: NodeRef; edges: Edge[]; order: number };
 
+// ---- the lamp ------------------------------------------------------------------
+// One light above the board and slightly in front, centred a little above the
+// middle. Everything casts its shadow away from it; further out, longer and softer.
+const LAMP = { x: 0.5, y: 0.36 };
+type Light = { sx: number; sy: number; blur: number; dim: number; ang: number; gx: number; gy: number };
+function lightAt(W: number, H: number, x: number, y: number): Light {
+  const R = Math.max(200, Math.hypot(W, H) / 2);
+  const vx = (x - W * LAMP.x) / R, vy = (y - H * LAMP.y) / R;
+  const d = Math.min(1.1, Math.hypot(vx, vy));
+  const r = (v: number) => Math.round(v * 100) / 100;
+  const ul = Math.hypot(vx, vy) || 1;
+  return {
+    sx: r(vx * 10),
+    sy: r(2.2 + vy * 9),
+    blur: r(7 + d * 14),
+    dim: r(Math.min(1, d * 1.15)),
+    ang: Math.round((Math.atan2(vx, -vy) * 180) / Math.PI),
+    // Specular glint sits on the lamp side of a pin head.
+    gx: r(d < 0.05 ? 0 : (-vx / ul) * 1.7),
+    gy: r(d < 0.05 ? -1.6 : (-vy / ul) * 1.7 - 0.4),
+  };
+}
+const lightVars = (l: Light) =>
+  ({ "--sx": l.sx, "--sy": l.sy, "--sb": l.blur, "--dim": l.dim, "--lang": `${l.ang}deg` }) as React.CSSProperties;
+
+// ---- the draw-in -----------------------------------------------------------------
+const STAGGER = 55; // ms between strings
+const LEAD = 80; // ms before the first string
+const SETTLE = 620; // ms: overshoot, then a damped sway back to rest
+const SAG_KEYS = [0.55, 1.12, 0.95, 1.02, 1];
+const SAG_TIMES = "0;0.38;0.64;0.84;1";
+const SAG_SPLINES = "0.2 0.6 0.35 1;0.45 0 0.55 1;0.45 0 0.55 1;0.45 0 0.55 1";
+
+/** Bounding box of a yarn (control hull) padded for fibres and sway. */
+function boxOf(y: Yarn, pad: number) {
+  const xs = [y.p0.x, y.c.x, y.p1.x], ys = [y.p0.y, y.c.y, y.p1.y];
+  const x = Math.min(...xs) - pad, yy = Math.min(...ys) - pad;
+  return { x: Math.floor(x), y: Math.floor(yy), w: Math.ceil(Math.max(...xs) - x + pad), h: Math.ceil(Math.max(...ys) - yy + pad) };
+}
+
+/** Distance from a point to the yarn, sampled. Used so the nearer string wins. */
+function distTo(y: Yarn, px: number, py: number): number {
+  let best = Infinity;
+  for (let i = 0; i <= 24; i++) {
+    const p = yarnPoint(y, i / 24);
+    best = Math.min(best, Math.hypot(p.x - px, p.y - py));
+  }
+  return best;
+}
+
+/**
+ * A weak or statistical string as worn yarn: the strand pinches at two or three
+ * worn spots where its plies part into finer threads (one spot may hang by a
+ * single thread), with loose fibres added once the board has settled.
+ */
+function FrayedYarn({ id, y, w, anim, begin, fibres, px, py }: { id: string; y: Yarn; w: number; anim: boolean; begin: string; fibres: number; px: number; py: number }) {
+  const rest = useMemo(() => fray(id, y, w, 1, fibres), [id, y, w, fibres]);
+  const keys = useMemo(() => (anim ? SAG_KEYS.map((k) => fray(id, y, w, k, 0)) : null), [anim, id, y, w]);
+  const A = (pick: (f: ReturnType<typeof fray>) => string) =>
+    keys ? <animate attributeName="d" values={keys.map(pick).join(";")} keyTimes={SAG_TIMES} calcMode="spline" keySplines={SAG_SPLINES} dur={`${SETTLE}ms`} begin={begin} fill="freeze" /> : null;
+  return (
+    <>
+      <path className="yv__shadow yv__shadow--fill" d={rest.core}>{A((f) => f.core)}</path>
+      <path className="yv__shadow yv__shadow--thread" d={rest.threads}>{A((f) => f.threads)}</path>
+      <g className="yv__lift">
+        <path className="yv__corefill" d={rest.core}>{A((f) => f.core)}</path>
+        <path className="yv__ply yv__ply--dark" d={rest.plies} style={{ strokeWidth: Math.max(0.45, w * 0.45) }} transform={`translate(${px} ${py})`}>{A((f) => f.plies)}</path>
+        <path className="yv__ply yv__ply--lite" d={rest.plies} style={{ strokeWidth: Math.max(0.4, w * 0.35) }} transform={`translate(${-px} ${-py})`}>{A((f) => f.plies)}</path>
+        <path className="yv__thread" d={rest.threads}>{A((f) => f.threads)}</path>
+        {fibres !== 0 && (
+          <>
+            <path className="yv__fibre" d={rest.fibres} />
+            <path className="yv__fibre yv__fibre--fine" d={rest.fibresFine} />
+          </>
+        )}
+      </g>
+    </>
+  );
+}
+
+/** Renders the fuzz (displacement) only on capable, fine-pointer, wide screens. */
+function useRichYarn(): { rich: boolean; still: boolean } {
+  const [v, setV] = useState({ rich: false, still: false });
+  useEffect(() => {
+    const cheap = window.matchMedia("(max-width: 719px), (pointer: coarse)");
+    const still = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const nav = navigator as Navigator & { deviceMemory?: number; connection?: { saveData?: boolean } };
+    const weak = (nav.hardwareConcurrency ?? 8) <= 2 || (nav.deviceMemory ?? 8) < 4 || Boolean(nav.connection?.saveData);
+    const apply = () => setV({ rich: !cheap.matches && !weak, still: still.matches });
+    apply();
+    cheap.addEventListener("change", apply);
+    still.addEventListener("change", apply);
+    return () => {
+      cheap.removeEventListener("change", apply);
+      still.removeEventListener("change", apply);
+    };
+  }, []);
+  return v;
+}
+
 export function BoardCanvas(props: Props) {
-  const { geo, counts, selectedState, onSelectState, center, edges, book, caseNodes, focusNode, drawKey, range, activeEdge, onOpenEdge, onRecenter, slip, loading } = props;
+  const { geo, counts, selectedState, onSelectState, center, edges, book, caseNodes, excluded, focusNode, drawKey, range, activeEdge, onOpenEdge, onRecenter, slip, loading } = props;
   const box = useRef<HTMLDivElement>(null);
   const slipRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<{ W: number; H: number } | null>(null);
   const [slipBox, setSlipBox] = useState<Rect | null>(null);
   const [hover, setHover] = useState<string | null>(null);
+  const [focused, setFocused] = useState<string | null>(null);
   const [hoverNode, setHoverNode] = useState<string | null>(null);
+  const { rich, still } = useRichYarn();
+  const [settled, setSettled] = useState<string | null>(null);
 
   useIsoLayoutEffect(() => {
     const el = box.current;
@@ -68,6 +175,7 @@ export function BoardCanvas(props: Props) {
   }, []);
 
   const selfId = center?.kind === "member" ? center.member.id : center?.kind === "org" ? center.org.id : "";
+  const centreName = center?.kind === "member" ? center.member.name : center?.kind === "org" ? center.org.name : "";
 
   const nodes = useMemo<NodeCard[]>(() => {
     const map = new Map<string, NodeCard>();
@@ -87,8 +195,8 @@ export function BoardCanvas(props: Props) {
   const layout = useMemo(() => {
     if (!size || !center) return null;
     const { W, H } = size;
-    const compact = W < 940;
-    const cw = compact ? 158 : 184, ch = compact ? 58 : 64;
+    const compact = W < 1000 || H < 620;
+    const cw = compact ? 176 : 190, ch = compact ? 80 : 88;
     const centerRect: Rect =
       center.kind === "member"
         ? (() => {
@@ -101,7 +209,7 @@ export function BoardCanvas(props: Props) {
     const pos = new Map(placed.map((p) => [p.id, p]));
     const strings = nodes.flatMap((n) => {
       const p = pos.get(`${n.ref.kind}:${n.ref.id}`)!;
-      // Pin on the edge facing the centre so yarn never crosses the card's text.
+      // Pin on the edge facing the centre, clear of the text and the re-centre control.
       const ccx = centerRect.x + centerRect.w / 2;
       const pin =
         p.y + p.h < centerRect.y + 10
@@ -109,29 +217,64 @@ export function BoardCanvas(props: Props) {
           : p.y > centerRect.y + centerRect.h - 10
             ? { x: p.x + p.w / 2, y: p.y + 7 }
             : p.x + p.w / 2 < ccx
-              ? { x: p.x + p.w - 11, y: p.y + 8 }
-              : { x: p.x + 11, y: p.y + 8 };
+              ? { x: p.x + p.w - 6, y: p.y + Math.round(p.h * 0.42) }
+              : { x: p.x + 6, y: p.y + Math.round(p.h * 0.42) };
       return n.edges.map((e, j) => {
         const k = n.edges.length;
         const slack = 1 + (j - (k - 1) / 2) * 0.42;
         const shift = (j - (k - 1) / 2) * 7;
-        return { e, node: n, pin, y: yarn(centerRect, pin, slack, shift) };
+        const y = yarn(centerRect, pin, slack, shift);
+        return { e, node: n, pin, y, light: lightAt(W, H, y.mid.x, y.mid.y) };
       });
     });
     const pins = new Map(strings.map((x) => [`${x.node.ref.kind}:${x.node.ref.id}`, x.pin]));
     // Draw order: strongest string first, as the edges arrived.
     const orderOf = new Map(edges.map((e, i) => [e.id, i]));
     strings.sort((a, b) => orderOf.get(a.e.id)! - orderOf.get(b.e.id)!);
-    return { W, H, centerRect, placed, pos, strings, pins, cw, ch, compact };
+    const lights = new Map(placed.map((p) => [p.id, lightAt(W, H, p.x + p.w / 2, p.y + p.h / 2)]));
+    const slipLight = slipBox ? lightAt(W, H, slipBox.x + slipBox.w / 2, slipBox.y + slipBox.h / 2) : null;
+    return { W, H, centerRect, placed, pos, strings, pins, lights, slipLight, cw, ch, compact };
   }, [size, center, nodes, edges, slipBox]);
 
+  // Fuzz goes on once the strings have come to rest, so no filter runs while they sway.
+  const nStrings = layout?.strings.length ?? 0;
+  useEffect(() => {
+    if (!nStrings || still) return;
+    const t = window.setTimeout(() => setSettled(drawKey), LEAD + (nStrings - 1) * STAGGER + SETTLE + 40);
+    return () => window.clearTimeout(t);
+  }, [drawKey, nStrings, still]);
+  const done = still || settled === drawKey;
+  const fuzz = rich && done;
+
+  const nearest = useCallback(
+    (clientX: number, clientY: number) => {
+      const el = box.current;
+      if (!el || !layout) return null;
+      const r = el.getBoundingClientRect();
+      const px = clientX - r.left, py = clientY - r.top;
+      let best: (typeof layout.strings)[number] | null = null;
+      let bd = 14;
+      for (const s of layout.strings) {
+        const d = distTo(s.y, px, py);
+        if (d < bd) {
+          bd = d;
+          best = s;
+        }
+      }
+      return best;
+    },
+    [layout],
+  );
+
   const backdrop = Boolean(center);
-  const hovered = layout?.strings.find((s) => s.e.id === (hover ?? activeEdge));
-  const anyHot = Boolean(hover || hoverNode);
+  const hovered = layout?.strings.find((s) => s.e.id === (hover ?? focused ?? activeEdge));
+  const anyHot = Boolean(hover || hoverNode || focused);
+  const groupOf = (n: NodeCard) => n.edges;
 
   return (
-    <div className={`canvas${center ? " has-center" : ""}`} ref={box} data-testid="board-canvas">
+    <div className={`canvas${center ? " has-center" : ""}${layout?.compact ? " is-compact" : ""}`} ref={box} data-testid="board-canvas">
       <USMap geo={geo} counts={counts} selected={selectedState} backdrop={backdrop} onSelect={onSelectState} />
+      <div className="canvas__light" aria-hidden="true" />
       {!geo.states.length && <p className="canvas__nomap">State outlines are unavailable in this build. Use the state list beside the board.</p>}
 
       {layout && center && (
@@ -157,101 +300,195 @@ export function BoardCanvas(props: Props) {
             const n = nodes.find((x) => `${x.ref.kind}:${x.ref.id}` === p.id)!;
             const i = layout.strings.findIndex((s) => s.node === n);
             const isCase = caseNodes.has(n.ref.id);
+            const wtag = n.edges.map(weakTag).find(Boolean) ?? null;
             const m = n.ref.kind === "member" ? book.members[n.ref.id] : null;
             const o = n.ref.kind === "org" ? book.orgs[n.ref.id] : null;
             const name = nodeName(n.ref, book);
-            const label = `${name}${o ? `, ${ORG_KIND_LABEL[o.kind]}` : m ? `, ${seat(m)}` : ""}. ${n.edges.length} ${n.edges.length === 1 ? "string" : "strings"}.${isCase ? " Case: three or more kinds of tie." : ""} Re-centre the board here.`;
+            const says = n.edges.map((e) => tiePhrase(e, n.ref.id, centreName, range));
+            const saysFull = n.edges.map((e) => tiePhrase(e, n.ref.id, centreName, range, true));
+            const k = n.edges.length;
+            const openLabel = `${name}${o ? `, ${ORG_KIND_LABEL[o.kind]}` : m ? `, ${seat(m)}` : ""}: ${saysFull.join("; ")}.${isCase ? " Case: traded the stock and received PAC money in the same years." : ""} Open the evidence${k > 1 ? ` for ${k} strings` : ""}.`;
+            const light = layout.lights.get(p.id)!;
             return (
-              <button
+              <div
                 key={`${drawKey}-${p.id}`}
-                type="button"
-                className={`bcard bcard--${n.ref.kind}${n.ref.id === focusNode ? " is-focus" : ""}${hoverNode === p.id ? " is-hot" : ""}`}
-                style={{ left: p.x, top: p.y, width: p.w, height: p.h, "--tilt": `${tiltFor(n.ref.id, 1.4)}deg`, "--i": i } as React.CSSProperties}
-                onClick={() => onRecenter(n.ref)}
+                className={`bcard bcard--${n.ref.kind}${name.length <= 22 ? " bcard--short" : ""}${n.ref.id === focusNode ? " is-focus" : ""}${hoverNode === p.id ? " is-hot" : ""}${excluded && n.edges.every((e) => excluded.has(e.id)) ? " is-excluded" : ""}`}
+                style={{ left: p.x, top: p.y, width: p.w, height: p.h, "--tilt": `${tiltFor(n.ref.id, 1.4)}deg`, "--i": i, ...lightVars(light) } as React.CSSProperties}
                 onMouseEnter={() => setHoverNode(p.id)}
                 onMouseLeave={() => setHoverNode(null)}
-                onFocus={() => setHoverNode(p.id)}
-                onBlur={() => setHoverNode(null)}
-                aria-label={label}
                 data-node={n.ref.id}
               >
-                {m ? (
-                  <>
-                    <Print id={m.id} name={m.name} photo={m.photo} size="xs" pinned={false} tilt={false} />
-                    <span className="bcard__text">
-                      <span className="bcard__name">{m.name}</span>
-                      <span className="bcard__kind">
-                        <PartyTag party={m.party} /> {seat(m, false)}
-                      </span>
-                    </span>
-                  </>
-                ) : (
+                <button
+                  type="button"
+                  className="bcard__open"
+                  onClick={(ev) => onOpenEdge(n.edges[0], ev.currentTarget, groupOf(n))}
+                  onFocus={() => setHoverNode(p.id)}
+                  onBlur={() => setHoverNode(null)}
+                  aria-label={openLabel}
+                >
+                  {m && <Print id={m.id} name={m.name} photo={m.photo} size="xs" pinned={false} tilt={false} />}
                   <span className="bcard__text">
-                    <span className="bcard__kind">
-                      {o ? ORG_KIND_LABEL[o.kind] : "Organisation"}
-                      {o?.ticker ? ` · ${o.ticker}` : ""}
+                    {m ? (
+                      <>
+                        <span className="bcard__name">{m.name}</span>
+                        <span className="bcard__kind">
+                          <PartyTag party={m.party} /> {seat(m, false)}
+                          {isCase && <span className="tag tag--inline">Case</span>}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="bcard__kind">
+                          {o ? ORG_KIND_LABEL[o.kind] : "Organisation"}
+                          {o?.ticker ? ` · ${o.ticker}` : ""}
+                          {isCase && <span className="tag tag--inline">Case</span>}
+                        </span>
+                        <span className="bcard__name">{name}</span>
+                      </>
+                    )}
+                    <span className="bcard__says">
+                      {wtag && <span className="tag tag--weak bcard__weak">{wtag}</span>}
+                      {says[0]}
+                      {k > 1 && <span className="bcard__more"> +{k - 1}</span>}
                     </span>
-                    <span className="bcard__name">{name}</span>
                   </span>
-                )}
-                {isCase && <span className="tag">Case</span>}
-              </button>
+                </button>
+                <button type="button" className="bcard__recentre" onClick={() => onRecenter(n.ref)} aria-label={`Re-centre the board on ${name}`} title="Re-centre the board here">
+                  <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                    <circle cx="8" cy="8" r="4.6" fill="none" stroke="currentColor" strokeWidth="1.4" />
+                    <circle cx="8" cy="8" r="1.4" fill="currentColor" />
+                    <path d="M8 0.8v2.6M8 12.6v2.6M0.8 8h2.6M12.6 8h2.6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                  </svg>
+                </button>
+              </div>
             );
           })}
 
-          <svg className="yarns" viewBox={`0 0 ${layout.W} ${layout.H}`} width={layout.W} height={layout.H} aria-label="Strings" role="group">
+          <svg key={drawKey} className="yarns" viewBox={`0 0 ${layout.W} ${layout.H}`} width={layout.W} height={layout.H} aria-label="Strings" role="group">
             <defs>
-              {layout.strings.map(({ e, y }, i) => (
-                <mask key={`${drawKey}-${e.id}`} id={`reveal-${drawKey}-${e.id}`} maskUnits="userSpaceOnUse" x="0" y="0" width={layout.W} height={layout.H}>
-                  <path d={y.d} pathLength={1} className="yarn__reveal" style={{ "--i": i } as React.CSSProperties} />
-                </mask>
-              ))}
+              {layout.strings.map(({ e, y }, i) => {
+                const frayed = isFrayed(e);
+                const b = boxOf(y, 26);
+                // Masks cover only this string (plus sway room), never the whole board.
+                const m = boxOf(y, 44);
+                return (
+                  <g key={`${drawKey}-${e.id}`}>
+                    <mask id={`reveal-${drawKey}-${e.id}`} maskUnits="userSpaceOnUse" x={m.x} y={m.y} width={m.w} height={m.h}>
+                      <path d={y.d} pathLength={1} className="yarn__reveal" style={{ "--i": i } as React.CSSProperties} />
+                    </mask>
+                    {fuzz && !frayed && (
+                      <filter id={`fz-${drawKey}-${e.id}`} filterUnits="userSpaceOnUse" x={b.x} y={b.y} width={b.w} height={b.h} colorInterpolationFilters="sRGB">
+                        <feTurbulence type="fractalNoise" baseFrequency={frayed ? "0.5" : "0.9"} numOctaves={2} seed={fnv1a(e.id) % 97} result="n" />
+                        <feDisplacementMap in="SourceGraphic" in2="n" scale={frayed ? 9 : 5.5} xChannelSelector="R" yChannelSelector="G" />
+                      </filter>
+                    )}
+                  </g>
+                );
+              })}
             </defs>
-            {layout.strings.map(({ e, y, node }) => {
+
+            {layout.strings.map(({ e, y, node, light }, i) => {
               const style = stringStyle(e);
-              const w = strokeWidth(e, range);
+              const frayed = isFrayed(e);
+              const base = strokeWidth(e, range);
+              const w = frayed ? Math.max(1.1, Math.round(base * 0.55 * 10) / 10) : base;
               const nodeKey = `${node.ref.kind}:${node.ref.id}`;
-              const hot = hover === e.id || activeEdge === e.id || hoverNode === nodeKey;
-              const amt = amountLabel(e, range);
-              const n = filteredAmount(e, range).n;
-              const name = nodeName(node.ref, book);
+              const hot = hover === e.id || focused === e.id || activeEdge === e.id || hoverNode === nodeKey;
+              const anim = !still;
+              const begin = `${LEAD + i * STAGGER}ms`;
+              const sway = (vals: string) =>
+                anim ? <animate attributeName="d" values={vals} keyTimes={SAG_TIMES} calcMode="spline" keySplines={SAG_SPLINES} dur={`${SETTLE}ms`} begin={begin} fill="freeze" /> : null;
+              const dVals = anim ? SAG_KEYS.map((k) => yarnAt(y, k)).join(";") : "";
+              const ul = Math.hypot(light.sx, light.sy) || 1;
+              // Plies: the lit one shifts toward the lamp, the shaded one away.
+              const px = Math.round((light.sx / ul) * w * 0.17 * 100) / 100, py = Math.round((light.sy / ul) * w * 0.17 * 100) / 100;
+              const P = (cls: string, extra?: React.SVGProps<SVGPathElement>) => (
+                <path className={cls} d={y.d} {...extra}>
+                  {sway(dVals)}
+                </path>
+              );
               return (
                 <g
                   key={`${drawKey}-${e.id}`}
-                  className={`yarn yarn--${style}${hot ? " is-hot" : ""}${anyHot && !hot ? " is-dim" : ""}`}
-                  tabIndex={0}
-                  role="button"
-                  aria-label={`${typeLabel(e)}, ${name}: ${amt ?? "no amount disclosed"}, ${n} ${n === 1 ? "record" : "records"}${e.basis === "derived" ? ", derived" : ""}${e.weak ? ", thin evidence" : ""}. Open the evidence.`}
-                  data-edge={e.id}
-                  onMouseEnter={() => setHover(e.id)}
-                  onMouseLeave={() => setHover(null)}
-                  onFocus={() => setHover(e.id)}
-                  onBlur={() => setHover(null)}
-                  onClick={(ev) => onOpenEdge(e, ev.currentTarget)}
-                  onKeyDown={(ev) => {
-                    if (ev.key === "Enter" || ev.key === " ") {
-                      ev.preventDefault();
-                      onOpenEdge(e, ev.currentTarget);
-                    }
-                  }}
+                  className={`yv yv--${style}${frayed ? " yv--frayed" : ""}${excluded?.has(e.id) ? " is-excluded" : ""}${hot ? " is-hot" : ""}${anyHot && !hot ? " is-dim" : ""}${focused === e.id ? " is-focus" : ""}`}
+                  style={{ "--sx": light.sx, "--sy": light.sy, "--w": w } as React.CSSProperties}
+                  aria-hidden="true"
+                  data-edge-vis={e.id}
                 >
-                  <path className="yarn__hit" d={y.d} />
-                  <g mask={`url(#reveal-${drawKey}-${e.id})`}>
-                    <path className="yarn__halo" d={y.d} style={{ strokeWidth: w + 7 }} />
-                    <path className="yarn__under" d={y.d} style={{ strokeWidth: w + 1.6 }} transform="translate(0.6 1.8)" />
-                    <path className="yarn__main" d={y.d} style={{ strokeWidth: w }} />
-                    {style !== "context" && <path className="yarn__twist" d={y.d} style={{ strokeWidth: Math.max(0.6, w * 0.3) }} />}
+                  <g mask={done ? undefined : `url(#reveal-${drawKey}-${e.id})`}>
+                    {P("yv__halo", { style: { strokeWidth: w + 8 } })}
+                    {frayed ? (
+                      <FrayedYarn id={e.id} y={y} w={w} anim={anim} begin={begin} fibres={done ? (rich ? -1 : Math.round(y.length / 20) + 4) : 0} px={px} py={py} />
+                    ) : (
+                      <>
+                        {P("yv__shadow-soft", { style: { strokeWidth: w + 4.5 } })}
+                        {P("yv__shadow", { style: { strokeWidth: w + 0.6 } })}
+                        <g className="yv__lift">
+                          {fuzz && style !== "context" && P("yv__fuzz", { style: { strokeWidth: w + 2 }, filter: `url(#fz-${drawKey}-${e.id})` })}
+                          {P("yv__core", { style: { strokeWidth: w } })}
+                          {style !== "context" && (
+                            <>
+                              {P("yv__ply yv__ply--dark", { style: { strokeWidth: Math.max(0.5, w * 0.5) }, transform: `translate(${px} ${py})` })}
+                              {P("yv__ply yv__ply--lite", { style: { strokeWidth: Math.max(0.45, w * 0.4) }, transform: `translate(${-px} ${-py})` })}
+                            </>
+                          )}
+                        </g>
+                      </>
+                    )}
                   </g>
                 </g>
               );
             })}
-            {layout.placed.map((p) => (
-              <g key={`pin-${drawKey}-${p.id}`} className="pinhead" transform={`translate(${layout.pins.get(p.id)?.x ?? p.x + p.w / 2} ${layout.pins.get(p.id)?.y ?? p.y + 7})`} aria-hidden="true">
-                <circle r="5.2" className="pinhead__shadow" cx="1.2" cy="2" />
-                <circle r="5" className="pinhead__head" />
-                <circle r="1.7" className="pinhead__glint" cx="-1.4" cy="-1.5" />
-              </g>
-            ))}
+
+            {layout.placed.map((p) => {
+              const pin = layout.pins.get(p.id) ?? { x: p.x + p.w / 2, y: p.y + 7 };
+              const l = layout.lights.get(p.id)!;
+              return (
+                <g key={`pin-${drawKey}-${p.id}`} className="pinhead" transform={`translate(${pin.x} ${pin.y})`} aria-hidden="true">
+                  <ellipse rx="5.6" ry="5" className="pinhead__shadow" cx={l.sx * 0.32} cy={l.sy * 0.32 + 0.8} />
+                  <circle r="5" className="pinhead__head" />
+                  <circle r="3.2" className="pinhead__sheen" cx={l.gx * 0.6} cy={l.gy * 0.6} />
+                  <circle r="1.3" className="pinhead__glint" cx={l.gx} cy={l.gy} />
+                </g>
+              );
+            })}
+
+            <g className="yarnhits" onPointerLeave={() => setHover(null)}>
+              {layout.strings.map(({ e, y, node }) => {
+                const amt = amountLabel(e, range);
+                const nrec = filteredAmount(e, range).n;
+                const name = nodeName(node.ref, book);
+                const cue = frayCue(e);
+                const pick = (ev: { clientX: number; clientY: number }) => nearest(ev.clientX, ev.clientY)?.e ?? e;
+                return (
+                  <path
+                    key={`${drawKey}-${e.id}`}
+                    className="yarn"
+                    d={y.d}
+                    tabIndex={0}
+                    role="button"
+                    aria-label={`${name} ${tiePhrase(e, node.ref.id, centreName, range, true)}. ${typeLabel(e)}: ${amt ?? "no amount disclosed"}, ${nrec} ${nrec === 1 ? "record" : "records"}${cue ? `, ${cue}` : ""}. Open the evidence.`}
+                    data-edge={e.id}
+                    onPointerMove={(ev) => {
+                      const id = pick(ev).id;
+                      if (id !== hover) setHover(id);
+                    }}
+                    onFocus={() => setFocused(e.id)}
+                    onBlur={() => setFocused(null)}
+                    onClick={(ev) => {
+                      const hit = ev.detail === 0 ? e : pick(ev);
+                      onOpenEdge(hit, ev.currentTarget);
+                    }}
+                    onKeyDown={(ev) => {
+                      if (ev.key === "Enter" || ev.key === " ") {
+                        ev.preventDefault();
+                        onOpenEdge(e, ev.currentTarget);
+                      }
+                    }}
+                  />
+                );
+              })}
+            </g>
           </svg>
 
           {hovered && (
@@ -259,21 +496,26 @@ export function BoardCanvas(props: Props) {
               className="yarnlabel"
               role="presentation"
               style={{
-                left: Math.max(90, Math.min(layout.W - 90, hovered.y.mid.x)),
-                top: Math.max(30, Math.min(layout.H - 20, hovered.y.mid.y)),
+                left: Math.max(130, Math.min(layout.W - 130, hovered.y.mid.x)),
+                top: Math.max(30, Math.min(layout.H - 60, hovered.y.mid.y)),
               }}
             >
-              <span className="yarnlabel__type">{typeLabel(hovered.e)}</span>
-              <span className="mono">{amountLabel(hovered.e, range) ?? "no amount"}</span>
-              <span className="mono">
-                {count(filteredAmount(hovered.e, range).n)} {filteredAmount(hovered.e, range).n === 1 ? "record" : "records"}
+              <span className="yarnlabel__line">
+                <span className="yarnlabel__who">{nodeName(hovered.node.ref, book)}</span> {tiePhrase(hovered.e, hovered.node.ref.id, centreName, range, true)}
+              </span>
+              <span className="yarnlabel__meta">
+                <span className="yarnlabel__type">{typeLabel(hovered.e)}</span>
+                <span className="mono">
+                  {amountLabel(hovered.e, range) ?? "no amount"} · {count(filteredAmount(hovered.e, range).n)} {filteredAmount(hovered.e, range).n === 1 ? "record" : "records"}
+                </span>
+                {frayCue(hovered.e) && <span className="yarnlabel__cue">{frayCue(hovered.e)}</span>}
               </span>
             </div>
           )}
         </>
       )}
 
-      <div className="canvas__slip" ref={slipRef}>
+      <div className="canvas__slip" ref={slipRef} style={layout?.slipLight ? lightVars(layout.slipLight) : undefined}>
         {slip}
       </div>
       {loading && (

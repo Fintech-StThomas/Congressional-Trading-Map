@@ -930,3 +930,73 @@
     break-inside: avoid;
   }
 }
+
+/* Disclosed holdings (House annual reports). */
+.hold__figure {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 14px;
+  margin: 10px 0 6px;
+}
+.hold__k {
+  font-size: 13px;
+  color: var(--text-3);
+}
+.hold__v {
+  font-size: 20px;
+  color: var(--text);
+}
+.hold__chart {
+  display: block;
+  width: 100%;
+  max-width: 620px;
+  height: auto;
+  margin: 4px 0 6px;
+}
+.hold__bar {
+  fill: var(--text-2);
+}
+.hold__bar.is-open {
+  fill: var(--text-3);
+  opacity: 0.6;
+}
+.hold__zero {
+  stroke: var(--rule);
+  stroke-width: 1;
+}
+.hold__axis {
+  font: 10px var(--mono);
+  fill: var(--text-3);
+}
+.hold__miss {
+  font: 12px var(--mono);
+  fill: var(--text-3);
+}
+.hold__small {
+  max-width: 80ch;
+  font-size: 13px;
+  color: var(--text-3);
+  margin: 6px 0;
+}
+.hold__h {
+  font-size: 15px;
+  margin: 22px 0 6px;
+}
+.hold__share {
+  display: inline-block;
+  width: 44px;
+  height: 4px;
+  margin-right: 8px;
+  vertical-align: middle;
+  background: var(--rule-soft);
+}
+.hold__share span {
+  display: block;
+  height: 100%;
+  background: var(--text-2);
+}
+.rec__h3 {
+  font-size: 15px;
+  margin: 18px 0 6px;
+}
