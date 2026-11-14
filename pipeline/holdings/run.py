@@ -248,7 +248,7 @@ def run() -> None:
                (select count(*) from lj where lj.doc_id=f.doc_id) as n_liabs,
                coalesce((select any_value(bioguide_id) from hj where hj.doc_id=f.doc_id),
                         (select any_value(bioguide_id) from lj where lj.doc_id=f.doc_id)) as row_bioguide
-        from f where doc_id in (select doc_id from hj union select doc_id from lj)""")}
+        from f where doc_id in (select doc_id from hj union select doc_id from lj) order by f.doc_id""")}
     multi = one(con, """select count(*) from (select doc_id from (select doc_id, bioguide_id from hj union
                  select doc_id, bioguide_id from lj) group by 1 having count(distinct bioguide_id) > 1)""")
     if multi:
@@ -345,6 +345,8 @@ def run() -> None:
             residence_rows.append(r["id"])
             continue
         text, hit = rules.redact(asset, True, bool(r["location"]))
+        text, named = rules.redact_beneficiary(text)
+        c["asset_beneficiary_name_redacted"] += named
         loc, loc_hit = rules.city_state(r["location"]) if r["location"] else (None, False)
         if hit:
             c["asset_text_redacted"] += 1
@@ -403,9 +405,11 @@ def run() -> None:
         return {"traded": traded, "pac": pac, "ledger_pac": ledger_pac}
 
     # ---- write member files
-    if HOLD_DIR.exists():
-        shutil.rmtree(HOLD_DIR)
-    HOLD_DIR.mkdir(parents=True)
+    # Written beside the published folder and swapped in, so readers never see a half-written holdings/ directory.
+    tmp_dir = HOLD_DIR.with_name(HOLD_DIR.name + ".tmp")
+    if tmp_dir.exists():
+        shutil.rmtree(tmp_dir)
+    tmp_dir.mkdir(parents=True)
     members = sorted({k[0] for k in by_key})
     index_rows, edges, org_label, sample_rows = [], [], defaultdict(Counter), []
     ov_stats = Counter()
@@ -451,7 +455,8 @@ def run() -> None:
             for r in assets:
                 if r[4]:
                     held[r[4]][y].append(r)
-                    org_label[r[4]][r[1]] += 1
+                    # why the last segment: "Trust => Broker => Asset" names the account path, not the issuer
+                    org_label[r[4]][r[1].split("⇒")[-1].strip()] += 1
             # overlaps: same report year
             for org in sorted({r[4] for r in assets if r[4]}):
                 kinds = []
@@ -511,7 +516,7 @@ def run() -> None:
             "overlaps": overlaps, "coverage": cov,
             "member_source": sorted({used[(mid, int(y))]["member_source"] for y in years}),
         }
-        write_json(HOLD_DIR / f"{mid}.json", out)
+        write_json(tmp_dir / f"{mid}.json", out)
         nw = ly["net_worth"]
         index_rows.append([mid, sorted(int(y) for y in years), latest, nw["low"], nw["high"], nw["high_valued"], nw["label"],
                            ly["totals"]["assets"]["n"], ly["totals"]["liabilities"]["n"] + ly["totals"]["liabilities_residence_secured"]["n"],
@@ -545,6 +550,14 @@ def run() -> None:
                 "weak": s["high"] is None, "note": f"position as of report year {ly2}; reported in "
                         f"{len(by_y)} year(s): {', '.join(map(str, sorted(by_y)))}; owners "
                         + ", ".join(f"{o} {n}" for o, n in sorted(Counter(r[6] for r in rs).items()))})
+    old_dir = HOLD_DIR.with_name(HOLD_DIR.name + ".old")
+    if old_dir.exists():
+        shutil.rmtree(old_dir)
+    if HOLD_DIR.exists():
+        HOLD_DIR.rename(old_dir)
+    tmp_dir.rename(HOLD_DIR)
+    if old_dir.exists():
+        shutil.rmtree(old_dir)
     write_json(INDEX, {"cols": ["id", "years", "latest", "nw_low", "nw_high", "nw_high_valued", "nw_label", "assets",
                                 "liabilities", "liab_low", "liab_high", "overlaps"],
                        "rows": sorted(index_rows), "net_worth_definition": NET_WORTH, "source": SOURCE_ID})

@@ -1,9 +1,10 @@
+// /orgs: organisation rankings, built from org-index.json.
 import type { Metadata } from "next";
-import { readData } from "@/lib/data";
-import { decodeOrgIndex } from "@/lib/party";
-import { OrgsBrowse } from "@/components/OrgsBrowse";
-import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { YEAR_MIN } from "@/lib/site";
+import { readData } from "@/lib/data/server";
+import { decodeOrgIndex } from "@/lib/domain/party";
+import { OrgsBrowse } from "@/components/org/OrgsBrowse";
+import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
+import { YEAR_MIN } from "@/lib/years";
 
 export const metadata: Metadata = {
   title: "Organisations",

@@ -95,8 +95,7 @@ export function pickBoard(self: string, edges: Edge[], limits: { cards: number; 
     byOrg.set(k, c);
   }
   const cases = [...byOrg.entries()]
-    .filter(([, c]) => c.traded && c.pac)
-    .map(([k, c]) => ({ k, pair: [c.pac!, c.traded!], w: dollars(c.pac!) + dollars(c.traded!) }))
+    .flatMap(([k, c]) => (c.traded && c.pac ? [{ k, pair: [c.pac, c.traded], w: dollars(c.pac) + dollars(c.traded) }] : []))
     .sort((a, b) => b.w - a.w || (a.k < b.k ? -1 : 1));
   const caseRoom = Math.max(0, Math.min(limits.cases, limits.cards - varietyCards, Math.floor((limits.strings - variety.length) / 2)));
   for (const c of cases.slice(0, caseRoom)) c.pair.forEach(add);

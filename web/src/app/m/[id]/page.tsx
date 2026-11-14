@@ -1,27 +1,29 @@
+// The member page ("case file"): header and counts, cases, ties with evidence, the ledger of further
+// ties, activity by year, holdings, trades, and the print-only case file. Built statically per member.
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { IS_SAMPLE, getHoldings, getMemberFile, getMemberIndex, getMembers, getMeta, getOrgIndex, getTradeFile, metaBuilt, orgNodesOf } from "@/lib/data";
-import { decodeLedger, decodeTradeFile, ledgerTotals } from "@/lib/decode";
-import { sortEdges, TYPE_LABEL } from "@/lib/edges";
-import { count, date, PARTY_NAMES, plural, seat, served, stateName } from "@/lib/format";
-import { boardHref, dataUrl, toBoardMember, type NameBook } from "@/lib/client";
-import { metaSources, sourceNames } from "@/lib/meta";
-import { SITE } from "@/lib/site";
+import { IS_SAMPLE, getHoldings, getMemberFile, getMemberIndex, getMembers, getMeta, getOrgIndex, getTradeFile, metaBuilt, orgNodesOf } from "@/lib/data/server";
+import { decodeLedger, decodeTradeFile, ledgerTotals } from "@/lib/data/decode";
+import { sortEdges, TYPE_LABEL } from "@/lib/domain/edges";
+import { count, date, money, PARTY_NAMES, plural, seat, served, stateName, yearRange } from "@/lib/format";
+import { boardHref, dataUrl } from "@/lib/urls";
+import { toBoardMember, type NameBook } from "@/lib/domain/names";
+import { caseMinTypes, metaSources, sourceNames } from "@/lib/data/meta";
+import { CASE_NOT_SHOWN, caseRuleText, SITE } from "@/lib/copy";
 import type { Edge, OrgSummary } from "@/lib/types";
-import { Print, PartyTag } from "@/components/Print";
-import { TieSection } from "@/components/TieSection";
-import { TradesTable } from "@/components/TradesTable";
-import { LedgerTable } from "@/components/LedgerTable";
-import { Timeline } from "@/components/Timeline";
-import { PrintButton } from "@/components/PrintButton";
-import { CaseFile, caseNumber } from "@/components/CaseFile";
-import { pickAgainst, pickBoard } from "@/lib/pick";
-import "../../casefile.css";
-import { HoldingsSection } from "@/components/HoldingsSection";
-import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { CASE_NOT_SHOWN } from "@/lib/notshown";
-import { AssumeCase, AssumeCount, AssumptionProvider, PageAssumptionBar } from "@/components/assume/Assume";
+import { Print, PartyTag } from "@/components/shared/Print";
+import { TieSection } from "@/components/member/TieSection";
+import { TradesTable } from "@/components/member/TradesTable";
+import { LedgerTable } from "@/components/member/LedgerTable";
+import { Timeline } from "@/components/member/Timeline";
+import { PrintButton } from "@/components/member/PrintButton";
+import { CaseFile, caseNumber } from "@/components/member/CaseFile";
+import { pickAgainst, pickBoard } from "@/lib/domain/pick";
+import "@/styles/casefile.css";
+import { HoldingsSection } from "@/components/member/HoldingsSection";
+import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
+import { AssumeCase, AssumeCount, AssumptionProvider, PageAssumptionBar } from "@/components/shared/Assume";
 
 export const dynamicParams = false;
 
@@ -50,6 +52,7 @@ export default async function MemberPage({ params }: PageProps<"/m/[id]">) {
   const orgIndex = getOrgIndex();
   const memberIndex = getMemberIndex();
   const sources = sourceNames(meta);
+  const minTypes = caseMinTypes(meta);
 
   // Names for every node the page can show, slimmed to what the tables print.
   const book: NameBook = { members: {}, orgs: {} };
@@ -176,17 +179,17 @@ export default async function MemberPage({ params }: PageProps<"/m/[id]">) {
       {file.cases.length > 0 && (
         <section className="section" id="cases" aria-labelledby="cases-h">
           <h2 id="cases-h">Cases</h2>
-          <p className="section__note">Companies whose stock this member&rsquo;s household traded while the member received money from the company&rsquo;s PAC, in the same years. A reason to read the filings, not a finding.</p>
+          <p className="section__note">{caseRuleText(minTypes)} A reason to read the filings, not a finding.</p>
           <ol className="dossier__cases">
             {file.cases.map((c) => (
               <AssumeCase key={c.id} org={c.org}>
                 <span className="tag">Case</span>
                 <span className="dossier__casename">{orgName(c.org)}</span>
                 <span className="dossier__casetypes">
-                  {c.trades ? `${count(c.trades)} ${c.trades === 1 ? "trade" : "trades"}` : TYPE_LABEL.traded}
-                  {c.money ? ` · $${count(Math.round(c.money))} from its PAC, all years` : ` · ${TYPE_LABEL.pac_money}`}
+                  {c.trades ? plural(c.trades, "trade") : c.types.includes("traded") ? TYPE_LABEL.traded : TYPE_LABEL.owns}
+                  {c.money ? ` · ${money(Math.round(c.money))} from its PAC, all years` : ` · ${TYPE_LABEL.pac_money}`}
                 </span>
-                <span className="mono">{c.years[0] === c.years[1] ? c.years[0] : `${c.years[0]}–${c.years[1]}`}</span>
+                <span className="mono">{yearRange(c.years)}</span>
                 <Link className="no-print" href={boardHref({ s: m.current ? m.state : undefined, m: m.id, focus: c.org })}>On the board</Link>
                 <span className="notshown dossier__notshown">{CASE_NOT_SHOWN}</span>
               </AssumeCase>
@@ -253,7 +256,7 @@ export default async function MemberPage({ params }: PageProps<"/m/[id]">) {
       </section>
 
       <style>{`@media print { @page { @top-left { content: "${SITE.name} · ${caseNo}"; } } }`}</style>
-      <CaseFile file={file} board={pickBoard(m.id, file.edges)} against={pickAgainst(file.edges)} names={nameOf} ledger={ledger} trades={initialTrades} sources={metaSources(meta)} built={built} orgName={orgName} />
+      <CaseFile file={file} board={pickBoard(m.id, file.edges)} against={pickAgainst(file.edges)} names={nameOf} ledger={ledger} trades={initialTrades} sources={metaSources(meta)} built={built} orgName={orgName} caseMinTypes={minTypes} />
 
       <footer className="provenance">
         <h2>Provenance</h2>

@@ -1,3 +1,4 @@
+// 404 page.
 import Link from "next/link";
 
 export default function NotFound() {

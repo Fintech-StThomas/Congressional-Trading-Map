@@ -1,11 +1,13 @@
 "use client";
-
+// "Trades" on the member page: every periodic transaction report row, filterable, sortable and windowed
+// (only visible rows are in the DOM). Starts with the newest rows from the server, then loads trades/<id>.json.
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Trade, TradeFile } from "@/lib/types";
-import { decodeTradeFile, type TradeRow } from "@/lib/decode";
-import { count, date, money, NOT_DISCLOSED } from "@/lib/format";
-import { getJSON } from "@/lib/client";
-import { ExternalIcon } from "./EvidenceDrawer";
+import { decodeTradeFile, type TradeRow } from "@/lib/data/decode";
+import { amountText, count, date, NOT_DISCLOSED } from "@/lib/format";
+import { getJSON } from "@/lib/data/fetch";
+import { safeHttpUrl } from "@/lib/urls";
+import { ExternalIcon } from "@/components/shared/ExternalIcon";
 
 type Props = { initial: TradeRow[]; total: number; fullUrl: string };
 type Key = "date" | "available" | "lag_days" | "owner" | "action" | "asset" | "ticker" | "low";
@@ -204,8 +206,8 @@ export function TradesTable({ initial, total, fullUrl }: Props) {
                   {t.partial ? <span className="sub"> partial</span> : null}
                 </td>
                 <td className="trades__asset" title={t.asset}>
-                  {t.url ? (
-                    <a href={t.url} target="_blank" rel="noopener noreferrer">
+                  {safeHttpUrl(t.url) ? (
+                    <a href={safeHttpUrl(t.url) ?? undefined} target="_blank" rel="noopener noreferrer">
                       <span className="trades__assettext">{t.asset}</span> <ExternalIcon />
                     </a>
                   ) : (
@@ -218,7 +220,7 @@ export function TradesTable({ initial, total, fullUrl }: Props) {
                 </td>
                 <td className="mono">{t.ticker ?? <Nd />}</td>
                 <td className="num mono">
-                  {t.low == null && t.high == null ? <Nd /> : t.low != null && t.high != null ? `${money(t.low)}–${money(t.high)}` : money(t.low ?? t.high)}
+                  {amountText({ low: t.low, high: t.high, exact: null }) ?? <Nd />}
                 </td>
               </tr>
             ))}

@@ -1,9 +1,10 @@
 "use client";
-
+// The "Spent against" zone under the board: spenders shown as pinned cards with no yarn, because spending against a member is not a tie.
 import type { Edge, NodeRef } from "@/lib/types";
-import { nodeName, ORG_KIND_LABEL, type NameBook } from "@/lib/client";
-import { otherEnd } from "@/lib/edges";
-import { money } from "@/lib/format";
+import { nodeName, ORG_KIND_LABEL, type NameBook } from "@/lib/domain/names";
+import { otherEnd } from "@/lib/domain/edges";
+import { spendingSide } from "@/lib/domain/pick";
+import { amountText } from "@/lib/format";
 
 /**
  * Spending against the member (or, on an organisation's board, members it spent
@@ -26,17 +27,18 @@ export function AgainstZone({ edges, more, selfId, book, title, line, onOpen, on
           const o = otherEnd(e, selfId);
           const name = nodeName(o, book);
           const org = o.kind === "org" ? book.orgs[o.id] : null;
-          const amt = e.amount.exact ?? e.amount.high ?? e.amount.low;
-          const side = e.note === "oppose" ? "opposing" : e.note === "support" ? "supporting" : "for or against (side not recorded here)";
+          const amt = amountText(e.amount) ?? "an undisclosed amount";
+          const sideKey = spendingSide(e);
+          const side = sideKey === "oppose" ? "opposing" : sideKey === "support" ? "supporting" : "for or against (side not recorded here)";
           return (
             <li key={e.id} className="against__card">
               <span className="pinhead-css" aria-hidden="true" />
               <button type="button" className="against__open" onClick={(ev) => onOpen(e, ev.currentTarget)}
-                aria-label={`${name}: spent ${amt != null ? money(amt) : "an undisclosed amount"} ${side}. Independent spending, not a tie. Open the evidence.`}>
-                <span className="against__tag">{e.note === "oppose" ? "AGAINST" : "SPENT"}</span>
+                aria-label={`${name}: spent ${amt} ${side}. Independent spending, not a tie. Open the evidence.`}>
+                <span className="against__tag">{sideKey === "oppose" ? "AGAINST" : "SPENT"}</span>
                 <span className="against__kind">{org ? ORG_KIND_LABEL[org.kind] : "Member"}</span>
                 <span className="against__name">{name}</span>
-                <span className="against__amt">spent {amt != null ? money(amt) : "an undisclosed amount"} {side}</span>
+                <span className="against__amt">spent {amt} {side}</span>
               </button>
               <button type="button" className="against__recentre" onClick={() => onRecenter(o)} aria-label={`Re-centre the board on ${name}`} title="Re-centre the board here">
                 <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">

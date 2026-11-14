@@ -18,16 +18,15 @@ from typing import Any
 import pyarrow.parquet as pq
 import requests
 
+from .config import FSDS_QUARTERS, SEC_REQUESTS_PER_SECOND
 from .sic import POOLED_VEHICLE_SIC, sector
-from .util import (BUILD, CACHE, CROSSWALK, DAY, SUFFIXES, RateLimiter, clean_sec_name, fetch, normalise_name,
-                   normalise_ticker,
-                   print_table, read_json, write_json, write_source_meta)
+from .util import (BUILD, CACHE, DAY, SUFFIXES, RateLimiter, clean_sec_name, fetch, normalise_name, normalise_ticker,
+                   print_table, read_json, read_overrides, write_json, write_source_meta)
 
 SOURCE_ID = "sec"
 TICKERS_URL = "https://www.sec.gov/files/company_tickers_exchange.json"
 FSDS_URL = "https://www.sec.gov/files/dera/data/financial-statement-data-sets/{q}.zip"
-FSDS_QUARTERS = 2
-SEC_LIMIT = RateLimiter(10)
+SEC_LIMIT = RateLimiter(SEC_REQUESTS_PER_SECOND)
 # Words too generic to show that a filed description and an SEC name refer to the same issuer.
 GENERIC = {"A", "B", "C", "CL", "CLASS", "COM", "COMMON", "STOCK", "SHS", "SHARES", "ORD", "ORDINARY", "NEW",
            "ADR", "ADS", "SPONSORED", "INTERNATIONAL", "INTL", "AND", "OF", "US", "USA", "AMERICA", "AMERICAN",
@@ -36,13 +35,9 @@ GENERIC = {"A", "B", "C", "CL", "CLASS", "COM", "COMMON", "STOCK", "SHS", "SHARE
 
 
 def load_overrides(source: str) -> dict[str, str]:
-    """Reviewed rows of pipeline/crosswalk/org_overrides.csv whose `source` (case-insensitive) equals
-    `source`; rows without reviewed_by are ignored, as in the FEC module."""
-    with open(CROSSWALK / "org_overrides.csv", newline="", encoding="utf-8") as f:
-        rows = list(csv.DictReader(f))
-    return {r["source_id_or_name"].strip(): r["org_id"].strip() for r in rows
-            if (r.get("source") or "").strip().lower() == source and (r.get("reviewed_by") or "").strip()
-            and r.get("source_id_or_name") and r.get("org_id")}
+    """Reviewed override rows for one `source` (e.g. "ticker"): key as filed -> org id."""
+    rows, _ = read_overrides({source})
+    return {r["source_id_or_name"]: r["org_id"] for r in rows}
 
 
 def recent_quarters(today: date, n: int) -> list[str]:
@@ -66,8 +61,11 @@ def fetch_sic() -> tuple[dict[int, int], list[str]]:
         try:
             path = CACHE / "sec" / f"fsds_{q}.zip"
             fetch(FSDS_URL.format(q=q), path, limiter=SEC_LIMIT)
-        except requests.HTTPError:
-            continue
+        except requests.HTTPError as e:
+            # 404 = quarter not published yet; anything else (403 rate limit, 5xx) must not silently drop SIC codes
+            if e.response is not None and e.response.status_code == 404:
+                continue
+            raise
         used.append(q)
         with zipfile.ZipFile(path) as z, z.open("sub.txt") as f:
             for row in csv.DictReader(io.TextIOWrapper(f, encoding="utf-8", errors="replace"), delimiter="\t"):

@@ -1,13 +1,12 @@
 "use client";
-
-import "@/app/reach.css";
+// Assumption switches (whose trades count, asset class, size, lateness): state hook, the switch bar, and
+// the member-page provider with its counters. Logic lives in lib/domain/assume.ts.
+import "@/styles/reach.css";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { dataUrl, getJSON } from "@/lib/client";
-import {
-  applyAssumptions, DEFAULT_ASSUMPTIONS, decodeAssumptions, encodeAssumptions, isDefault, ownOnly, readout, SWITCHES,
-  type AssumptionEffect, type Assumptions, type TradeLite,
-} from "@/lib/assume";
-import { Switch } from "../controls/ChipSelect";
+import { dataUrl } from "@/lib/urls";
+import { getJSON } from "@/lib/data/fetch";
+import { applyAssumptions, DEFAULT_ASSUMPTIONS, decodeAssumptions, encodeAssumptions, isDefault, ownOnly, readout, SWITCHES, type AssumptionEffect, type Assumptions, type TradeLite } from "@/lib/domain/assume";
+import { Switch } from "./ChipSelect";
 
 const NONE: TradeLite[] = [];
 type TradeWire = { cols: string[]; rows: unknown[][] };

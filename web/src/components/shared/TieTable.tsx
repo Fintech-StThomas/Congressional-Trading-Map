@@ -1,12 +1,13 @@
 "use client";
-
+// The ties table (board table view, member page): one row per full Edge with amount, records, years and an Evidence button.
 import Link from "next/link";
 import type { Edge } from "@/lib/types";
-import { weakTag, FAMILY_LABEL, typeLabel, amountLabel, filteredAmount, otherEnd, stringStyle, type Family } from "@/lib/edges";
+import { weakTag, FAMILY_LABEL, typeLabel, amountLabel, filteredAmount, otherEnd, stringStyle, directionWord, edgeDir, type Family } from "@/lib/domain/edges";
 import { count, NOT_DISCLOSED, seat, yearSpan } from "@/lib/format";
-import { memberHref, nodeName, orgHref, ORG_KIND_LABEL, type NameBook } from "@/lib/client";
+import { memberHref, orgHref } from "@/lib/urls";
+import { nodeName, ORG_KIND_LABEL, type NameBook } from "@/lib/domain/names";
 import { LineSample } from "./LineSample";
-import { useAssumptionContext } from "./assume/Assume";
+import { useAssumptionContext } from "./Assume";
 
 type Props = {
   edges: Edge[];
@@ -70,7 +71,6 @@ export function TieTable({ edges, selfId, book, range, onOpen, activeId, caseEdg
               const org = o.kind === "org" ? book.orgs[o.id] : null;
               const amt = amountLabel(e, range);
               const n = filteredAmount(e, range).n;
-              const inbound = e.directed && e.to.id === selfId;
               return (
                 <tr key={e.id} className={[activeId === e.id ? "is-active" : "", out?.has(e.id) ? "is-excluded" : ""].join(" ").trim() || undefined} data-edge={e.id}>
                   <td data-label="Tie">
@@ -78,7 +78,7 @@ export function TieTable({ edges, selfId, book, range, onOpen, activeId, caseEdg
                       <LineSample style={stringStyle(e)} />
                       <span>
                         {typeLabel(e)}
-                        <span className="ties__dir">{e.directed ? (inbound ? " from" : " to") : " with"}</span>
+                        <span className="ties__dir">{directionWord(edgeDir(e, selfId))}</span>
                       </span>
                     </span>
                     <span className="ties__flags">

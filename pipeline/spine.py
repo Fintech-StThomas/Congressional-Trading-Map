@@ -9,13 +9,13 @@ import subprocess
 from collections import Counter
 from typing import Any
 
+from .config import MEMBER_CUTOFF as CUTOFF
 from .util import BUILD, CACHE, DAY, fetch, print_table, read_json, write_json, write_source_meta
 
 BASE = "https://unitedstates.github.io/congress-legislators"
 REPO = "https://github.com/unitedstates/congress-legislators"
 FILES = ["legislators-current.json", "legislators-historical.json",
          "committees-current.json", "committee-membership-current.json"]
-CUTOFF = "2000-01-01"
 SOURCE_ID = "legislators"
 
 

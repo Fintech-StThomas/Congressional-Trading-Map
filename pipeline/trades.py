@@ -18,6 +18,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import requests
 
+from .config import LATE_DAYS
 from .util import BUILD, CACHE, fetch, print_table, read_json, sha256_file, write_source_meta
 
 DATASET = "austin-starks/congressional-stock-trades"
@@ -25,7 +26,6 @@ API = f"https://huggingface.co/api/datasets/{DATASET}"
 SOURCE_ID = "hf_trades"
 TABLES = ("political_trade_events", "political_trades", "political_filings")
 DOCS = ("README.md", "METHODOLOGY.md", "LICENSE_DATA.md", "snapshot.json")
-LATE_DAYS = 45
 EASTERN = ZoneInfo("America/New_York")
 
 OWNER = {"self": "self", "spouse": "spouse", "joint": "joint", "dependent_child": "dependent",

@@ -1,5 +1,5 @@
-"""Reference data: members (bioguide <-> FEC candidate ids), the company-name index
-and the hand-reviewed org override file.
+"""Reference data for the FEC module (step 3: resolve identities): members (bioguide <-> FEC candidate ids), the
+company-name index and the hand-reviewed org override file.
 
 Each loader prefers the shared build file written by the pipeline-core module and
 falls back to reading the same upstream data directly, so this module can run
@@ -9,58 +9,25 @@ company names are normalised with the contract's rule and kept only where unique
 """
 from __future__ import annotations
 
-import csv
 import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ..util import clean_sec_name, normalise_name, read_overrides
 from . import download
 
 REPO = download.REPO_ROOT
 BUILD = REPO / "pipeline" / "build"
 SPINE = BUILD / "spine.json"
 COMPANY_NAMES = BUILD / "company_names.json"
-OVERRIDES = REPO / "pipeline" / "crosswalk" / "org_overrides.csv"
 
 LEGISLATORS = "https://unitedstates.github.io/congress-legislators"
 SEC_TICKERS = "https://www.sec.gov/files/company_tickers.json"
 CUTOFF = "2000-01-01"
 
-def _clean(name: str) -> str:
-    """Drop EDGAR's trailing state/status tag, e.g. "MASCO CORP /DE/"."""
-    return re.sub(r"\s*[/\\][A-Za-z]{2,4}[/\\]?\s*$", "", name).strip()
-
-
-# --- name normalisation --------------------------------------------------------
-# Identical to pipeline/util.py:normalise_name (the contract rule). We import the
-# shared one when it exists and keep a copy so this module also runs standalone;
-# a self-test at import time fails loudly if the two ever diverge.
-_SUFFIXES = {"INC", "CORP", "CORPORATION", "CO", "COMPANY", "LLC", "LTD", "PLC", "HOLDINGS", "GROUP", "THE"}
-
-
-def _normalise_local(name: str) -> str:
-    words = re.sub(r"[^A-Z0-9]+", " ", re.sub(r"[.'’]", "", name.upper())).split()
-    while words and words[-1] in _SUFFIXES:
-        words.pop()
-    if words and words[0] == "THE":
-        words = words[1:]
-    return " ".join(words)
-
-
-try:  # pragma: no cover - depends on the other module being present
-    from pipeline.util import normalise_name as _shared_normalise  # type: ignore
-except Exception:  # noqa: BLE001
-    _shared_normalise = None
-
-_SELFTEST = ["The Boeing Company", "AT&T Inc.", "Lockheed Martin Corp.", "McDonald's Corporation",
-             "Goldman Sachs Group, Inc.", "Wells Fargo & Co", "BLACKROCK, INC.", "Procter & Gamble Co/The"]
-if _shared_normalise is not None:
-    for _s in _SELFTEST:
-        assert _shared_normalise(_s) == _normalise_local(_s), f"normalise_name diverged on {_s!r}"
-    normalise_name = _shared_normalise
-else:
-    normalise_name = _normalise_local
+# One implementation of each rule, shared with the core modules (data dictionary: "Identifiers").
+_clean = clean_sec_name
 
 
 # --- members ---------------------------------------------------------------------
@@ -164,20 +131,11 @@ def load_overrides() -> Overrides:
     Only reviewed rows (reviewed_by non-empty) are honoured."""
     by_c: dict[str, str] = {}
     by_n: dict[str, str] = {}
-    rows = ignored = 0
-    if OVERRIDES.exists():
-        with open(OVERRIDES, newline="", encoding="utf-8") as f:
-            for r in csv.DictReader(f):
-                rows += 1
-                src = (r.get("source") or "").strip().lower()
-                key = (r.get("source_id_or_name") or "").strip()
-                org = (r.get("org_id") or "").strip()
-                if src not in {"fec", "fec_committee", "fec_connected_org"} or not key or not org \
-                        or not (r.get("reviewed_by") or "").strip():
-                    ignored += 1
-                    continue
-                if re.fullmatch(r"C\d{8}", key.upper()):
-                    by_c[key.upper()] = org
-                else:
-                    by_n[normalise_name(key)] = org
-    return Overrides(by_c, by_n, rows, ignored)
+    used, rows = read_overrides({"fec", "fec_committee", "fec_connected_org"})
+    for r in used:
+        key, org = r["source_id_or_name"], r["org_id"]
+        if re.fullmatch(r"C\d{8}", key.upper()):
+            by_c[key.upper()] = org
+        else:
+            by_n[normalise_name(key)] = org
+    return Overrides(by_c, by_n, rows, rows - len(used))

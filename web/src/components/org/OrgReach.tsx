@@ -1,15 +1,16 @@
 "use client";
-
-import "@/app/reach.css";
+// Organisation page parts: the party split bars with their literal sentences (OrgSplit), and the reach wall of its
+// largest tied members by party (OrgReach), with spending against kept apart.
+import "@/styles/reach.css";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { OrgFileWire } from "@/lib/types";
-import type { TieEdge } from "@/lib/decode";
-import type { BoardMember } from "@/lib/client";
-import { count, seat } from "@/lib/format";
-import { TYPE_LABEL } from "@/lib/edges";
-import { PARTY_FULL, PARTY_ORDER, partsOf, splitSentence, total, type Measure, type Party, shortMoney } from "@/lib/party";
+import type { TieEdge } from "@/lib/data/decode";
+import type { BoardMember } from "@/lib/domain/names";
+import { count, seat, shortMoney } from "@/lib/format";
+import { TYPE_LABEL } from "@/lib/domain/edges";
+import { PARTY_FULL, PARTY_ORDER, partsOf, splitSentence, total, type Measure, type Party } from "@/lib/domain/party";
 import { SplitBar } from "./SplitBar";
-import { Print } from "./Print";
+import { Print } from "@/components/shared/Print";
 
 const REACH_TOP = 30;
 const STRINGS_ALWAYS = 3;
@@ -53,8 +54,9 @@ export function OrgSplit({ file }: { file: OrgFileWire }) {
       </div>
       <dl className="splitsec__bars">
         {rows.map((b) => {
-          const v = partsOf(split, b.measure, b.i)!;
-          const n = partsOf(split, b.measure, 0)!;
+          const v = partsOf(split, b.measure, b.i);
+          const n = partsOf(split, b.measure, 0);
+          if (!v || !n) return null;
           const d = b.measure === "traded" ? null : partsOf(split, b.measure, 1);
           const labels = Object.fromEntries(
             PARTY_ORDER.map((p) => [p, b.i === 1 ? `${shortMoney(v[p])} · ${count(n[p])}` : d ? `${count(v[p])} · ${shortMoney(d[p])}` : count(v[p])]),

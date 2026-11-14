@@ -205,14 +205,6 @@
 .rec__caveats li + li {
   margin-top: 4px;
 }
-.rec__raw {
-  max-height: 420px;
-  overflow: auto;
-  padding: 10px;
-  font-size: 12px;
-  background: var(--bg-2);
-  border: 1px solid var(--rule);
-}
 @media (max-width: 600px) {
   .rec__ids div {
     grid-template-columns: 1fr;

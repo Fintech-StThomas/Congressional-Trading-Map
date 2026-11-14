@@ -1,7 +1,6 @@
 """Parse cached LDA pages into lobbyist_money and revolving_door rows (no network)."""
 from __future__ import annotations
 
-import csv
 import gzip
 import json
 import re
@@ -9,7 +8,7 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ..util import normalise_name
+from ..util import normalise_name, read_overrides
 from . import download as dl
 from .match import Matcher, Member, fec_person_name, name_keys, serving_years
 
@@ -17,7 +16,6 @@ REPO = dl.REPO
 BUILD = REPO / "pipeline" / "build"
 FEC_DB = REPO / "pipeline" / ".cache" / "fec" / "fec.duckdb"
 FEC_INDEX = dl.CACHE / "fec_committees.json.gz"
-OVERRIDES = REPO / "pipeline" / "crosswalk" / "org_overrides.csv"
 
 # LD-203 item types (constants/contribution/itemtypes). Counted as money to or for a member of Congress:
 #   feca = contribution to a federal candidate, leadership PAC or party committee (FECA);
@@ -100,14 +98,9 @@ class OrgResolver:
         names = {k: (v if isinstance(v, str) else v.get("id")) for k, v in names.items()}
         info = json.loads((BUILD / "companies.json").read_text())
         ov: dict[tuple[str, str], str] = {}
-        if OVERRIDES.exists():
-            with open(OVERRIDES, newline="", encoding="utf-8") as f:
-                for r in csv.DictReader(f):
-                    src = (r.get("source") or "").strip().lower()
-                    if src in ("lda_registrant", "lda_client") and (r.get("reviewed_by") or "").strip() \
-                            and (r.get("org_id") or "").strip():
-                        key = (r.get("source_id_or_name") or "").strip()
-                        ov[(src, key if key.isdigit() else normalise_name(key))] = r["org_id"].strip()
+        for r in read_overrides({"lda_registrant", "lda_client"})[0]:
+            key = r["source_id_or_name"]
+            ov[(r["source"], key if key.isdigit() else normalise_name(key))] = r["org_id"]
         return cls({k: v for k, v in names.items() if v}, info, ov)
 
     def resolve(self, role: str, lda_id: int, name: str) -> str:

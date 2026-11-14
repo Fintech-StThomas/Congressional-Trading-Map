@@ -1,33 +1,36 @@
+// /cases: every Case (a member and an organisation tied by several kinds of filed record in the same
+// years), ranked as cases.json orders them. Server-rendered from cases.json.
 import type { Metadata } from "next";
 import Link from "next/link";
-import { CASE_NOT_SHOWN } from "@/lib/notshown";
-import { getCases, getMemberIndex, getOrgIndex } from "@/lib/data";
-import { TYPE_LABEL } from "@/lib/edges";
-import { seat } from "@/lib/format";
-import { boardHref, memberHref, orgHref } from "@/lib/client";
-import { Print, PartyTag } from "@/components/Print";
+import { CASE_NOT_SHOWN, caseHoldingWords, caseRuleText, noCasesText } from "@/lib/copy";
+import { getCases, getMemberIndex, getMeta, getOrgIndex } from "@/lib/data/server";
+import { caseMinTypes } from "@/lib/data/meta";
+import { TYPE_LABEL } from "@/lib/domain/edges";
+import { money, seat, yearRange } from "@/lib/format";
+import { boardHref, memberHref, orgHref } from "@/lib/urls";
+import { Print, PartyTag } from "@/components/shared/Print";
 
 export const metadata: Metadata = {
   title: "Open cases",
-  description: "Members of Congress and organisations tied by three or more kinds of filed record at once, ranked.",
+  description: "Members of Congress and organisations tied by two or more kinds of filed record in the same years, ranked.",
 };
 
 export default function CasesPage() {
   const cases = getCases();
   const members = getMemberIndex();
   const orgs = getOrgIndex();
+  const minTypes = caseMinTypes(getMeta());
   return (
     <div className="page page--narrow">
       <h1>Open cases</h1>
       <p className="lede">
-        A case is a member of Congress whose household traded a company&rsquo;s stock and who received money from that company&rsquo;s PAC in the same years. Both facts come from filed
-        records; together they are a reason to read the filings. They are not a finding, and they say nothing about why. Ranked by the number of kinds of tie, then money, then trades.
+        {caseRuleText(minTypes)} Each fact comes from a filed record; together they are a reason to read the filings. They are not a finding, and they say nothing about why.
+        Ranked by the number of kinds of tie, then money, then trades.
       </p>
       {cases.length === 0 ? (
         <div className="emptycase">
           <p>
-            <strong>No cases in this build.</strong> No member and organisation pair yet has three kinds of filed tie that overlap in time. As more sources are added (lobbying,
-            annual holdings, travel), pairs that meet the rule will appear here.
+            <strong>No cases in this build.</strong> {noCasesText(minTypes)} As more sources are added (lobbying, travel), pairs that meet the rule will appear here.
           </p>
           <p>
             Meanwhile, the <Link href="/">board</Link> shows every member&rsquo;s strongest ties.
@@ -50,12 +53,12 @@ export default function CasesPage() {
                     <Link href={orgHref(c.org)}>{o?.name ?? c.org}</Link>
                   </p>
                   <p className="caserow__sub">
-                    {m ? seat(m) : ""} · <span className="mono">{c.years[0] === c.years[1] ? c.years[0] : `${c.years[0]}–${c.years[1]}`}</span>
+                    {m ? seat(m) : ""} · <span className="mono">{yearRange(c.years)}</span>
                   </p>
                   <p className="caserow__what">
-                    Household traded the stock{c.trades ? ` (${c.trades.toLocaleString("en-US")} ${c.trades === 1 ? "trade" : "trades"})` : ""} · received
-                    {c.money ? ` $${Math.round(c.money).toLocaleString("en-US")}` : " money"} from its PAC (all years)
-                    {c.types.filter((t) => t !== "traded" && t !== "pac_money").map((t) => ` · ${TYPE_LABEL[t].toLowerCase()}`).join("")}
+                    Household {caseHoldingWords(c)}
+                    {c.types.includes("pac_money") ? ` · received ${c.money ? money(Math.round(c.money)) : "money"} from its PAC (all years)` : ""}
+                    {c.types.filter((t) => t !== "traded" && t !== "owns" && t !== "pac_money").map((t) => ` · ${TYPE_LABEL[t].toLowerCase()}`).join("")}
                   </p>
                   <p className="notshown">{CASE_NOT_SHOWN}</p>
                 </div>

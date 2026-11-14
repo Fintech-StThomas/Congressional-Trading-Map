@@ -1,5 +1,5 @@
 "use client";
-
+// Catches a render error in one part of a page and shows a short message instead of a blank page.
 import { Component, type ReactNode } from "react";
 
 type Props = { children: ReactNode; label: string; fallback?: ReactNode };

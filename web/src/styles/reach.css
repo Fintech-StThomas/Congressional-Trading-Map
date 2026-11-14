@@ -1,11 +1,6 @@
 /* The wall, organisation reach and /orgs. Party is a letter plus a neutral
    pattern, never a colour: D solid, I dotted, R hatched. Red stays a tie. */
 
-:root {
-  --pat-ink: oklch(0.82 0.012 85);
-  --pat-ground: oklch(0.3 0.008 60);
-}
-
 /* ---------- party patterns ---------- */
 
 .seg--D {

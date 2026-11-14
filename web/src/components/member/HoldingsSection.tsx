@@ -1,14 +1,17 @@
 // "Disclosed holdings" on the member page: House annual reports only. Server component.
 import Link from "next/link";
-import { coverageWords, compactUsd, HOLDINGS_YEARS, netWorthText, rowsOf, SENATE_NOTE, type HoldingsFile } from "@/lib/holdings";
+import { coverageWords, netWorthText, rowsOf, type HoldingsFile } from "@/lib/domain/holdings";
+import { signedShortMoney } from "@/lib/format";
+import { HOLDINGS_YEARS } from "@/lib/years";
+import { SENATE_NOTE } from "@/lib/copy";
 
 type PortRow = { name: string; org: string | null; sector: string | null; rows: number; low: number; high: number | null; share_low: number | null; share_high: number | null; owners: string[] };
 type LiabRow = { creditor: string; type: string; owner: string; low: number | null; high: number | null; residence_secured: boolean };
 
 function band(low: number | null, high: number | null): string {
   if (low === null && high === null) return "no value given";
-  if (high === null) return `over ${compactUsd(low ?? 0)}`;
-  return `${compactUsd(low ?? 0)}–${compactUsd(high)}`;
+  if (high === null) return `over ${signedShortMoney(low ?? 0)}`;
+  return `${signedShortMoney(low ?? 0)}–${signedShortMoney(high)}`;
 }
 const pct = (v: number | null) => (v === null ? "—" : `${(v * 100).toFixed(v < 0.1 ? 1 : 0)}%`);
 
@@ -28,9 +31,9 @@ function BandChart({ h }: { h: HoldingsFile }) {
   return (
     <svg className="hold__chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Disclosed net worth range by report year">
       <line x1={pad.l} x2={W - pad.r} y1={yy(0)} y2={yy(0)} className="hold__zero" />
-      <text x={pad.l - 6} y={yy(hi) + 4} className="hold__axis" textAnchor="end">{compactUsd(hi)}</text>
+      <text x={pad.l - 6} y={yy(hi) + 4} className="hold__axis" textAnchor="end">{signedShortMoney(hi)}</text>
       <text x={pad.l - 6} y={yy(0) + 4} className="hold__axis" textAnchor="end">$0</text>
-      {lo < 0 && <text x={pad.l - 6} y={yy(lo) + 4} className="hold__axis" textAnchor="end">{compactUsd(lo)}</text>}
+      {lo < 0 && <text x={pad.l - 6} y={yy(lo) + 4} className="hold__axis" textAnchor="end">{signedShortMoney(lo)}</text>}
       {years.map((y, i) => {
         const nw = h.years[String(y)]?.net_worth;
         const label = String(y).slice(2);

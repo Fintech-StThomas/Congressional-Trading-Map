@@ -1,5 +1,6 @@
-import type { StringStyle } from "@/lib/edges";
-import { frayed as fray } from "@/lib/fray";
+// A short sample of a string style (filed, weak, derived, context) for legends, chips and tables.
+import type { StringStyle } from "@/lib/domain/edges";
+import { frayed as fray } from "@/lib/board/fray";
 
 /**
  * A short sample of a string, drawn the way the board draws it: a wool core with

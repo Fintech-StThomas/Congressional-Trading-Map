@@ -1,5 +1,5 @@
 "use client";
-
+// The header's site navigation, marking the current section.
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 

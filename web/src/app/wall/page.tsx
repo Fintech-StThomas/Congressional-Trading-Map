@@ -1,8 +1,9 @@
+// /wall: renders the current members from wall.json; WallView loads former members and years on demand.
 import type { Metadata } from "next";
-import { readData } from "@/lib/data";
-import { decodeWall } from "@/lib/party";
-import { WallView } from "@/components/WallView";
-import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { readData } from "@/lib/data/server";
+import { decodeWall } from "@/lib/domain/party";
+import { WallView } from "@/components/wall/WallView";
+import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 import { count } from "@/lib/format";
 
 export const metadata: Metadata = {

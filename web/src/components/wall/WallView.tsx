@@ -1,16 +1,18 @@
 "use client";
-
-import "@/app/reach.css";
+// The wall (/wall): every member as a print in three party sections with a marker for one measure, for all years
+// or one year (wall-years.json). Filters and the year live in the URL. Year logic: lib/domain/wallyears.ts.
+import "@/styles/reach.css";
 import Link from "next/link";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { boardHref, dataUrl, getJSON } from "@/lib/client";
-import { count, money, seat, stateName } from "@/lib/format";
-import { YEAR_MIN } from "@/lib/site";
-import { decodeWall, PARTY_FULL, PARTY_ORDER, type Party, type WallRow, shortMoney } from "@/lib/party";
-import { decodeWallYears, leaving, rowsForYear, yearGap, yearScale, type WallYears, type WallYearsRaw } from "@/lib/wallyears";
-import { ChipSelect, Segmented, Switch } from "./controls/ChipSelect";
-import { YearControl } from "./controls/YearControl";
-import { Print } from "./Print";
+import { boardHref, dataUrl } from "@/lib/urls";
+import { getJSON } from "@/lib/data/fetch";
+import { count, money, seat, stateName, shortMoney } from "@/lib/format";
+import { YEAR_MAX, YEAR_MIN } from "@/lib/years";
+import { decodeWall, PARTY_FULL, PARTY_ORDER, type Party, type WallRow } from "@/lib/domain/party";
+import { decodeWallYears, leaving, rowsForYear, yearGap, yearScale, type WallYears, type WallYearsRaw } from "@/lib/domain/wallyears";
+import { ChipSelect, Segmented, Switch } from "@/components/shared/ChipSelect";
+import { YearControl } from "@/components/shared/YearControl";
+import { Print } from "@/components/shared/Print";
 
 type MeasureKey = "cases" | "trades" | "pac" | "oppose";
 const MEASURES: { k: MeasureKey; label: string; short: string; fmt: (n: number) => string; long: (n: number) => string }[] = [
@@ -26,7 +28,6 @@ const SORTS = [
   { value: "measure", label: "By marker, largest first", short: "Marker" },
   { value: "name", label: "By last name", short: "Name" },
 ];
-const YEAR_MAX = new Date().getFullYear();
 const LEAVE_MS = 220;
 
 function bySeat(a: WallRow, b: WallRow) {
@@ -49,12 +50,13 @@ function readQuery() {
   if (typeof window === "undefined") return null;
   const q = new URLSearchParams(window.location.search);
   const y = Number(q.get("y"));
+  const st = q.get("st") ?? "";
   return {
     year: y >= YEAR_MIN && y <= YEAR_MAX ? y : null,
     measure: (MEASURES.find((m) => m.k === q.get("k"))?.k ?? "cases") as MeasureKey,
     sort: (SORTS.find((s) => s.value === q.get("sort"))?.value ?? "seat") as SortKey,
     chamber: (["sen", "rep"].includes(q.get("ch") ?? "") ? q.get("ch") : "all") as Chamber,
-    state: /^[A-Z]{2}$/.test(q.get("st") ?? "") ? q.get("st")! : "",
+    state: /^[A-Z]{2}$/.test(st) ? st : "",
     former: q.get("former") === "1",
   };
 }
@@ -71,7 +73,7 @@ export function WallView({ current }: { current: WallRow[] }) {
   const [wy, setWy] = useState<WallYears | null>(null);
   const [status, setStatus] = useState<{ former: "idle" | "loading" | "error"; years: "idle" | "loading" | "error" }>({ former: "idle", years: "idle" });
   const [tip, setTip] = useState<Tip | null>(null);
-  const m = MEASURES.find((x) => x.k === measure)!;
+  const m = MEASURES.find((x) => x.k === measure) ?? MEASURES[0];
   const ready = useRef(false);
 
   const loadAll = useCallback(() => {
@@ -134,16 +136,16 @@ export function WallView({ current }: { current: WallRow[] }) {
   );
 
   const yearMode = year !== null && wy !== null && allRows !== null;
-  const yearRows = useMemo(() => (yearMode ? rowsForYear(allRows!, wy!, year!) : null), [yearMode, allRows, wy, year]);
+  const yearRows = useMemo(() => (year !== null && wy && allRows ? rowsForYear(allRows, wy, year) : null), [allRows, wy, year]);
   const states = useMemo(() => [...new Set((allRows ?? current).map((r) => r.state))].sort(), [allRows, current]);
   const keep = useCallback((r: WallRow) => (chamber === "all" || r.chamber === chamber) && (!state || r.state === state), [chamber, state]);
   const base = yearRows ?? current;
   const shown = useMemo(() => base.filter(keep), [base, keep]);
   // One scale: current members all-time, or every year for the year view (so markers compare while playing).
-  const max = useMemo(() => (yearMode ? yearScale(wy!, measure) : Math.max(1, ...current.map((r) => r[measure]))), [yearMode, wy, current, measure]);
+  const max = useMemo(() => (yearMode && wy ? yearScale(wy, measure) : Math.max(1, ...current.map((r) => r[measure]))), [yearMode, wy, current, measure]);
   const formerRows = useMemo(() => (allRows ?? []).filter((r) => !r.current), [allRows]);
   const formerMax = useMemo(() => Math.max(1, ...formerRows.map((r) => r[measure])), [formerRows, measure]);
-  const gap = yearMode ? yearGap(measure, year!, chamber, wy!.first) : null;
+  const gap = year !== null && wy && allRows ? yearGap(measure, year, chamber, wy.first) : null;
 
   // Prints leaving the wall stay for LEAVE_MS, fading, in their last place.
   const [ghosts, setGhosts] = useState<Ghost[]>([]);

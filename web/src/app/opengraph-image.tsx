@@ -1,5 +1,6 @@
+// The social sharing image, drawn at build time.
 import { ImageResponse } from "next/og";
-import { SITE } from "@/lib/site";
+import { SITE } from "@/lib/copy";
 
 export const alt = `${SITE.name}: ${SITE.tagline}`;
 export const size = { width: 1200, height: 630 };

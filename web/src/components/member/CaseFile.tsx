@@ -1,12 +1,10 @@
 // The printable case file: a print-first document rendered with the member page
 // and shown only in print (window.print). Server component; no client code.
 import type { Edge, MemberFileWire, MetaSource } from "@/lib/types";
-import type { LedgerRow, TradeRow } from "@/lib/decode";
-import { typeLabel, amountLabel } from "@/lib/edges";
-import { count, date, money, PARTY_NAMES, seat, served, yearSpan } from "@/lib/format";
-import { CASE_NOT_SHOWN, notShown } from "@/lib/notshown";
-import { SITE } from "@/lib/site";
-import { USE_NOTICE } from "@/lib/records";
+import { ledgerTieCount, type LedgerRow, type TradeRow } from "@/lib/data/decode";
+import { directionWord, typeLabel, amountLabel } from "@/lib/domain/edges";
+import { count, date, money, PARTY_NAMES, seat, served, yearRange, yearSpan } from "@/lib/format";
+import { CASE_NOT_SHOWN, caseRuleText, notShown, SITE, USE_NOTICE } from "@/lib/copy";
 
 /** PT-<bioguide>-<data build date as YYYYMMDD>: deterministic for a member and a build. */
 export function caseNumber(id: string, built: string | null): string {
@@ -24,9 +22,9 @@ function rowAmount(r: { exact: number | null; low: number | null; high: number |
   return "not disclosed";
 }
 
-export function CaseFile({ file, board, against, names, ledger, trades, sources, built, orgName }: {
+export function CaseFile({ file, board, against, names, ledger, trades, sources, built, orgName, caseMinTypes }: {
   file: MemberFileWire; board: Edge[]; against: { shown: Edge[]; more: number }; names: (id: string) => string; ledger: LedgerRow[]; trades: TradeRow[];
-  sources: MetaSource[]; built: string | null; orgName: (id: string) => string;
+  sources: MetaSource[]; built: string | null; orgName: (id: string) => string; caseMinTypes: number;
 }) {
   const m = file.member;
   const no = caseNumber(m.id, built);
@@ -36,7 +34,8 @@ export function CaseFile({ file, board, against, names, ledger, trades, sources,
   const liveUrl = `${SITE.url}/m/${m.id}`;
   const topLedger = [...ledger].filter((r) => r.type !== "sits_with")
     .sort((a, b) => (b.exact ?? b.high ?? b.low ?? 0) - (a.exact ?? a.high ?? a.low ?? 0)).slice(0, TOP_LEDGER);
-  const ledgerTotal = Object.values(file.ledger_totals ?? {}).reduce((n, t) => n + (t?.edges ?? 0), 0);
+  // Money ties only: shared-committee rows (sits_with) are counted in ledger_totals but are not money.
+  const ledgerTotal = ledgerTieCount(file.ledger_totals, ["sits_with"]);
   const years = Object.entries(ts?.by_year ?? {}).sort(([a], [b]) => a.localeCompare(b));
   const other = (e: Edge) => (e.from.id === m.id ? e.to : e.from);
 
@@ -78,13 +77,13 @@ export function CaseFile({ file, board, against, names, ledger, trades, sources,
       {file.cases.length > 0 && (
         <section className="cf__sec">
           <h3>Cases</h3>
-          <p className="cf__note">A company whose stock the household traded while the member received money from its PAC, in the same years. A reason to read the filings, not a finding.</p>
+          <p className="cf__note">{caseRuleText(caseMinTypes)} A reason to read the filings, not a finding.</p>
           <table className="cf__table">
             <thead><tr><th>Company</th><th>Years</th><th className="num">Trades</th><th className="num">PAC money, all years</th></tr></thead>
             <tbody>
               {file.cases.map((c) => (
                 <tr key={c.id}>
-                  <td>{orgName(c.org)}</td><td className="mono">{c.years[0] === c.years[1] ? c.years[0] : `${c.years[0]}–${c.years[1]}`}</td>
+                  <td>{orgName(c.org)}</td><td className="mono">{yearRange(c.years)}</td>
                   <td className="num mono">{count(c.trades)}</td><td className="num mono">{c.money ? money(Math.round(c.money)) : "—"}</td>
                 </tr>
               ))}
@@ -141,7 +140,7 @@ export function CaseFile({ file, board, against, names, ledger, trades, sources,
             <tbody>
               {topLedger.map((r, i) => (
                 <tr key={i}>
-                  <td>{typeLabel({ type: r.type, note: r.note, via: r.via })}</td><td>{names(r.other)}</td>
+                  <td>{typeLabel({ type: r.type, note: r.note, via: r.via })}{directionWord(r.dir)}</td><td>{names(r.other)}</td>
                   <td className="num mono">{rowAmount(r)}</td><td className="num mono">{count(r.count)}</td><td className="mono">{yearSpan(r.first, r.last)}</td>
                 </tr>
               ))}

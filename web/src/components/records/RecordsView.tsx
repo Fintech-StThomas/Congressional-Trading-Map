@@ -1,13 +1,13 @@
 "use client";
-
+// The full file (/m/<id>/records): loads the member, trade and holdings files and shows every record in DataTables, with CSV and JSON downloads.
 import { useEffect, useMemo, useState } from "react";
-import { dataUrl, getJSON } from "@/lib/client";
+import { dataUrl } from "@/lib/urls";
+import { getJSON } from "@/lib/data/fetch";
 import type { MemberFileWire } from "@/lib/types";
-import {
-  caveats, DOC_COLS, documentRows, identifierLinks, TIE_COLS, tieRows, TRADE_COLS_ALL, tradeRows, USE_NOTICE, type Col,
-} from "@/lib/records";
+import { caveats, DOC_COLS, documentRows, identifierLinks, TIE_COLS, tieRows, TRADE_COLS_ALL, tradeRows, type Col } from "@/lib/domain/records";
+import { USE_NOTICE, SENATE_NOTE } from "@/lib/copy";
 import { DataTable, download } from "./DataTable";
-import { ASSET_COLS, coverageWords, holdingRows, LIABILITY_COLS, netWorthText, SENATE_NOTE, type HoldingsFile } from "@/lib/holdings";
+import { ASSET_COLS, coverageWords, holdingRows, LIABILITY_COLS, netWorthText, type HoldingsFile } from "@/lib/domain/holdings";
 
 type TradeWire = { cols: string[]; rows: unknown[][]; filings: Record<string, string> };
 type Source = { id: string; name: string; revision: string | null; retrieved: string | null; url: string | null };

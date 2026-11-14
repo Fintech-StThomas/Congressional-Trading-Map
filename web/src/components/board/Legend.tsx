@@ -1,4 +1,6 @@
-import { LineSample } from "../LineSample";
+// The board's key: every visual encoding (yarn, fraying, thickness, Case tag, AGAINST zone) in plain words.
+import { CASE_TAG_TEXT } from "@/lib/copy";
+import { LineSample } from "@/components/shared/LineSample";
 
 /** Every encoding on the board, in plain words. */
 export function Legend() {
@@ -38,7 +40,7 @@ export function Legend() {
         </li>
         <li>
           <span className="tag tag--inline">Case</span>
-          <span>household traded the company&rsquo;s stock and the member received money from its PAC in the same years</span>
+          <span>{CASE_TAG_TEXT}</span>
         </li>
         <li>
           <span className="against__tag legend__against">AGAINST</span>

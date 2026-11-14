@@ -1,5 +1,5 @@
 "use client";
-
+// The wall's year picker: All years, or one year with step and play controls.
 import { useEffect, useRef, useState } from "react";
 
 export const PLAY_MS = 900;

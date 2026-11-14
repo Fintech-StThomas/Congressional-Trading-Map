@@ -1,3 +1,4 @@
+// A member's pinned portrait ("print") with initials when there is no photo, and the party letter tag.
 import { tiltFor } from "@/lib/hash";
 
 type Props = {

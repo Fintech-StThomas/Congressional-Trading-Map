@@ -17,6 +17,7 @@ import random
 import sys
 from collections import Counter, defaultdict
 
+from .. import util
 from . import download as dl
 from .build import BUILD, REPO, OrgResolver, fec_committee_index, load_matcher, manifest_hash, read_slices
 from .edges import contribution_rows, door_edges, implausible, latest_reports, money_edges, position_rows
@@ -31,15 +32,9 @@ DISCLAIMER = ("The Senate Office of Public Records and the Clerk of the House ca
 CONTRIB_KINDS = ["contrib-all"] + [f"contrib-{t}" for t in dl.CONTRIBUTION_TYPES]
 
 
-def dumps(o) -> str:
-    return json.dumps(o, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
-
-
 def write_jsonl(path, rows) -> tuple[int, int]:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    data = "".join(dumps(r) + "\n" for r in rows)
-    path.write_text(data, encoding="utf-8")
-    return len(rows), len(data.encode())
+    """Sorted, key-sorted, atomically written JSON lines (pipeline.util.write_jsonl), plus the file size."""
+    return util.write_jsonl(path, rows), path.stat().st_size
 
 
 def year_coverage(status: dict[int, dict]) -> dict[str, str]:

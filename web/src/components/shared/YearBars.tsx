@@ -1,8 +1,9 @@
+// Per-year bars for one tie in the evidence drawer.
 import type { Edge } from "@/lib/types";
-import { YEAR_MAX, YEAR_MIN } from "@/lib/site";
+import { YEAR_MAX, YEAR_MIN } from "@/lib/years";
 import { amountText } from "@/lib/format";
 
-/** A tiny bar per year, 2000–2026. Height by money where filed, else by record count. */
+/** A tiny bar per year, YEAR_MIN to YEAR_MAX, in the evidence drawer. Height by money where filed, else by record count. */
 export function YearBars({ e, range }: { e: Edge; range?: [number, number] }) {
   const years = Array.from({ length: YEAR_MAX - YEAR_MIN + 1 }, (_, i) => YEAR_MIN + i);
   const byYear = new Map(e.by_year.map((b) => [b.y, b]));
@@ -37,8 +38,8 @@ export function YearBars({ e, range }: { e: Edge; range?: [number, number] }) {
             </g>
           );
         })}
-        {[2000, 2012, 2026].map((y) => (
-          <text key={y} x={(y - YEAR_MIN) * (bw + gap) + bw / 2} y={H + 12} textAnchor={y === 2000 ? "start" : y === 2026 ? "end" : "middle"} className="yearbars__tick">
+        {[YEAR_MIN, 2012, YEAR_MAX].map((y) => (
+          <text key={y} x={(y - YEAR_MIN) * (bw + gap) + bw / 2} y={H + 12} textAnchor={y === YEAR_MIN ? "start" : y === YEAR_MAX ? "end" : "middle"} className="yearbars__tick">
             {y}
           </text>
         ))}

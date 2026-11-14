@@ -1,6 +1,6 @@
 // One static JSON file per state with every current member's board strings,
 // cut from the member files at build time.
-import { getBoard, memberBoard, type MemberBoard } from "@/lib/data";
+import { getBoard, memberBoard, type MemberBoard } from "@/lib/data/server";
 
 export const dynamic = "force-static";
 export const dynamicParams = false;

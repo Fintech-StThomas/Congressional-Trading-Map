@@ -1,5 +1,5 @@
 "use client";
-
+// Route error page: shown when a page throws while rendering.
 import Link from "next/link";
 
 export default function ErrorPage({ reset }: { error: Error; reset: () => void }) {

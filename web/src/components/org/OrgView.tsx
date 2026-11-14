@@ -1,16 +1,20 @@
 "use client";
-
+// The organisation page (/o/<id>, one static shell): loads the org's shard in the browser and shows its party split,
+// reach, ledger totals and every listed tie, with evidence loaded from member files on demand.
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Edge, OrgFileWire } from "@/lib/types";
-import { decodeOrgTies, recordUrlFor, type TieEdge } from "@/lib/decode";
-import { FAMILY_LABEL, TYPE_LABEL } from "@/lib/edges";
+import { decodeOrgTies, orgTieTotal, type TieEdge } from "@/lib/data/decode";
+import { recordUrlFor, boardHref, dataUrl, memberHref } from "@/lib/urls";
+import { FAMILY_LABEL, TYPE_LABEL } from "@/lib/domain/edges";
 import { amountText, count, seat, yearSpan } from "@/lib/format";
-import { boardHref, dataUrl, getJSON, IS_SAMPLE_CLIENT, loadSearchIndex, memberHref, ORG_KIND_LABEL, resolveTie, type BoardMember, type NameBook } from "@/lib/client";
+import { getJSON, IS_SAMPLE_CLIENT, loadSearchIndex, resolveTie } from "@/lib/data/fetch";
+import { ORG_KIND_LABEL, type BoardMember, type NameBook } from "@/lib/domain/names";
 import { orgShard } from "@/lib/hash";
-import { EvidenceDrawer, ExternalIcon } from "./EvidenceDrawer";
-import { PartyTag } from "./Print";
-import { LineSample } from "./LineSample";
+import { EvidenceDrawer } from "@/components/shared/EvidenceDrawer";
+import { ExternalIcon } from "@/components/shared/ExternalIcon";
+import { PartyTag } from "@/components/shared/Print";
+import { LineSample } from "@/components/shared/LineSample";
 import { OrgReach, OrgSplit } from "./OrgReach";
 
 type Key = "member" | "type" | "amount" | "count" | "last";
@@ -54,10 +58,8 @@ export function OrgView({ sources }: { sources: Record<string, string> }) {
   }, []);
 
   const ties = useMemo(() => (file ? decodeOrgTies(file) : []), [file]);
-  const totalTies = useMemo(() => {
-    const t = file?.ledger_totals ? Object.values(file.ledger_totals).reduce((n, x) => n + (x?.edges ?? 0), 0) : 0;
-    return Math.max(t, ties.length);
-  }, [file, ties.length]);
+  // Listed ties plus the money ties only ledger_totals counts (disjoint by contract).
+  const totalTies = useMemo(() => (file ? orgTieTotal(file) : 0), [file]);
   const book: NameBook = useMemo(() => ({ members, orgs: file ? { [file.org.id]: file.org } : {} }), [members, file]);
 
   const memberOf = (e: TieEdge) => (e.from.kind === "member" ? e.from.id : e.to.id);

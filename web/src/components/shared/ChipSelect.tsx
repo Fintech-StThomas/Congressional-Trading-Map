@@ -1,5 +1,5 @@
 "use client";
-
+// Small form controls in the board's chip style: a listbox chip (ChipSelect), a segmented control and a switch.
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 
 export type ChipOption = { value: string; label: string; short?: string };

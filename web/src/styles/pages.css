@@ -1,3 +1,6 @@
+/* Content pages: tables, the member page (dossier), cases, method, organisation pages, timeline,
+   holdings, and print rules for the member page. Loaded on every page by app/layout.tsx. */
+
 /* ---------- tables: clean and modern, not corkboard ---------- */
 
 .tablewrap {
@@ -541,21 +544,6 @@
   color: var(--text-3);
   font-size: 13px;
   margin-top: 2px;
-}
-.caserow__types {
-  list-style: none;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  margin: 8px 0 0;
-  padding: 0;
-}
-.caserow__types li {
-  font-size: 12px;
-  padding: 2px 8px;
-  border: 1px solid var(--rule);
-  border-radius: 999px;
-  color: var(--text-2);
 }
 .emptycase {
   margin-top: 28px;

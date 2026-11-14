@@ -1,8 +1,8 @@
-// Unit tests for the wall-by-year logic (src/lib/wallyears.ts). No server needed.
+// Unit tests for the wall-by-year logic (src/lib/domain/wallyears.ts). No server needed.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
-import { decodeWallYears, leaving, rowsForYear, termIn, yearGap, yearScale } from "../src/lib/wallyears.ts";
+import { decodeWallYears, leaving, rowsForYear, termIn, yearGap, yearScale } from "../src/lib/domain/wallyears.ts";
 
 const first = { trades: { sen: 2012, rep: 2014 }, cases: 2012, money: 1999 };
 const raw = {

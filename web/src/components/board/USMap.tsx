@@ -1,8 +1,8 @@
 "use client";
-
+// The state map behind the board: clickable states with delegation counts. Paths are projected at build time (lib/board/geo.ts).
 import { memo } from "react";
-import type { MapGeometry } from "@/lib/geo";
-import { MAP_H, MAP_W } from "@/lib/mapsize";
+import type { MapGeometry } from "@/lib/board/geo";
+import { MAP_H, MAP_W } from "@/lib/board/mapsize";
 
 type Props = {
   geo: MapGeometry;

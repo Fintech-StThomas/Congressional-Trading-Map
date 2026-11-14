@@ -1,7 +1,7 @@
 "use client";
-
+// The board's two-thumb year window.
 import { useId } from "react";
-import { YEAR_MAX, YEAR_MIN } from "@/lib/site";
+import { YEAR_MAX, YEAR_MIN } from "@/lib/years";
 
 type Props = { value: [number, number]; onChange: (v: [number, number]) => void };
 

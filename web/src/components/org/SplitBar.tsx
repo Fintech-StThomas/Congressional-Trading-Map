@@ -1,5 +1,6 @@
-import "@/app/reach.css";
-import { PARTY_FULL, PARTY_ORDER, type Parts } from "@/lib/party";
+// A horizontal bar split by party (D solid, I dotted, R hatched), never by colour.
+import "@/styles/reach.css";
+import { PARTY_FULL, PARTY_ORDER, type Parts } from "@/lib/domain/party";
 
 type Props = {
   /** Values that set the segment lengths. */

@@ -1,13 +1,14 @@
 "use client";
-
+// "Further ties" on the member page: money ties published without evidence (ledger rows), sortable and searchable.
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { recordUrlFor, type LedgerRow } from "@/lib/decode";
+import { recordUrlFor, memberHref, orgHref } from "@/lib/urls";
+import { type LedgerRow } from "@/lib/data/decode";
 import type { LedgerTotals } from "@/lib/types";
-import { TYPE_LABEL } from "@/lib/edges";
-import { amountText, count, yearSpan } from "@/lib/format";
-import { IS_SAMPLE_CLIENT, memberHref, orgHref } from "@/lib/client";
-import { ExternalIcon } from "./EvidenceDrawer";
+import { directionWord, TYPE_LABEL } from "@/lib/domain/edges";
+import { amountText, count, plural, yearSpan } from "@/lib/format";
+import { IS_SAMPLE_CLIENT } from "@/lib/data/fetch";
+import { ExternalIcon } from "@/components/shared/ExternalIcon";
 
 type Props = {
   rows: LedgerRow[];
@@ -68,7 +69,7 @@ export function LedgerTable({ rows, names, totals, selfRecordUrl }: Props) {
             <li key={t}>
               <span>{TYPE_LABEL[t as keyof typeof TYPE_LABEL] ?? t}</span>
               <span className="mono">
-                {count(v.edges)} ties · {count(v.records)} records · {amountText(v) ?? "no amount"}
+                {plural(v.edges, "tie")} · {plural(v.records, "record")} · {amountText(v) ?? "no amount"}
               </span>
             </li>
           ))}
@@ -103,6 +104,7 @@ export function LedgerTable({ rows, names, totals, selfRecordUrl }: Props) {
                 <tr key={`${r.type}-${r.other}-${i}`}>
                   <td data-label="Tie">
                     {TYPE_LABEL[r.type] ?? r.type}
+                    <span className="ties__dir">{directionWord(r.dir)}</span>
                     {r.note && <span className="sub"> · {r.note}</span>}
                   </td>
                   <td data-label="With">

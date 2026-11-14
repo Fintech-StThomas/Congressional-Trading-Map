@@ -1,4 +1,4 @@
-/* The printable case file (components/CaseFile.tsx). Hidden on screen; in print it
+/* The printable case file (components/member/CaseFile.tsx). Hidden on screen; in print it
    replaces the page: black ink on white, one red accent, greyscale portrait. */
 .casefile {
   display: none;
@@ -40,7 +40,6 @@
     text-shadow: none !important;
   }
   .dossier > :not(.casefile),
-  .sample-banner,
   .site-header,
   .site-footer,
   nextjs-portal {

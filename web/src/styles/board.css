@@ -1,3 +1,6 @@
+/* The board (home page): toolbar, canvas, cards, yarn, pins, the AGAINST zone, side panel, legend
+   and the evidence drawer. Loaded on every page by app/layout.tsx (the drawer is shared). */
+
 /* ---------- the board ---------- */
 
 .page--board {
@@ -362,11 +365,6 @@ button.crumb:hover {
   font-size: 13.5px;
   margin-top: 2px;
 }
-.slip__case {
-  font-size: 13.5px;
-  margin-top: 8px;
-  line-height: 1.45;
-}
 .slip__meta {
   margin-top: 9px;
   font-size: 12.5px;
@@ -705,12 +703,6 @@ button.crumb:hover {
 }
 .yv.is-hot .yv__thread {
   stroke: color-mix(in oklch, var(--red-hot) 70%, var(--text-3));
-}
-.yarns .yarn__breaks {
-  stroke: white;
-  stroke-width: 44px;
-  stroke-linecap: butt;
-  fill: none;
 }
 .yv--context .yv__core {
   stroke: var(--context);

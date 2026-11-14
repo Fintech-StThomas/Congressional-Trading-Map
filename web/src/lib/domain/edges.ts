@@ -235,3 +235,14 @@ export function tiePhrase(e: Edge, cardId: string, centre: string, range?: [numb
       return typeLabel(e).toLowerCase();
   }
 }
+
+/** The word after a tie's type in tables, read from the member's side: " from" (received), " to" (given), " with" (undirected). */
+export function directionWord(dir: "in" | "out" | "both"): string {
+  return dir === "in" ? " from" : dir === "out" ? " to" : " with";
+}
+
+/** An Edge's direction relative to one end (see directionWord). */
+export function edgeDir(e: Pick<Edge, "directed" | "from" | "to">, selfId: string): "in" | "out" | "both" {
+  if (!e.directed) return "both";
+  return e.to.id === selfId ? "in" : "out";
+}

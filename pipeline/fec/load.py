@@ -1,10 +1,11 @@
-"""Load FEC bulk files into a DuckDB database (pipeline/.cache/fec/fec.duckdb).
+"""Load FEC bulk files into a DuckDB database (step 2 of the FEC module: parse). Writes pipeline/.cache/fec/fec.duckdb.
 
-Files are pipe-delimited, no header, no quoting. Columns come from the FEC header
-files (https://www.fec.gov/files/bulk-downloads/data_dictionaries/<name>_header_file.csv),
-copied here so a header change upstream fails loudly instead of shifting columns.
-Every column is read as text; numbers and dates are parsed explicitly later so bad
-values are counted rather than silently coerced.
+Files are pipe-delimited, no header, no quoting. Columns come from the FEC header files
+(https://www.fec.gov/files/bulk-downloads/data_dictionaries/<name>_header_file.csv), copied here. Two guards make an
+upstream format change fail loudly instead of shifting or dropping columns: rows parsed must equal lines in the file,
+and the file must hold exactly lines x (columns - 1) delimiters (it does for all 70 file-cycles, 2000-2026).
+Every column is read as text; numbers and dates are parsed explicitly later so bad values are counted rather than
+silently coerced.
 """
 from __future__ import annotations
 
@@ -70,13 +71,15 @@ def _extract(zpath: Path) -> Path:
     return out
 
 
-def _count_lines_and_encoding(path: Path) -> tuple[int, str]:
-    n = 0
+def _count_lines_and_encoding(path: Path) -> tuple[int, int, str]:
+    """(lines, '|' delimiters, encoding)."""
+    n = pipes = 0
     non_ascii = False
     utf8_ok = True
     with open(path, "rb") as f:
         for chunk in iter(lambda: f.read(1 << 22), b""):
             n += chunk.count(b"\n")
+            pipes += chunk.count(b"|")
             if not non_ascii and any(b > 127 for b in chunk):
                 non_ascii = True
     if non_ascii:
@@ -86,15 +89,18 @@ def _count_lines_and_encoding(path: Path) -> tuple[int, str]:
                     pass
         except UnicodeDecodeError:
             utf8_ok = False
-    return n, ("utf-8" if utf8_ok else "latin-1")
+    return n, pipes, ("utf-8" if utf8_ok else "latin-1")
 
 
 def load_cycle(con: duckdb.DuckDBPyConnection, name: str, cycle: int, audit: dict) -> None:
     """Download (cached), extract, and append one file-cycle into table <name>."""
     zpath = download.bulk_zip(name, cycle)
     txt = _extract(zpath)
-    lines, enc = _count_lines_and_encoding(txt)
+    lines, pipes, enc = _count_lines_and_encoding(txt)
     cols = COLUMNS[name].split(",")
+    if pipes != lines * (len(cols) - 1):
+        raise RuntimeError(f"{name}{cycle}: {pipes} delimiters in {lines} lines, expected {len(cols) - 1} per line; "
+                           "the FEC file layout changed, update COLUMNS from the header file")
     colspec = "{" + ",".join(f"'{c}':'VARCHAR'" for c in cols) + "}"
     rel = (f"read_csv('{txt.as_posix()}', delim='|', header=false, quote='', escape='', "
            f"columns={colspec}, encoding='{enc}', strict_mode=false, null_padding=true, "

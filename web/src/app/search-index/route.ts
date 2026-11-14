@@ -1,6 +1,6 @@
 // A compact name index for search and labels, built once at build time so
 // the browser never downloads orgs.json whole.
-import { getMembers, getOrgs } from "@/lib/data";
+import { getMembers, getOrgs } from "@/lib/data/server";
 
 export const dynamic = "force-static";
 

@@ -1,12 +1,13 @@
 "use client";
-
+// "Ties" on the member page: family filters, the ties table, spending against kept apart, and the evidence drawer.
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { Edge } from "@/lib/types";
-import type { NameBook } from "@/lib/client";
-import { FAMILIES, FAMILY_LABEL, sortEdges, type Family } from "@/lib/edges";
-import { TieTable } from "./TieTable";
-import { isAgainst } from "@/lib/pick";
-import { EvidenceDrawer } from "./EvidenceDrawer";
+import type { NameBook } from "@/lib/domain/names";
+import { FAMILIES, FAMILY_LABEL, sortEdges, type Family } from "@/lib/domain/edges";
+import { TieTable } from "@/components/shared/TieTable";
+import { isAgainst } from "@/lib/domain/pick";
+import { EvidenceDrawer } from "@/components/shared/EvidenceDrawer";
+import { getJSON } from "@/lib/data/fetch";
 
 type Props = {
   edges: Edge[];
@@ -25,6 +26,7 @@ export function TieSection({ edges: initial, selfId, book: initialBook, sources,
   const [edges, setEdges] = useState(initial);
   const [book] = useState(initialBook);
   const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
   const [families, setFamilies] = useState<Set<Family>>(() => new Set(FAMILIES));
   const [open, setOpen] = useState<Edge | null>(null);
   const trigger = useRef<HTMLElement | null>(null);
@@ -42,10 +44,13 @@ export function TieSection({ edges: initial, selfId, book: initialBook, sources,
   async function loadAll() {
     if (!fullUrl) return;
     setLoading(true);
+    setFailed(false);
     try {
-      const r = await fetch(fullUrl);
-      const body = (await r.json()) as { edges: Edge[] };
-      setEdges(body.edges);
+      const body = await getJSON<{ edges?: Edge[] }>(fullUrl);
+      if (Array.isArray(body.edges)) setEdges(body.edges);
+      else setFailed(true);
+    } catch {
+      setFailed(true);
     } finally {
       setLoading(false);
     }
@@ -106,6 +111,7 @@ export function TieSection({ edges: initial, selfId, book: initialBook, sources,
           <button type="button" className="btn btn--small" onClick={loadAll} disabled={loading}>
             {loading ? "Loading…" : `Show all ${total}`}
           </button>
+          {failed && <span role="alert"> The full list failed to load; try again.</span>}
         </p>
       )}
       <EvidenceDrawer edge={open} book={book} sources={sources} onClose={close} />

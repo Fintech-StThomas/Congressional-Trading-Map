@@ -1,10 +1,12 @@
-import { getBoard, getCases, getMemberIndex, getMeta, getOrgIndex, memberBoard, metaBuilt } from "@/lib/data";
-import { getMapGeometry } from "@/lib/geo";
-import { sourceNames } from "@/lib/meta";
-import { toBoardMember, type BoardMember } from "@/lib/client";
+// The home page: builds everything the board needs at build time (current members, the featured example and
+// its strings, cases) and hands it to BoardApp.
+import { getBoard, getCases, getMemberIndex, getMeta, getOrgIndex, memberBoard, metaBuilt } from "@/lib/data/server";
+import { getMapGeometry } from "@/lib/board/geo";
+import { caseMinTypes, sourceNames } from "@/lib/data/meta";
+import { toBoardMember, type BoardMember } from "@/lib/domain/names";
 import { BoardApp, type CaseLite, type Featured, type StateChunk } from "@/components/board/BoardApp";
-import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { featuredReason, rankFeatured } from "@/lib/featured";
+import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
+import { featuredReason, rankFeatured } from "@/lib/domain/featured";
 
 export default function BoardPage() {
   const board = getBoard();
@@ -58,6 +60,7 @@ export default function BoardPage() {
           caseTotal={allCases.length}
           caseIndex={caseIndex}
           sources={sourceNames(meta)}
+          caseMinTypes={caseMinTypes(meta)}
           asOf={metaBuilt(meta)}
         />
       </ErrorBoundary>

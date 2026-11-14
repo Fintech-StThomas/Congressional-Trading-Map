@@ -59,6 +59,35 @@ A3 = re.compile(rf"\b(?:(?:North|South|East|West|NORTH|SOUTH|EAST|WEST|N|S|E|W)\
 REDACTED = "[street address redacted]"
 
 
+# Beneficiaries of custodial and FBO accounts are often a filer's minor children ("UTMA", "UGMA" and "UTA" accounts
+# are held for minors by statute), and the House form asks only for "DC". We never publish a person named as a
+# beneficiary: the name after FBO / f/b/o / "for the benefit of" / "custodian for", and a "First [M.] Last" name
+# directly before UTMA / UGMA / UTA (not "UTA DTD", a trust agreement), become NAME_REDACTED. Adults (spouses, the member) are redacted too; that only
+# removes text, and the owner column still says whose asset it is.
+NAME_REDACTED = "[name redacted]"
+_ACCOUNT_WORD = r"(?:IRA|ROTH|UTA|UTMA|UGMA|TRUST|TR|ACCOUNT|ACCT|CASH|BNY|529|PLAN|FUND|LLC|INC)\b"
+_NAME = rf"(?!{_ACCOUNT_WORD})[A-Z][A-Za-z'.\-]*(?:\s+(?!{_ACCOUNT_WORD})[A-Z][A-Za-z'.\-]*){{0,3}}"
+_NOT_A_NAME = (r"(?!(?:minor|dc\d*|dependent|child|children|son|daughter|kids?|grandchild(?:ren)?|beneficiary|"
+               r"beneficiaries|ira|trust|account|acct|college|education|529|the|cash|bny)\b)")
+B1 = re.compile(rf"\b(FBO|F/B/O|for the benefit of|for benefit of|custodian for|cust\.? for)([\s:\-]+){_NOT_A_NAME}(?=[A-Z])({_NAME})",
+                re.I)
+# "UTA" alone is ambiguous: "UTA DTD 6/11/93" is "under trust agreement dated", not a transfers-to-minors account.
+B2 = re.compile(r"\b(?!(?:Raymond James|Dependent Child|Edward Jones|Morgan Stanley|Charles Schwab|Wells Fargo|Merrill Lynch)\b)"
+                r"(?!(?:Revocable|Irrevocable|Living|Family|Marital|Credit|Charitable|Trust|Stanley|James|Jones|Schwab|Fargo|Lynch|Child)\b)"
+                r"[A-Z][a-z]+(?:\s+(?:[A-Z]\.?|[A-Z][a-z]+))?\s+(?!Trust\b)[A-Z][a-z]+(?=\s+(?:UTMA|UGMA|UTA(?!\s*(?:DTD|DATED|U/?A)\b))\b)")
+
+def _b1(m: re.Match[str]) -> str:
+    return f"{m.group(1)}{m.group(2)}{NAME_REDACTED}"
+
+
+def redact_beneficiary(text: str | None) -> tuple[str | None, bool]:
+    """Remove beneficiary names (see NAME_REDACTED above). Returns (text, whether anything was removed)."""
+    if not text:
+        return text, False
+    out = B2.sub(NAME_REDACTED, B1.sub(_b1, text))
+    return out, out != text
+
+
 _FUNDISH = re.compile(r"\b(?:529|plan|fund|funds|portfolio|account|ira|401k|trust|bond|bonds|annuity|policy|"
                       r"insurance|savings|money market|etf|stock|shares)\b", re.I)
 

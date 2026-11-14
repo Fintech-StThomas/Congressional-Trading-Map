@@ -1,11 +1,12 @@
 "use client";
-
-import "@/app/reach.css";
+// /orgs: the two organisation rankings (members reached, dollars given) from org-index.json.
+import "@/styles/reach.css";
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { orgHref, ORG_KIND_LABEL } from "@/lib/client";
-import { count } from "@/lib/format";
-import { PARTY_FULL, PARTY_ORDER, total, type IndexOrg, type OrgIndexData, type Parts, shortMoney } from "@/lib/party";
+import { orgHref } from "@/lib/urls";
+import { ORG_KIND_LABEL } from "@/lib/domain/names";
+import { count, shortMoney } from "@/lib/format";
+import { PARTY_FULL, PARTY_ORDER, total, type IndexOrg, type OrgIndexData, type Parts } from "@/lib/domain/party";
 import { SplitBar } from "./SplitBar";
 
 const STEP = 50;

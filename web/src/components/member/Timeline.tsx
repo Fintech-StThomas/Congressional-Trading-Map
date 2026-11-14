@@ -1,5 +1,6 @@
+// "Activity by year" on the member page: trades and money records per year with data coverage shading.
 import type { MemberFile } from "@/lib/types";
-import { YEAR_MAX, YEAR_MIN } from "@/lib/site";
+import { YEAR_MAX, YEAR_MIN } from "@/lib/years";
 
 type Coverage = MemberFile["coverage"];
 type Props = { tradeByYear: Record<number, number>; moneyByYear: Record<number, number>; coverage: Coverage; served: [string, string | null] };
@@ -7,7 +8,7 @@ type Props = { tradeByYear: Record<number, number>; moneyByYear: Record<number, 
 const COVER_WORD = { full: "complete", partial: "partial", none: "no coverage in this build", "n/a": "no reports existed" } as const;
 
 /**
- * Activity by year, 2000–2026: trades reported and money records, with how
+ * Activity by year, YEAR_MIN to YEAR_MAX: trades reported and money records, with how
  * complete the underlying data is for each year. Trades before July 2012
  * cannot exist: the STOCK Act created the reports.
  */

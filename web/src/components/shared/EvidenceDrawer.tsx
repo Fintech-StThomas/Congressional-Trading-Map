@@ -1,17 +1,19 @@
 "use client";
-
+// The evidence drawer: one tie's amount, years, rule, "what this does not show" and its filed records with links.
+// Used by the board, the member page and the organisation page.
 import Link from "next/link";
 import { useEffect, useRef } from "react";
 import type { Edge, NodeRef } from "@/lib/types";
-import { notShown } from "@/lib/notshown";
-import { weakTag, WEAK_WHY } from "@/lib/edges";
-import { typeLabel, TYPE_RULE, FAMILY_LABEL, filteredAmount, plainStat, stringStyle } from "@/lib/edges";
-import { amountText, count, date, NOT_DISCLOSED } from "@/lib/format";
-import { IS_SAMPLE_CLIENT, memberHref, nodeName, orgHref, type NameBook } from "@/lib/client";
-import { recordUrlFor } from "@/lib/decode";
-import { SITE, YEAR_MAX, YEAR_MIN } from "@/lib/site";
+import { notShown, SITE } from "@/lib/copy";
+import { weakTag, WEAK_WHY, typeLabel, TYPE_RULE, FAMILY_LABEL, filteredAmount, plainStat, stringStyle } from "@/lib/domain/edges";
+import { amountText, count, date, NOT_DISCLOSED, plural } from "@/lib/format";
+import { IS_SAMPLE_CLIENT } from "@/lib/data/fetch";
+import { memberHref, orgHref, recordUrlFor, safeHttpUrl } from "@/lib/urls";
+import { nodeName, type NameBook } from "@/lib/domain/names";
+import { YEAR_MAX, YEAR_MIN } from "@/lib/years";
 import { YearBars } from "./YearBars";
 import { LineSample } from "./LineSample";
+import { ExternalIcon } from "./ExternalIcon";
 
 type Props = {
   edge: Edge | null;
@@ -29,14 +31,6 @@ type Props = {
 function NodeLink({ n, book }: { n: NodeRef; book: NameBook }) {
   const name = nodeName(n, book);
   return n.kind === "member" ? <Link href={memberHref(n.id)}>{name}</Link> : <Link href={orgHref(n.id)}>{name}</Link>;
-}
-
-export function ExternalIcon() {
-  return (
-    <svg className="icon" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
-      <path d="M6 3H3.5A.5.5 0 0 0 3 3.5v9a.5.5 0 0 0 .5.5h9a.5.5 0 0 0 .5-.5V10M9 3h4v4M13 3 7.5 8.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
 }
 
 function LedgerOnly({ edge }: { edge: Edge }) {
@@ -82,6 +76,7 @@ export function EvidenceDrawer({ edge, book, sources, range, onClose, loading, s
   const inRange = filtered ? filteredAmount(edge, filtered) : null;
   const style = stringStyle(edge);
   const shown = edge.evidence.length;
+  const weak = weakTag(edge);
 
   return (
     <aside ref={ref} className="drawer" role="dialog" aria-modal="false" aria-labelledby="drawer-title" data-testid="evidence-drawer">
@@ -160,7 +155,7 @@ export function EvidenceDrawer({ edge, book, sources, range, onClose, loading, s
         </dl>
         {inRange && filtered && (
           <p className="drawer__range mono">
-            {filtered[0]}–{filtered[1]} only: {amountText(inRange) ?? NOT_DISCLOSED}, {count(inRange.n)} records
+            {filtered[0]}–{filtered[1]} only: {amountText(inRange) ?? NOT_DISCLOSED}, {plural(inRange.n, "record")}
           </p>
         )}
 
@@ -177,7 +172,7 @@ export function EvidenceDrawer({ edge, book, sources, range, onClose, loading, s
             <p className="stat__plain">{plainStat(edge.stat)}</p>
             <p className="stat__meta">
               <span className="mono">{edge.stat.lift}×</span> the baseline
-              {typeof (edge.stat as { p?: number }).p === "number" ? <>, p = <span className="mono">{(edge.stat as { p?: number }).p!.toPrecision(2)}</span></> : null}. Method: {edge.stat.method}
+              {typeof edge.stat.p === "number" ? <>, p = <span className="mono">{edge.stat.p.toPrecision(2)}</span></> : null}. Method: {edge.stat.method}
             </p>
           </div>
         )}
@@ -186,8 +181,8 @@ export function EvidenceDrawer({ edge, book, sources, range, onClose, loading, s
 
         <h3>What the record says</h3>
         <p className="drawer__rule">{TYPE_RULE[edge.type]}</p>
-        {weakTag(edge) && (
-          <p className="drawer__weak" data-testid="weak-why"><span className="tag tag--weak">{weakTag(edge)}</span> {WEAK_WHY[weakTag(edge)!]}</p>
+        {weak && (
+          <p className="drawer__weak" data-testid="weak-why"><span className="tag tag--weak">{weak}</span> {WEAK_WHY[weak]}</p>
         )}
         <p className="notshown" data-testid="not-shown"><span className="notshown__k">What this does not show:</span> {notShown(edge.type)}</p>
 
@@ -197,7 +192,9 @@ export function EvidenceDrawer({ edge, book, sources, range, onClose, loading, s
         {loading && <p className="drawer__loading" role="status">Fetching the records from the member&rsquo;s case file…</p>}
         {!loading && shown === 0 && <LedgerOnly edge={edge} />}
         <ol className="evidence">
-          {edge.evidence.map((ev, i) => (
+          {edge.evidence.map((ev, i) => {
+            const href = safeHttpUrl(ev.url);
+            return (
             <li key={`${ev.record ?? "r"}-${i}`}>
               <p className="evidence__label">{ev.label}</p>
               <p className="evidence__meta mono">
@@ -205,8 +202,8 @@ export function EvidenceDrawer({ edge, book, sources, range, onClose, loading, s
                 <span>{sources[ev.source] ?? ev.source}</span>
                 {ev.record && <span className="evidence__rec">{ev.record}</span>}
               </p>
-              {ev.url ? (
-                <a className="evidence__link" href={ev.url} target="_blank" rel="noopener noreferrer">
+              {href ? (
+                <a className="evidence__link" href={href} target="_blank" rel="noopener noreferrer">
                   Open the official record <ExternalIcon />
                   <span className="visually-hidden"> (opens in a new tab)</span>
                 </a>
@@ -214,7 +211,8 @@ export function EvidenceDrawer({ edge, book, sources, range, onClose, loading, s
                 <p className="evidence__nolink">No public link for this record. Search the source by its record id.</p>
               )}
             </li>
-          ))}
+            );
+          })}
         </ol>
         {shown < edge.evidence_total && (
           <p className="drawer__more">

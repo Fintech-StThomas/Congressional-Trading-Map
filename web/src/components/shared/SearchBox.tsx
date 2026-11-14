@@ -1,8 +1,9 @@
 "use client";
-
+// Header search: members, states and organisations from /search-index, as an accessible combobox.
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { loadSearchIndex, ORG_KIND_LABEL, type BoardMember, type SearchIndex } from "@/lib/client";
+import { loadSearchIndex, type SearchIndex } from "@/lib/data/fetch";
+import { ORG_KIND_LABEL, type BoardMember } from "@/lib/domain/names";
 import { seat, STATE_NAMES } from "@/lib/format";
 
 type Result =

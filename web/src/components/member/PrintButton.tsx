@@ -1,5 +1,5 @@
 "use client";
-
+// Prints the member page; print CSS swaps in the case file (CaseFile.tsx).
 export function PrintButton() {
   return (
     <button type="button" className="btn" onClick={() => window.print()} title="Opens the print dialog; choose “Save as PDF” to keep a copy">

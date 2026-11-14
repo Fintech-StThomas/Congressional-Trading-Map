@@ -1,8 +1,10 @@
 """Validate web/public/data against docs/data-dictionary.md: python -m pipeline.validate.
 
-(a) schema of every output file, (b) invariants (row counts, evidence, endpoints, by_year sums,
-owner never defaulted, ledger totals), (c) a reproducible sample of 25 trades for hand checking
-against the original filings (pipeline/build/validation_sample.csv). Exits non-zero on any failure.
+Reads the published tree and pipeline/build/trades*.parquet. Checks (a) the schema of every output file, (b)
+invariants: row counts across joins, evidence and endpoints, by_year sums and order, owner never defaulted, ledger
+completeness and caps, the Case rule re-derived from published edges, cross-file counts (members, wall, wall-years,
+org index, meta), no beneficiary names in trade text; and writes (c) a reproducible sample of 25 trades for hand
+checking (pipeline/build/validation_sample.csv). Exits non-zero on any failure. Holdings: pipeline/holdings/validate.py.
 """
 from __future__ import annotations
 
@@ -15,12 +17,17 @@ from typing import Any, Callable
 
 import pyarrow.parquet as pq
 
-from .assemble import (FORMER_MEMBER_LEDGER_ROWS, LEDGER_ONLY_TYPES, MEMBER_LEDGER_COLS, ORG_INDEX_COLS, ORG_INDEX_TOP,
-                       ORG_TIE_COLS, PARTIES, SPLIT_MEASURES, TRADE_COLUMNS, WALL_COLS, WALL_YEARS_COLS, shard)
-from .edges import FAMILY, MAX_EVIDENCE, edge_id, sum_amounts
+from .assemble import shard
+from .config import (BOARD_EDGES, FORMER_MEMBER_LEDGER_ROWS, LATE_DAYS, LEDGER_ONLY_TYPES, MAX_EVIDENCE, ORG_INDEX_TOP,
+                     SAMPLE_SEED, SAMPLE_SIZE)
+from .contract import (FAMILY, MEMBER_LEDGER_COLS, ORG_INDEX_COLS, ORG_TIE_COLS, PARTIES, SPLIT_MEASURES, TRADE_COLUMNS,
+                       WALL_COLS, WALL_YEARS_COLS)
+from .assemble import case_ok
+from .config import MONEY_EDGES_PER_MEMBER
+from .edges import edge_id, sum_amounts
+from .holdings.rules import redact_beneficiary
 from .util import BUILD, OUT, read_json
 
-SAMPLE_SIZE, SAMPLE_SEED = 25, 13107
 DATE = "date"
 OWNERS = {"self", "spouse", "joint", "dependent", "unspecified"}
 ACTIONS = {"buy", "sell", "exchange", "other"}
@@ -219,6 +226,8 @@ def check_edge(c: Checker, e: dict[str, Any], where: str, sources: set[str], mem
     for i, y in enumerate(e["by_year"]):
         shape(c, y, {"y": lambda v: isinstance(v, int), "n": lambda v: isinstance(v, int) and v >= 1, **AMOUNT}, f"{eid}.by_year[{i}]")
     c.check(sum(y.get("n", 0) for y in e["by_year"]) == e["count"], "by_year n sums to count", eid)
+    ys = [y.get("y") for y in e["by_year"]]
+    c.check(ys == sorted(set(ys)), "by_year years unique and ascending", eid)
     c.check(sum_amounts(e["by_year"]) == {k: e["amount"][k] for k in ("low", "high", "exact")}, "by_year amounts sum to totals", eid)
 
 
@@ -258,12 +267,13 @@ def check_trades(c: Checker, mf: dict[str, Any], where: str, orgs: set[str]) -> 
     for r in t.get("rows", []):
         row = dict(zip(TRADE_COLUMNS, r))
         c.check(len(r) == len(TRADE_COLUMNS), "schema", f"{where}.trade width")
+        c.check(not redact_beneficiary(row["asset"])[1], "no beneficiary name in trade asset text", row["id"])
         c.check(row["owner"] in OWNERS and row["action"] in ACTIONS and row["asset_class"] in CLASSES
                 and row["ticker_source"] in TICKER_SOURCES, "trade enums", f"{where}:{row['id']}")
         c.check(opt(is_date)(row["date"]) and opt(is_date)(row["available"]), "schema", f"{where}:{row['id']} dates")
         c.check(row["low"] is None or row["high"] is None or row["low"] <= row["high"], "trade low <= high", row["id"])
         c.check((row["lag_days"] is None) == (row["date"] is None or row["available"] is None), "lag null iff a date is missing", row["id"])
-        c.check(row["late"] is None if row["lag_days"] is None else row["late"] == (row["lag_days"] > 45), "late = lag_days > 45", row["id"])
+        c.check(row["late"] is None if row["lag_days"] is None else row["late"] == (row["lag_days"] > LATE_DAYS), "late = lag_days > 45", row["id"])
         c.check(row["doc"] in mf["filings"], "trade doc has a filing URL", row["id"])
         c.check(row["org"] is None or row["org"] in orgs, "trade org exists", f"{row['id']}:{row['org']}")
         c.check((row["org"] is None) == (row["ticker"] is None), "org resolved iff ticker present", row["id"])
@@ -271,6 +281,27 @@ def check_trades(c: Checker, mf: dict[str, Any], where: str, orgs: set[str]) -> 
         c.check(prev is None or key <= prev, "trades newest first", row["id"])
         prev = key
     return len(t.get("rows", []))
+
+
+def check_cases(c: Checker, cases: list[dict[str, Any]], edges: dict[str, dict[str, Any]],
+                case_counts: dict[str, int]) -> None:
+    """Re-derive the Case rule from the published edges: every case edge joins the case's member and org, is filed,
+    has one of the case's types and covers the case window; the types satisfy the rule; counts match members.json."""
+    per_member: Counter[str] = Counter()
+    for k in cases:
+        per_member[k["member"]] += 1
+        es = [edges[i] for i in k["edges"] if i in edges]
+        ok = len(es) == len(k["edges"]) and all(
+            {e["from"]["id"], e["to"]["id"]} == {k["member"], k["org"]} and e["basis"] == "filed" and e["type"] in k["types"]
+            for e in es)
+        c.check(ok, "case edges join the case's member and org", k["id"])
+        c.check(ok and {e["type"] for e in es} == set(k["types"]) and case_ok(k["types"]), "case types satisfy the case rule", k["id"])
+        for t in k["types"]:
+            span = [e for e in es if e["type"] == t]
+            c.check(bool(span) and min(int(e["first"][:4]) for e in span) <= k["years"][0]
+                    and max(int(e["last"][:4]) for e in span) >= k["years"][1], "case window inside every type's span", k["id"])
+        c.check(k["score"] == len(k["types"]), "case score = number of types", k["id"])
+    c.check(dict(per_member) == {m: n for m, n in case_counts.items() if n}, "cases per member match members.json counts", "")
 
 
 def check_owner_never_defaulted(c: Checker) -> None:
@@ -335,7 +366,11 @@ def main() -> int:
             for end in (e["from"], e["to"]):
                 c.check(end["id"] == mid or end["id"] in mf["nodes"], "member nodes cover full edges", f"{where}:{end['id']}")
         ids = {e["id"] for e in mf["edges"]}
-        c.check(len(mf["board"]) <= 12 and set(mf["board"]) <= ids, "board: <= 12 ids of full edges", where)
+        case_ids = {i for k in mf["cases"] for i in k["edges"]}
+        n_money = sum(1 for e in mf["edges"] if e["family"] == "money" and e["id"] not in case_ids)
+        c.check(n_money <= MONEY_EDGES_PER_MEMBER, "money full edges within the per-member cap (plus Case edges)", where)
+        c.check(len(mf["cases"]) == mf["member"]["counts"]["cases"], "member file cases match counts", where)
+        c.check(len(mf["board"]) <= BOARD_EDGES and set(mf["board"]) <= ids, "board: <= 12 ids of full edges", where)
         check_member_ledger(c, mf, where, orgs, members)
         tpath = OUT / "trades" / f"{mid}.json"
         n = check_trades(c, read_json(tpath), f"trades/{mid}", orgs) if tpath.exists() else 0
@@ -374,6 +409,10 @@ def main() -> int:
             "board states list every current member", "")
     for k in cases:
         c.check(all(eid in seen_edges for eid in k["edges"]), "case edges are published", k["id"])
+    check_cases(c, cases, seen_edges, {m["id"]: m["counts"]["cases"] for m in members_list})
+    counts = meta["counts"]
+    c.check(counts["members"] == len(members_list) and counts["orgs"] == len(orgs_list) and counts["cases"] == len(cases)
+            and counts["edges"] == sum(counts["edges_by_type"].values()), "meta.json counts match the files", "")
 
     # Row counts across stages: no join may have multiplied or lost trades.
     resolved = pq.read_metadata(BUILD / "trades_resolved.parquet").num_rows
