@@ -284,7 +284,8 @@ type WallYears = {            // wall-years.json, rows sorted by id, one per row
 type OrgIndex = {             // org-index.json
   cols: ["id", "name", "kind", "ticker", "members_D", "members_I", "members_R", "dollars_D", "dollars_I", "dollars_R", "degree"];
   rows: unknown[][];          // sorted by id; members_* = distinct CURRENT members with a pac_money or outside_spending
-                              // tie, by party; dollars_* = pac_money dollars to current members, by party; degree as OrgSummary
+                              // tie, by party at the time of the tie; dollars_* = pac_money dollars to current members,
+                              // by party at the time; degree as OrgSummary (see "Party split")
   by_members: number[];       // row indexes, top 300 by members (then dollars, then id)
   by_dollars: number[];       // row indexes, top 300 by dollars > 0 (then members, then id)
 };
@@ -317,7 +318,12 @@ type Meta = {
   exclusions: { [what: string]: { rows: number; reason: string; filings?: unknown[][]; members?: string[] } }; // trades
   assembly: { edges_read: { [file: string]: number }; edges_after_merge: number;
               edges_dropped: { [reason: string]: number }; edges_dropped_examples: { [reason: string]: string[] };
-              org_files: string[] };
+              org_files: string[];
+              // "Party split": tie-years outside every term (counted under the nearest term), and dollars counted
+              // under a party other than the member's latest one
+              party_split: { rule: string; tie_years_outside_terms: number; edges_with_years_outside_terms: number;
+                             dollars_outside_terms: number; members_with_dollars_under_another_party: number;
+                             dollars_under_another_party: number } };
   coverage_notes: string[];
   files: { count: number; bytes: number; largest: { [path: string]: number } }; // assembled files (holdings excluded)
 };
@@ -341,10 +347,24 @@ computed from **every** tie between the org and a member, full edges and ledger 
   against the member);
 - `traded`: `traded` ties (the member's household traded the org's stock); member counts only, dollars null.
 
-Members are counted once per measure. Each member is counted under the party of their `MemberSummary` (most recent
-term), so a member who switched party is counted under the later party for all years. Dollars sum each tie's
-`amount.exact`, else `high`, else `low` (FEC money is always exact). The validator checks that the dollars equal the
-org's listed ties plus `ledger_totals`, and that the members equal the listed ties by party where every tie is listed.
+Each tie counts under the member's party **at the time of the tie**, not their latest party: the tie's `by_year`
+amounts (each year's `exact`, else `high`, else `low`; any remainder against the tie's size goes to its latest year,
+and a tie without `by_year` counts in the year of `last`) are split by the party of the member's term in that year.
+`by_year` is net per year, so a party's share of one tie can come out negative (refunds); that deficit is netted
+against the tie's other parties, largest first, so no share is negative and the shares still sum to the tie.
+
+- A year inside a term follows the coverage rule (a term ending on 3 January does not count that year). When two terms
+  in different parties share a year, the term covering more days of it wins; equal days go to the later term.
+- A year outside every term (money to a challenger before taking office, a former member's leftover committee) goes
+  to the nearest term in time (equal distance: the later term). How often this happens is reported in
+  `meta.json.assembly.party_split`.
+- A member is counted once per measure **per party they were tied under**: a party switcher with ties on both sides
+  of the switch counts under both parties, so the member counts can sum to more than the distinct members.
+
+Dollars sum each tie's `amount.exact`, else `high`, else `low` (FEC money is always exact). `org-index.json` applies
+the same rule to current members. The validator checks that the dollars equal the org's listed ties plus
+`ledger_totals`, and, where every tie of a type is listed, that each party's members and dollars lie between the ties
+whose whole span (first to last year) falls in that party and the ties whose span touches it.
 
 ### Coverage
 
@@ -438,6 +458,32 @@ up to 5 filings listing that lobbyist for that client, with the position text qu
 `{ "<filing year>": "full" | "partial" }`, `full` when every cached slice of that year is complete. Years not listed
 were not loaded. `report.cache.stale_days` is the age of the newest posting cutoff.
 
+## Privacy
+
+Public data stays public: everything here comes from public filings (FEC reports, House and Senate disclosure
+reports, congress-legislators), and adults named in them are published as filed. Only minors are redacted, because
+they did not choose public life.
+
+- **Published as filed:** members and their spouses; adults named in account titles (an IRA "FBO" an adult, trusts
+  named after adults, the member's or spouse's own name); FEC committees, and independent-expenditure payees
+  (the vendors and consultants a committee paid, individuals and organisations alike, in the "(paid to ...)"
+  evidence labels and `meta.json.reports.fec.review_large_funds_rows`); liability creditors and types (no change
+  to the creditor name, whether a bank or a person).
+- **Redacted (minors only):** a beneficiary's name becomes `[name redacted]` only when the filing row itself
+  indicates a minor: (1) a custodial account form (`UTMA`, `UGMA`, `UTA` but not `UTA DTD`, "custodian (for)",
+  "cust", "minor" / "a minor"); (2) a 529 or education-savings account (`529`, Coverdell, `ESA`, "education
+  savings") naming a beneficiary; (3) any row whose owner is filed as a dependent child (owner `dependent`), where
+  person-shaped names in the account title are redacted as well. On rows (1) and (2) the name after `FBO`, `f/b/o`,
+  "for the benefit of", "custodian for" or "beneficiary", and a "First [M.] Last" name directly before
+  `UTMA`/`UGMA`/`UTA`, are redacted. When the filing gives no way to tell and the owner is not a dependent child, the
+  text is published as filed. Counts per rule: `meta.json.reports.holdings` (`asset_minor_name_redacted_<rule>`).
+- **Never published:** street addresses (locations are cut to "City, ST"; street addresses in asset, creditor and
+  liability-type text become `[street address redacted]`) and personal residences (rows that name a personal
+  residence or non-rental second home are dropped). The pipeline never reads the FEC individual-contributions file,
+  so no individual contributor is published.
+
+Both validators check that no published asset or trade text still carries a minor's name under these indicators.
+
 ## Intermediate plug-in format
 
 Each source module writes, under `pipeline/build/`:
@@ -508,7 +554,7 @@ type HoldingsYear = {
 // companies.py rules, else null; category = the dataset's bucket (stock | bond | option | other), not a filed code;
 // owner as below; low/high = value band (both null: no value; high null alone: open-ended "Over $X");
 // income_type and income band as filed (null when not filed); location = "City, ST" for real property, else null.
-// Liability row: creditor and type as filed (redacted), incurred = date incurred as filed (free text),
+// Liability row: creditor and type as filed (only street addresses redacted), incurred = date incurred as filed (free text),
 // residence_secured = rule below.
 
 type BandSum = { n: number; unvalued: number; open_ended: number; low: number;
@@ -563,11 +609,8 @@ type Overlap = {              // a holding and a filed tie with the same org in 
   a personal residence or non-rental second home is never published (counted as `personal_residence`).
   `residence_secured` marks a liability whose type or creditor names a residence, home mortgage or home equity
   (and not rental, investment, commercial, farm or business).
-- **Beneficiary names.** Custodial and FBO accounts often name a filer's minor children. In asset text, the name
-  after `FBO`, `f/b/o`, `for the benefit of` or `custodian for`, and a "First [Middle] Last" name directly before
-  `UTMA`, `UGMA` or `UTA` (but not `UTA DTD`, a trust agreement), become `[name redacted]` (counted as
-  `asset_beneficiary_name_redacted`). Adults named this way are redacted too; the owner column still says whose
-  asset it is. An `other` org's name is the last segment of the asset text (the issuer, not the account path).
+- **Names in asset text.** See "Privacy" below: only minors' names are redacted. An `other` org's name is the last
+  segment of the asset text (the issuer, not the account path).
 - **Portfolio.** Latest report year; rows grouped by `org` when resolved, else by the asset text (`asset:<text>`);
   `share_low` = group low / total low, `share_high` = group high / total high (null when either is null); `sector`
   is the SIC major-group label from `companies.json` when SEC lists a SIC code.
@@ -583,7 +626,7 @@ type Overlap = {              // a holding and a filed tie with the same org in 
 - **Joins.** Holdings → filings and liabilities → filings are asserted 1:1; every document maps to one bioguide id;
   published rows + residence exclusions equal the rows of the used documents.
 - **Validation.** `python -m pipeline.holdings.validate` re-derives every total and net-worth range, checks owners,
-  document URLs, redaction (street addresses and beneficiary names) and edges, and writes
+  document URLs, redaction (street addresses and minors' names) and edges, and writes
   `pipeline/build/holdings-sample.csv` (25 rows, seed 20261113, with a machine check that the asset words and the band
   figures occur in the PDF text, and empty columns for a human). It creates `docs/validation/holdings-sample.csv` from
   it only when that reviewed file does not exist, and never overwrites it.

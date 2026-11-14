@@ -92,3 +92,4 @@ def test_column_guard_counts_delimiters(tmp_path) -> None:
     p = tmp_path / "x.txt"
     p.write_bytes(b"a|b|c\nd|e|f\n")
     assert load._count_lines_and_encoding(p)[:2] == (2, 4)
+

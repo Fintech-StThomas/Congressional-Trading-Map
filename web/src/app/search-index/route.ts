@@ -6,9 +6,10 @@ export const dynamic = "force-static";
 
 const MAX_ORGS = 6000;
 
-export function GET() {
-  const m = getMembers().map((x) => [x.id, x.name, x.last, x.party, x.state, x.chamber, x.district, x.current ? 1 : 0, x.photo ? 1 : 0, x.counts?.cases ?? 0]);
-  const o = getOrgs()
+export async function GET() {
+  const [members, orgs] = await Promise.all([getMembers(), getOrgs()]);
+  const m = members.map((x) => [x.id, x.name, x.last, x.party, x.state, x.chamber, x.district, x.current ? 1 : 0, x.photo ? 1 : 0, x.counts?.cases ?? 0]);
+  const o = orgs
     .slice()
     .sort((a, b) => b.degree - a.degree || a.name.localeCompare(b.name))
     .slice(0, MAX_ORGS)

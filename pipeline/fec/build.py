@@ -366,7 +366,7 @@ def _evidence_label(r: dict, member_names: dict[str, str]) -> str:
         who = member_names.get(r["to_id"], r["to_id"])
         verb = "supporting" if r["direction"] == "support" else "opposing"
         what = "a communication" if tp in ("24F", "24N") else "an independent expenditure"
-        payee = f" (paid to {r['counterparty']})" if r["counterparty"] else ""
+        payee = f" (paid to {r['counterparty']})" if r["counterparty"] else ""   # published as filed
         return f"{r['giver_name']} reported {what} of {amt} {verb} {who} on {d}{payee}"
     kind = "an in-kind contribution of " if tp == "24Z" else ""
     to = f" to {r['counterparty']}" if r["counterparty"] else ""

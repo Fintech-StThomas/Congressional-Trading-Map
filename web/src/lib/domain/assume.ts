@@ -45,10 +45,23 @@ export function decodeAssumptions(s: string | null | undefined): Assumptions {
   };
 }
 
-/** Does one trade count under these assumptions? Joint accounts count with the member's own. */
+/** Owners that count as the member's own: `self`, and `joint` (the member is a co-owner). */
+export const OWN_OWNERS: readonly string[] = ["self", "joint"];
+
+/** Is this owner the member, alone or as a co-owner? */
+export function isOwnOwner(owner: string | null | undefined): boolean {
+  return owner === "self" || owner === "joint";
+}
+
+/** Trades the member owns alone or jointly, from a by-owner count (trade_summary.by_owner). */
+export function ownTradeCount(byOwner: Record<string, number> | null | undefined): number {
+  return OWN_OWNERS.reduce((n, o) => n + (byOwner?.[o] ?? 0), 0);
+}
+
+/** Does one trade count under these assumptions? Jointly owned trades count with the member's own. */
 export function tradeCounts(t: TradeLite, a: Assumptions): boolean {
   const o = t.owner;
-  if ((o === "self" || o === "joint") && !a.self) return false;
+  if (isOwnOwner(o) && !a.self) return false;
   if ((o === "spouse" || o === "dependent") && !a.family) return false;
   if ((o === "unspecified" || !o) && !a.unstated) return false;
   if (a.noFunds && (t.asset_class === "fund" || t.asset_class === "bond" || t.asset_class === "unknown")) return false;
@@ -89,6 +102,17 @@ export function applyAssumptions(trades: TradeLite[], edges: EdgeLite[], caseOrg
   return { byOrg, kept, total: trades.length, excluded, cases, caseTotal: caseOrgs.length };
 }
 
+/** The "own only" switch, shown first. */
+export const OWN_SWITCH = {
+  label: "Member’s own and jointly owned trades only",
+  hint: "Trades the filing marks as the member’s own or as jointly owned (the member is a co-owner); drops spouse, dependent and unstated owners",
+} as const;
+
+/** Is the "own only" shortcut on? */
+export function isOwnOnly(a: Assumptions): boolean {
+  return a.self && !a.family && !a.unstated;
+}
+
 /** The labels for the switches, in display order. */
 export const SWITCHES: { key: keyof Assumptions; label: string; hint: string }[] = [
   { key: "family", label: "Include spouse and dependents", hint: "Trades the filing marks as a spouse’s or a dependent child’s" },
@@ -102,7 +126,7 @@ export const SWITCHES: { key: keyof Assumptions; label: string; hint: string }[]
 export function readout(e: AssumptionEffect | null, a: Assumptions): string {
   if (isDefault(a)) return "Counting every trade the household reported.";
   if (!e) return "Loading the trades…";
-  const trades = `${e.kept.toLocaleString("en-US")} of ${e.total.toLocaleString("en-US")} trades count`;
+  const trades = `${e.kept.toLocaleString("en-US")} of ${e.total.toLocaleString("en-US")} trades count${isOwnOnly(a) ? " (own and jointly owned only)" : ""}`;
   const cases = e.caseTotal ? `; ${e.cases.size} of ${e.caseTotal} ${e.caseTotal === 1 ? "case remains" : "cases remain"}` : "";
   return `${trades}${cases} under these assumptions. Money strings are unaffected.`;
 }

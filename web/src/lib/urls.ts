@@ -1,11 +1,30 @@
 // Every link the site builds: its own routes, the data files, official record pages,
 // and the guard for links that come from the data. Pure; tests/urls.test.mjs loads it directly.
 
+import { CORRECTIONS } from "./copy.ts";
+
 /** Where the browser fetches data files from: /data (real build) or /sample-data (fixtures), set by next.config.ts. */
 export const DATA_BASE = process.env.NEXT_PUBLIC_DATA_BASE ?? "/data";
 
 export function dataUrl(rel: string): string {
   return `${DATA_BASE}/${rel}`;
+}
+
+/**
+ * A new public GitHub issue for a correction, prefilled with the page, the data build and any record
+ * details (edge type, both ends, record ids). `page` should be the full address the reader was on.
+ */
+export function correctionIssueUrl(p: { page: string; built: string | null; what?: string; details?: string[] }): string {
+  const q = new URLSearchParams();
+  q.set("title", CORRECTIONS.title(p.what ?? p.page));
+  q.set("body", CORRECTIONS.body({ page: p.page, built: p.built, details: p.details }));
+  q.set("labels", CORRECTIONS.label);
+  return `${CORRECTIONS.repo}/issues/new?${q.toString()}`;
+}
+
+/** Every issue labelled correction: the public corrections log. */
+export function correctionsLogUrl(): string {
+  return `${CORRECTIONS.repo}/issues?q=${encodeURIComponent(`label:${CORRECTIONS.label}`)}`;
 }
 
 export function memberHref(id: string): string {

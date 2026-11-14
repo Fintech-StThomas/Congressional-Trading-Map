@@ -59,7 +59,7 @@ def check_member(c: Checks, mid: str, m: dict[str, Any]) -> None:
             c.check(d["org"] is None or d["ticker"] is not None, "org only from ticker", f"{mid} {y}")
             c.check(not rules.is_personal_residence(d["asset"], d["income_type"]), "no residence published", f"{mid} {y} {d['row']}")
             c.check(not rules.A1.search(d["asset"] or ""), "no street address (A1) in asset", f"{mid} {y} {d['row']}")
-            c.check(not rules.redact_beneficiary(d["asset"])[1], "no beneficiary name in asset", f"{mid} {y} {d['row']}")
+            c.check(not rules.redact_beneficiary(d["asset"], d["owner"])[1], "no minor's name in asset", f"{mid} {y} {d['row']}")
             c.check(d["location"] is None or d["location"].count(",") <= 1, "location at most city, state", f"{mid} {y}")
         for r in l_rows:
             d = dict(zip(LIAB_COLS, r))

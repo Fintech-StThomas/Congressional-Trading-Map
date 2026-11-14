@@ -98,18 +98,66 @@ def test_former_member_ledger_cap_constant_is_echoed() -> None:
 
 
 # ---------------------------------------------------------------- party split and org index
-def test_party_split_counts_members_once_per_measure_under_latest_party() -> None:
+def _t(s: str, e: str, p: str) -> dict:
+    return {"start": s, "end": e, "party": p, "chamber": "rep", "state": "NJ", "district": 2}
+
+
+def _m(party: str, terms: list[dict]) -> dict:
+    return {"party": party, "current": True, "terms": terms}
+
+
+SPINE = {"A000001": _m("R", [_t("2009-01-03", "2013-01-03", "R")]), "B000001": _m("D", [_t("2019-01-03", "2021-01-03", "D")])}
+
+
+def test_party_split_counts_members_once_per_measure() -> None:
     a, b = ("member", "A000001"), ("member", "B000001")
     es = [edge("pac_money", O, a, "2010-01-01", "2010-01-01", 100.0), edge("pac_money", O, a, "2012-01-01", "2012-01-01", 50.0),
           edge("pac_money", O, b, "2020-01-01", "2020-01-01", 7.5),
           edge("outside_spending", O, b, "2020-01-01", "2020-01-01", 3.0, note="oppose"),
-          edge("traded", a, O, "2020-01-01", "2020-01-01")]
+          edge("traded", a, O, "2010-01-01", "2010-01-01")]
     # the two pac_money edges to A have distinct ids only through via in real data; here type/from/to repeat,
     # which is fine for the split (it counts distinct members)
-    split = assemble.party_split(es, {"A000001": "R", "B000001": "D"})
+    split = assemble.party_split(es, SPINE)
     assert split["given"] == {"D": [1, 7.5], "I": [0, 0], "R": [1, 150]}
     assert split["oppose"]["D"] == [1, 3] and "support" not in split
     assert split["traded"]["R"] == [1, None]
+
+
+def test_party_split_uses_the_party_of_the_term_in_each_tie_year() -> None:
+    """A switcher (D until 2021, R from 2021) with one tie spanning the switch and one after it: the years before go
+    to D, the years after to R, and the member counts once under each party."""
+    sw = _m("R", [_t("2017-01-03", "2019-01-03", "D"), _t("2019-01-03", "2021-01-03", "D"), _t("2021-01-03", "2023-01-03", "R")])
+    spine = {"S000001": sw}
+    s = ("member", "S000001")
+    span = edge("pac_money", O, s, "2019-01-01", "2022-01-01", 0.0)
+    span["by_year"] = [{"y": 2019, "n": 1, "low": 10, "high": 10, "exact": 10}, {"y": 2020, "n": 1, "low": 20, "high": 20, "exact": 20},
+                       {"y": 2021, "n": 1, "low": 40, "high": 40, "exact": 40}]
+    span["amount"] = {"low": 70, "high": 70, "exact": 70}
+    after = edge("pac_money", O, s, "2022-01-01", "2022-01-01", 5.0)
+    stats = assemble.SplitStats()
+    split = assemble.party_split([span, after], spine, stats)
+    assert split["given"] == {"D": [1, 30], "I": [0, 0], "R": [1, 45]}
+    assert stats.moved[("S000001", "R", "D")] == 30 and stats.out_of_term_years == 0
+    # 2021: the D term covers 3 January only (and does not count that year); the R term covers the rest
+    assert assemble.year_party(sw["terms"], 2021, "R") == ("R", True)
+    # a year two terms share by days: the one covering more of it wins, ties to the later term
+    mid = [_t("2015-01-01", "2015-07-02", "D"), _t("2015-07-02", "2016-12-31", "R")]
+    assert assemble.year_party(mid, 2015, "R")[0] == "R"
+    assert assemble.year_party([_t("2015-01-01", "2015-09-30", "D"), _t("2015-10-01", "2016-12-31", "R")], 2015, "R")[0] == "D"
+
+
+def test_party_split_out_of_term_year_uses_the_nearest_term_and_is_counted() -> None:
+    """Money to a challenger in 2016, before a 2017-2019 D term, and leftover committee money in 2026 after a later
+    2023-2025 R term: each goes to the nearest term and is counted as outside every term."""
+    m = _m("R", [_t("2017-01-03", "2019-01-03", "D"), _t("2023-01-03", "2025-01-03", "R")])
+    s = ("member", "C000001")
+    before, after = edge("pac_money", O, s, "2016-05-01", "2016-05-01", 8.0), edge("pac_money", O, s, "2026-05-01", "2026-05-01", 2.0)
+    gap = edge("outside_spending", O, s, "2021-06-01", "2021-06-01", 4.0, note="support")   # 2021: nearer the later term
+    stats = assemble.SplitStats()
+    split = assemble.party_split([before, after, gap], {"C000001": m}, stats)
+    assert split["given"] == {"D": [1, 8], "I": [0, 0], "R": [1, 2]}
+    assert split["support"]["R"] == [1, 4]
+    assert stats.out_of_term_years == 3 and stats.out_of_term_dollars == 14
 
 
 def test_shard_is_stable() -> None:
@@ -175,3 +223,13 @@ def test_two_pass_evidence_equals_one_pass(tmp_path, monkeypatch) -> None:
     merged = next(e for e in one if e["type"] == "pac_money")
     assert merged["count"] == 2 and merged["amount"]["exact"] == 12.0 and merged["evidence"][0]["label"] == "later"
     assert sum(rep["edges_dropped"].values()) == 1 and Counter(rep["edges_read"]) == Counter({"a.jsonl": 2, "b.jsonl": 2})
+
+
+def test_party_split_nets_a_refund_year_against_the_other_party() -> None:
+    """by_year is net per year: a year of refunds under one party is netted against the tie's other party, so no
+    party gets negative dollars and the member counts only where a positive share is left."""
+    sw = _m("R", [_t("2017-01-03", "2021-01-03", "D"), _t("2021-01-03", "2025-01-03", "R")])
+    e = edge("pac_money", O, ("member", "S000001"), "2019-01-01", "2022-01-01", 0.0)
+    e["by_year"] = [{"y": 2019, "n": 2, "low": 100, "high": 100, "exact": 100}, {"y": 2022, "n": 1, "low": -20, "high": -20, "exact": -20}]
+    e["amount"] = {"low": 80, "high": 80, "exact": 80}
+    assert assemble.party_split([e], {"S000001": sw})["given"] == {"D": [1, 80], "I": [0, 0], "R": [0, 0]}

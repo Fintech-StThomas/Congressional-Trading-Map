@@ -14,7 +14,7 @@ from ..contract import (MEMBER_LEDGER_COLS, ORG_INDEX_COLS, ORG_TIE_COLS, PARTIE
 from .budget import edge_size, ledger_totals, member_ledger, org_ties, rank, split_member_edges
 from .cases import case_ok, find_cases
 from .members import coverage, in_office, trade_coverage
-from .orgs import org_index, party_split, shard
+from .orgs import SplitStats, org_index, party_split, shard, year_party
 from .plugins import load_edges, load_orgs, merge_edges
 from .run import run
 from .wall import merged_terms, served_years, wall_rows, wall_years

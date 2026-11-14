@@ -48,3 +48,16 @@ def test_case_check_rederives_the_rule() -> None:
     assert not c.errors
     validate.check_cases(c, [{**good, "years": [2019, 2020]}], {e["id"]: e for e in (traded, pac)}, {"A000001": 1})
     assert "case window inside every type's span" in c.errors
+
+
+def test_validator_split_bounds_follow_the_party_at_the_time() -> None:
+    terms = {"S000001": [{"start": "2017-01-03", "end": "2021-01-03", "party": "D", "chamber": "rep", "state": "NJ", "district": 2},
+                         {"start": "2021-01-03", "end": "2025-01-03", "party": "R", "chamber": "rep", "state": "NJ", "district": 2}]}
+    tie = {"type": "pac_money", "member": "S000001", "exact": 30, "low": 30, "high": 30, "first": "2019-05-01", "last": "2019-06-01"}
+    of = {"org": {"split": {"given": {"D": [1, 30], "I": [0, 0], "R": [0, 0]}}}, "ledger_totals": {}}
+    c = validate.Checker()
+    validate.check_split(c, of, [tie], {"S000001": "R"}, terms, "o")
+    assert not c.errors
+    of["org"]["split"]["given"] = {"D": [0, 0], "I": [0, 0], "R": [1, 30]}     # the old latest-party rule
+    validate.check_split(c, of, [tie], {"S000001": "R"}, terms, "o")
+    assert "split member counts within the party at the time of listed ties" in c.errors

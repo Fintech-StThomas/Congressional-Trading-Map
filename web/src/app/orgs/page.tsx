@@ -13,8 +13,8 @@ export const metadata: Metadata = {
 
 type Raw = Parameters<typeof decodeOrgIndex>[0];
 
-export default function OrgsPage() {
-  const data = decodeOrgIndex(readData<Raw>("org-index.json", null));
+export default async function OrgsPage() {
+  const data = decodeOrgIndex(await readData<Raw>("org-index.json", null));
   const empty = data.byMembers.length === 0 && data.byDollars.length === 0;
   return (
     <div className="page page--narrow orgspage">

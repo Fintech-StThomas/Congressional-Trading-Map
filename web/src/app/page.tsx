@@ -1,6 +1,6 @@
 // The home page: builds everything the board needs at build time (current members, the featured example and
 // its strings, cases) and hands it to BoardApp.
-import { getBoard, getCases, getMemberIndex, getMeta, getOrgIndex, memberBoard, metaBuilt } from "@/lib/data/server";
+import { getBoard, getCases, getMemberIndex, getMeta, getOrgIndex, mapLimit, memberBoard, metaBuilt } from "@/lib/data/server";
 import { getMapGeometry } from "@/lib/board/geo";
 import { caseMinTypes, sourceNames } from "@/lib/data/meta";
 import { toBoardMember, type BoardMember } from "@/lib/domain/names";
@@ -8,12 +8,8 @@ import { BoardApp, type CaseLite, type Featured, type StateChunk } from "@/compo
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 import { featuredReason, rankFeatured } from "@/lib/domain/featured";
 
-export default function BoardPage() {
-  const board = getBoard();
-  const members = getMemberIndex();
-  const orgs = getOrgIndex();
-  const meta = getMeta();
-  const allCases = getCases();
+export default async function BoardPage() {
+  const [board, members, orgs, meta, allCases] = await Promise.all([getBoard(), getMemberIndex(), getOrgIndex(), getMeta(), getCases()]);
   const current = new Set(Object.values(board.states).flat());
 
   // Every current member ships with the page; other names arrive with each state.
@@ -30,7 +26,9 @@ export default function BoardPage() {
 
   // Featured example: the current member whose drawn board has the widest mix
   // of tie kinds (ties: more records, then id), plus the next few for "Show another".
-  const ranked = rankFeatured([...current].filter((id) => book[id]).sort().map((id) => ({ member: id, picked: memberBoard(id).edges })));
+  const candidates = [...current].filter((id) => book[id]).sort();
+  const boards = new Map(await mapLimit(candidates, 16, async (id) => [id, await memberBoard(id)] as const));
+  const ranked = rankFeatured(candidates.map((id) => ({ member: id, picked: boards.get(id)!.edges })));
   const featured: Featured = ranked.length
     ? { picks: ranked.map((f, i) => ({ member: f.member, reason: featuredReason(f.kinds, i === 0), kinds: f.kinds.length })) }
     : null;
@@ -38,7 +36,7 @@ export default function BoardPage() {
   const initialChunks: Record<string, StateChunk> = {};
   const fm = featured?.picks[0].member ?? null;
   if (fm && book[fm]) {
-    const b = memberBoard(fm);
+    const b = boards.get(fm) ?? (await memberBoard(fm));
     Object.assign(book, b.members);
     initialChunks[book[fm].state] = { strings: { [fm]: b.edges }, nodes: b.nodes, members: b.members, more: { [fm]: b.more }, againstMore: { [fm]: b.againstMore } };
   }

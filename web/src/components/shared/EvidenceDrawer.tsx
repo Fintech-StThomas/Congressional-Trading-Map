@@ -4,7 +4,8 @@
 import Link from "next/link";
 import { useEffect, useRef } from "react";
 import type { Edge, NodeRef } from "@/lib/types";
-import { notShown, SITE } from "@/lib/copy";
+import { CORRECTIONS, notShown, SITE } from "@/lib/copy";
+import { CorrectionLink } from "./CorrectionLink";
 import { weakTag, WEAK_WHY, typeLabel, TYPE_RULE, FAMILY_LABEL, filteredAmount, plainStat, stringStyle } from "@/lib/domain/edges";
 import { amountText, count, date, NOT_DISCLOSED, plural } from "@/lib/format";
 import { IS_SAMPLE_CLIENT } from "@/lib/data/fetch";
@@ -220,6 +221,19 @@ export function EvidenceDrawer({ edge, book, sources, range, onClose, loading, s
           </p>
         )}
         <p className="disclaimer">{SITE.disclaimer}</p>
+        <p className="drawer__correct">
+          <CorrectionLink
+            what={`${typeLabel(edge)}, ${nodeName(edge.from, book)} and ${nodeName(edge.to, book)}`}
+            details={[
+              `Tie: ${edge.type} (${typeLabel(edge)}), edge ${edge.id}`,
+              `From: ${nodeName(edge.from, book)} (${edge.from.kind} ${edge.from.id})`,
+              `To: ${nodeName(edge.to, book)} (${edge.to.kind} ${edge.to.id})`,
+              `Records: ${edge.evidence.map((ev) => ev.record).filter(Boolean).slice(0, 25).join(", ") || "none listed"}${edge.evidence_total > 25 ? ` (first 25 of ${edge.evidence_total})` : ""}`,
+            ]}
+          >
+            {CORRECTIONS.recordLink}
+          </CorrectionLink>
+        </p>
       </div>
     </aside>
   );

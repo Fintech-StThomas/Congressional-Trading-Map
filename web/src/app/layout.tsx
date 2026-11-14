@@ -3,11 +3,12 @@ import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import { Public_Sans, JetBrains_Mono, Courier_Prime } from "next/font/google";
 import { SITE } from "@/lib/copy";
-import { IS_SAMPLE, getMeta, metaBuilt } from "@/lib/data/server";
+import { IS_SAMPLE, getMetaForLayout, metaBuilt } from "@/lib/data/server";
 import { date } from "@/lib/format";
 import { SearchBox } from "@/components/shared/SearchBox";
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 import { Wordmark } from "@/components/shared/Wordmark";
+import { CorrectionLink, CorrectionProvider } from "@/components/shared/CorrectionLink";
 import { NavLinks } from "@/components/shared/NavLinks";
 import "@/styles/tokens.css";
 import "@/styles/globals.css";
@@ -34,11 +35,12 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
-  const built = metaBuilt(getMeta());
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const built = metaBuilt(await getMetaForLayout());
   return (
     <html lang="en" className={`${sans.variable} ${mono.variable} ${type.variable}`}>
       <body className={IS_SAMPLE ? "is-sample" : undefined}>
+        <CorrectionProvider built={built}>
         <a className="skip" href="#main">
           Skip to content
         </a>
@@ -81,10 +83,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <Link href="/method">Sources and method</Link>
               <span>Not investment advice</span>
               <span>No commercial use or solicitation (5 U.S.C. 13107(c))</span>
-              <a href={`mailto:${SITE.correctionsEmail}`}>Corrections</a>
+              <CorrectionLink />
             </p>
           </div>
         </footer>
+        </CorrectionProvider>
       </body>
     </html>
   );

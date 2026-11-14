@@ -13,8 +13,8 @@ export const metadata: Metadata = {
 
 // Built once from wall.json: the current members are rendered into the page;
 // former members are fetched from the same file only when asked for.
-export default function WallPage() {
-  const rows = decodeWall(readData<{ cols: string[]; rows: unknown[][] } | null>("wall.json", null));
+export default async function WallPage() {
+  const rows = decodeWall(await readData<{ cols: string[]; rows: unknown[][] } | null>("wall.json", null));
   const current = rows.filter((r) => r.current);
   return (
     <div className="page wallpage">

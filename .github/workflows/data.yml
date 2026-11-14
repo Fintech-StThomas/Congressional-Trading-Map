@@ -1,12 +1,18 @@
 name: Daily data refresh
 
-# Rebuilds web/public/data from the public sources and commits it only when validation passed and some data file
-# other than meta.json changed. See pipeline/README.md ("Daily workflow").
+# Rebuilds web/public/data from the public sources, commits it only when validation passed and some data file
+# other than meta.json changed, and uploads it to Cloudflare R2 (changed files only). See pipeline/README.md
+# ("Daily workflow", "Publishing to R2").
 
 on:
   schedule:
     - cron: "41 7 * * *"   # 07:41 UTC daily, off the top of the hour
   workflow_dispatch:
+    inputs:
+      publish_only:
+        description: "Skip the pipeline; upload the committed web/public/data to R2"
+        type: boolean
+        default: false
 
 permissions:
   contents: read           # the job below widens this to write; nothing else is granted
@@ -35,6 +41,7 @@ jobs:
       # schedule (legislators, SEC: daily; FEC: daily for the two latest cycles, weekly for older ones; Hugging Face
       # datasets are addressed by commit). A new key per run saves the refreshed cache; restore takes the latest.
       - name: Restore download cache
+        if: ${{ !inputs.publish_only }}
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: pipeline/.cache
@@ -45,12 +52,15 @@ jobs:
         run: pip install -r pipeline/requirements.txt
 
       - name: Unit tests
+        id: tests
         timeout-minutes: 10
         run: python -m pytest -q pipeline/tests
 
       # Exits non-zero when any stage fails or validation finds a failure; every later step is then skipped, so a
       # build that failed validation is never committed. Secrets are passed to this step only and never printed.
       - name: Run pipeline (all stages, then validation)
+        id: pipeline
+        if: ${{ !inputs.publish_only }}
         timeout-minutes: 120
         env:
           LDA_API_KEY: ${{ secrets.LDA_API_KEY }}       # used only when PT_ENABLE_LDA=1 (off)
@@ -58,10 +68,13 @@ jobs:
         run: python -m pipeline.run
 
       - name: Validate holdings
+        id: holdings
+        if: ${{ !inputs.publish_only }}
         timeout-minutes: 10
         run: python -m pipeline.holdings.validate --no-pdf
 
       - name: Commit data only if file contents changed
+        if: ${{ !inputs.publish_only }}
         run: |
           git add -A web/public/data
           # meta.json always carries a new build time; commit only when some other file changed.
@@ -73,3 +86,22 @@ jobs:
               -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
               commit -m "Data refresh $(date -u +%Y-%m-%d)" -- web/public/data
           git push origin "HEAD:${GITHUB_REF_NAME}"
+
+      # Upload to R2 only after validation passed (or, with publish_only, the committed data, which was validated
+      # when it was committed). Runs even if the commit step failed, but never after a failed test, stage or
+      # validation. The R2 secrets are passed to this step only; the script never prints them and skips with a
+      # message when they are absent (forks). Changed files only, meta.json and data/_manifest.json last, stale
+      # objects deleted after every upload succeeded; then <R2_PUBLIC_URL>/data/meta.json is fetched and its build
+      # time compared with the local one.
+      - name: Publish to R2
+        if: >-
+          ${{ !cancelled() && steps.tests.outcome == 'success' && (inputs.publish_only ||
+          (steps.pipeline.outcome == 'success' && steps.holdings.outcome == 'success')) }}
+        timeout-minutes: 30
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
+        run: python -m pipeline.publish_r2 --verify

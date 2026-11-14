@@ -1,7 +1,7 @@
 // Unit tests for the assumption switches (src/lib/domain/assume.ts).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { applyAssumptions, decodeAssumptions, DEFAULT_ASSUMPTIONS, encodeAssumptions, isDefault, ownOnly, readout, tradeCounts } from "../src/lib/domain/assume.ts";
+import { applyAssumptions, decodeAssumptions, DEFAULT_ASSUMPTIONS, encodeAssumptions, isDefault, isOwnOnly, isOwnOwner, ownOnly, ownTradeCount, readout, tradeCounts } from "../src/lib/domain/assume.ts";
 
 const T = (owner, org, extra = {}) => ({ owner, org, asset_class: "stock", low: 15001, late: false, ...extra });
 const trades = [
@@ -20,6 +20,17 @@ test("defaults count every trade and exclude nothing", () => {
   assert.ok(isDefault(DEFAULT_ASSUMPTIONS));
 });
 
+test("own and jointly owned: self and joint count as the member's own, nobody else does", () => {
+  const a = ownOnly(DEFAULT_ASSUMPTIONS, true);
+  assert.ok(isOwnOnly(a));
+  assert.equal(tradeCounts(T("joint", "x"), a), true, "joint: the member is a co-owner");
+  assert.equal(tradeCounts(T("self", "x"), a), true);
+  for (const o of ["spouse", "dependent", "unspecified", ""]) assert.equal(tradeCounts(T(o, "x"), a), false, o);
+  assert.ok(isOwnOwner("joint") && isOwnOwner("self") && !isOwnOwner("spouse") && !isOwnOwner(null));
+  assert.equal(ownTradeCount({ self: 3, joint: 2, spouse: 9 }), 5);
+  assert.equal(ownTradeCount(undefined), 0);
+});
+
 test("own trades only: spouse, dependent and unstated drop; joint stays", () => {
   const a = ownOnly(DEFAULT_ASSUMPTIONS, true);
   const e = applyAssumptions(trades, edges, ["co:1", "co:2"], a);
@@ -27,7 +38,7 @@ test("own trades only: spouse, dependent and unstated drop; joint stays", () => 
   assert.deepEqual([...e.excluded].sort(), ["e2", "e3", "e5"]);
   assert.deepEqual([...e.cases], ["co:1"], "co:2's case loses its tag; co:1 keeps the member's own trade");
   assert.ok(!e.excluded.has("p1"), "money strings are never excluded");
-  assert.equal(readout(e, a), "3 of 7 trades count; 1 of 2 cases remain under these assumptions. Money strings are unaffected.");
+  assert.equal(readout(e, a), "3 of 7 trades count (own and jointly owned only); 1 of 2 cases remain under these assumptions. Money strings are unaffected.");
 });
 
 test("funds, small and late filters", () => {

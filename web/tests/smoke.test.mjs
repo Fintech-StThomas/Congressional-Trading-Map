@@ -85,6 +85,12 @@ test("a string opens the evidence drawer with links to records", async () => {
   await drawer.waitFor();
   assert.match(await drawer.innerText(), /A tie is not a finding/);
   assert.ok((await drawer.locator(".evidence__link, .evidence__nolink").count()) > 0);
+  const fix = drawer.getByTestId("correction-link");
+  assert.equal((await fix.innerText()).trim(), "Something wrong with this record?");
+  const body = new URL(await fix.getAttribute("href")).searchParams.get("body");
+  assert.match(body, /Tie: \w+ .*edge \S+/);
+  assert.match(body, /From: .*\nTo: /);
+  assert.match(body, /Records: /);
   await p.keyboard.press("Escape");
   await drawer.waitFor({ state: "detached" });
   await p.close();
@@ -239,7 +245,8 @@ test("featured example explains itself and steps to another", async () => {
   const before = await slip.locator(".slip__title").innerText();
   await slip.getByRole("button", { name: /Show another/ }).click();
   await p.waitForFunction((b) => document.querySelector(".slip .slip__title")?.textContent !== b, before);
-  assert.match(await p.locator(".slip").first().innerText(), /Featured example/i);
+  // The next pick may be in another state whose strings are still loading (on demand in remote data mode).
+  await p.locator(".slip").first().getByText(/Featured example/i).waitFor({ timeout: 20000 });
   await p.close();
 });
 
@@ -269,7 +276,7 @@ test("member page links to the full file and assumption switches recompute cases
   await p.goto(base + "/m/K000389");
   assert.ok(await p.getByRole("link", { name: "Open the full file" }).count());
   await p.locator(".assume summary").first().click();
-  await p.getByRole("switch", { name: "Member’s own trades only" }).click();
+  await p.getByRole("switch", { name: "Member’s own and jointly owned trades only" }).click();
   await p.waitForFunction(() => /of .* trades count/.test(document.querySelector("[data-testid=assume-line]")?.textContent ?? ""), null, { timeout: 60000 });
   assert.match(new URL(p.url()).search, /as=own/);
   await p.close();
@@ -343,11 +350,44 @@ test("a case built on a disclosed holding does not say the household traded", as
   const i = cases.findIndex((c) => !c.types.includes("traded"));
   if (i < 0) return;
   const p = await page();
-  await p.goto(base + "/cases");
-  const row = p.locator(".caserow").nth(i);
+  const n = Math.floor(i / 50) + 1;
+  await p.goto(base + (n > 1 ? `/cases/page/${n}` : "/cases"));
+  const row = p.locator(".caserow").nth(i % 50);
   const what = await row.locator(".caserow__what").innerText();
   assert.match(what, /held the stock/);
   assert.doesNotMatch(what, /traded/);
+  await p.close();
+});
+
+test("cases come 50 to a page, with a count, a pager and filters that keep each page small", async () => {
+  const cases = await (await fetch(`${base}/data/cases.json`)).json();
+  if (cases.length <= 50) return;
+  const p = await page();
+  await p.goto(base + "/cases/page/2");
+  assert.equal(await p.locator(".caserow").count(), Math.min(50, cases.length - 50));
+  assert.match(await p.getByTestId("case-count").innerText(), new RegExp(`Cases 51–${Math.min(100, cases.length)} of ${cases.length.toLocaleString("en-US")}`));
+  assert.equal((await p.locator(".caserow__rank").first().innerText()).trim(), "51");
+  await p.getByTestId("case-pager").getByRole("link", { name: "Next →" }).click();
+  await p.waitForURL(/\/cases\/page\/3$/);
+  await p.getByTestId("case-filters").getByRole("link", { name: /^Senate/ }).click();
+  await p.waitForURL(/\/cases\/chamber\/senate$/);
+  const seats = await p.locator(".caserow__sub").allInnerTexts();
+  assert.ok(seats.length > 0 && seats.every((t) => /Senator|Senate|Sen\./i.test(t)), "senate filter shows senators only");
+  const html = await (await fetch(`${base}/cases`)).text();
+  assert.ok(html.length < 1_000_000, `page 1 is ${html.length} bytes`);
+  await p.close();
+});
+
+test("every page links to a prefilled correction issue", async () => {
+  const p = await page();
+  await p.goto(base + "/method");
+  const href = await p.locator("footer.site-footer [data-testid=correction-link]").getAttribute("href");
+  const u = new URL(href);
+  assert.equal(u.pathname, "/Fintech-StThomas/Congressional-Trading-Map/issues/new");
+  assert.equal(u.searchParams.get("labels"), "correction");
+  assert.match(u.searchParams.get("body"), /Page: .*\/method/);
+  assert.match(u.searchParams.get("body"), /Data build: /);
+  assert.ok(await p.locator("#corrections-h").isVisible());
   await p.close();
 });
 

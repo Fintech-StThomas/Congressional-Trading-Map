@@ -51,20 +51,22 @@ def test_ranges_never_midpoint_and_open_ended():
     assert (closed["low"], closed["high"], closed["label"]) == (15001, 50000, "range")
 
 
-def test_beneficiary_names_are_redacted():
-    for text, expected in [
-        ("f/b/o Taylor Rose Trott UTA ⇒ Apple (AAPL)", "f/b/o [name redacted] UTA ⇒ Apple (AAPL)"),
-        ("AMERICAN FUNDS ⇒ FBO - R.D. HECK ⇒ Growth Fund", "AMERICAN FUNDS ⇒ FBO - [name redacted] ⇒ Growth Fund"),
-        ("Maverick Mast UTMA/FL ⇒ X", "[name redacted] UTMA/FL ⇒ X"),
-        ("Morgan Stanley Magnum Mast UTMA/FL", "Morgan Stanley [name redacted] UTMA/FL"),
-        ("FBO Jeffrey Fortenberry IRA", "FBO [name redacted] IRA"),
+def test_minor_names_are_redacted_one_case_per_rule():
+    R = rules.NAME_REDACTED
+    for text, owner, expected, rule in [
+        ("Maverick Mast UTMA/FL ⇒ Apple (AAPL)", "unspecified", f"{R} UTMA/FL ⇒ Apple (AAPL)", "custodial"),
+        ("Fidelity custodian for Jane Doe ⇒ X", "joint", f"Fidelity custodian for {R} ⇒ X", "custodial"),
+        ("Columbia 529 Plan FBO Jane Q. Doe ⇒ Growth Fund", "spouse", f"Columbia 529 Plan FBO {R} ⇒ Growth Fund", "education"),
+        ("Emma Smith Brokerage ⇒ Schwab ⇒ Apple (AAPL)", "dependent", f"{R} Brokerage ⇒ Schwab ⇒ Apple (AAPL)", "dependent"),
     ]:
-        out, hit = rules.redact_beneficiary(text)
-        assert hit and out == expected
-        assert rules.redact_beneficiary(out) == (out, False)       # idempotent
+        out, hit = rules.redact_beneficiary(text, owner)
+        assert (out, hit) == (expected, rule), text
+        assert rules.redact_beneficiary(out, owner) == (out, None)          # idempotent
 
 
-def test_beneficiary_rule_leaves_accounts_and_trust_agreements_alone():
-    for text in ("Revocable Trust UTA DTD 6/11/93", "529 FBO Minor 1 ⇒ Voya", "Columbia 529 FBO DC1", "Raymond James UTMA",
-                 "Bank of America UTMA Education Savings", "Dependent Child (FBO) College Savings Plan"):
-        assert rules.redact_beneficiary(text) == (text, False)
+def test_adult_names_are_published_as_filed():
+    for text, owner in [("FBO Jeffrey Fortenberry IRA", "self"), ("IRA FBO Robert Smith ⇒ Vanguard", "unspecified"),
+                        ("Mary Smith Revocable Trust ⇒ Apple (AAPL)", "spouse"), ("Revocable Trust UTA DTD 6/11/93", "self"),
+                        ("AMERICAN FUNDS ⇒ FBO - R.D. HECK ⇒ Growth Fund", "joint"),
+                        ("Dependent Child (FBO) College Savings Plan", "self"), ("529 FBO Minor 1 ⇒ Voya", "self")]:
+        assert rules.redact_beneficiary(text, owner) == (text, None), text

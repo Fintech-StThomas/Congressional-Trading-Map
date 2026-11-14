@@ -3,7 +3,7 @@
 Reads the published tree and pipeline/build/trades*.parquet. Checks (a) the schema of every output file, (b)
 invariants: row counts across joins, evidence and endpoints, by_year sums and order, owner never defaulted, ledger
 completeness and caps, the Case rule re-derived from published edges, cross-file counts (members, wall, wall-years,
-org index, meta), no beneficiary names in trade text; and writes (c) a reproducible sample of 25 trades for hand
+org index, meta), no minor's name in trade text; and writes (c) a reproducible sample of 25 trades for hand
 checking (pipeline/build/validation_sample.csv). Exits non-zero on any failure. Holdings: pipeline/holdings/validate.py.
 """
 from __future__ import annotations
@@ -23,6 +23,7 @@ from .config import (BOARD_EDGES, FORMER_MEMBER_LEDGER_ROWS, LATE_DAYS, LEDGER_O
 from .contract import (FAMILY, MEMBER_LEDGER_COLS, ORG_INDEX_COLS, ORG_TIE_COLS, PARTIES, SPLIT_MEASURES, TRADE_COLUMNS,
                        WALL_COLS, WALL_YEARS_COLS)
 from .assemble import case_ok
+from .assemble.orgs import year_party
 from .config import MONEY_EDGES_PER_MEMBER
 from .edges import edge_id, sum_amounts
 from .holdings.rules import redact_beneficiary
@@ -94,26 +95,54 @@ ORG_SUMMARY = {"id": lambda v: isinstance(v, str), "name": lambda v: isinstance(
 SPLIT_TYPE = {"given": "pac_money", "support": "outside_spending", "oppose": "outside_spending", "traded": "traded"}
 
 
-def check_split(c: Checker, of: dict[str, Any], ties: list[dict[str, Any]], party: dict[str, str], where: str) -> None:
-    """Split totals equal the sum of the org's ties (listed ties plus ledger_totals for the rest)."""
+def tie_party_bounds(r: dict[str, Any], terms: list[dict[str, Any]], latest: str) -> set[str]:
+    """Parties the member held (party at the time, `assemble.year_party`) in any year from the tie's first to last
+    year. A tie's split parties must be a non-empty subset of this; when it has one element the tie is forced."""
+    a, b = int(str(r["first"])[:4]), int(str(r["last"])[:4])
+    return {year_party(terms, y, latest)[0] for y in range(a, b + 1)}
+
+
+def check_split(c: Checker, of: dict[str, Any], ties: list[dict[str, Any]], party: dict[str, str],
+                terms: dict[str, list[dict[str, Any]]], where: str) -> None:
+    """Split totals equal the sum of the org's ties (listed ties plus ledger_totals for the rest), and the party
+    figures are consistent with the member's party at the time of each listed tie."""
     split, lt = of["org"].get("split", {}), of["ledger_totals"]
     for t in ("pac_money", "outside_spending", "traded"):
         listed = [r for r in ties if r["type"] == t]
         measures = [m for m in SPLIT_MEASURES if SPLIT_TYPE[m] == t]
         n_split = sum(n for m in measures for n, _ in split.get(m, {}).values())
         n_edges = len(listed) + lt.get(t, {}).get("edges", 0)
-        c.check((n_split == 0) == (n_edges == 0) and n_split <= n_edges, "split members bounded by ties", f"{where}:{t}")
+        # a tie counts its member under each party held during it: at most len(PARTIES) per tie
+        c.check((n_split == 0) == (n_edges == 0) and n_split <= n_edges * len(PARTIES), "split members bounded by ties",
+                f"{where}:{t}")
         if t != "traded":
             total = sum(r["exact"] or r["high"] or r["low"] or 0 for r in listed) + (lt.get(t, {}).get("exact") or 0)
             got = sum(d for m in measures for _, d in split.get(m, {}).values())
             c.check(abs(total - got) < 0.5, "split dollars equal the sum of ties", f"{where}:{t} {got} vs {total}")
-        if listed and t not in lt and t != "outside_spending":
-            by_party = {p: set() for p in PARTIES}
+        if listed and t not in lt:
+            # every tie of this type is listed: re-derive bounds per party (support/oppose pooled for outside money)
+            forced: dict[str, set[str]] = {p: set() for p in PARTIES}
+            possible: dict[str, set[str]] = {p: set() for p in PARTIES}
+            forced_d: Counter[str] = Counter()
+            possible_d: Counter[str] = Counter()
             for r in listed:
-                by_party[party[r["member"]]].add(r["member"])
-            want = {p: len(v) for p, v in by_party.items()}
-            have = {p: v[0] for p, v in split.get(measures[0], {}).items()}
-            c.check(want == have, "split member counts match listed ties by party", f"{where}:{t}")
+                ps = tie_party_bounds(r, terms[r["member"]], party[r["member"]])
+                for p in ps:
+                    possible[p].add(r["member"])
+                    possible_d[p] += r["exact"] or r["high"] or r["low"] or 0
+                if len(ps) == 1:
+                    (p,) = ps
+                    forced[p].add(r["member"])
+                    forced_d[p] += r["exact"] or r["high"] or r["low"] or 0
+            for p in PARTIES:
+                n = sum(split.get(m, {}).get(p, [0, 0])[0] for m in measures)
+                d = sum(split.get(m, {}).get(p, [0, 0])[1] or 0 for m in measures)
+                lo = len(forced[p]) if len(measures) == 1 else 0
+                c.check(lo <= n <= len(possible[p]) * len(measures), "split member counts within the party at the time of listed ties",
+                        f"{where}:{t}:{p}")
+                if t != "traded":
+                    c.check(forced_d[p] - 0.5 <= d <= possible_d[p] + 0.5, "split dollars within the party at the time of listed ties",
+                            f"{where}:{t}:{p} {d}")
 
 
 def check_wall(c: Checker, wall: Any, members_list: list[dict[str, Any]]) -> None:
@@ -267,7 +296,7 @@ def check_trades(c: Checker, mf: dict[str, Any], where: str, orgs: set[str]) -> 
     for r in t.get("rows", []):
         row = dict(zip(TRADE_COLUMNS, r))
         c.check(len(r) == len(TRADE_COLUMNS), "schema", f"{where}.trade width")
-        c.check(not redact_beneficiary(row["asset"])[1], "no beneficiary name in trade asset text", row["id"])
+        c.check(not redact_beneficiary(row["asset"], row["owner"])[1], "no minor's name in trade asset text", row["id"])
         c.check(row["owner"] in OWNERS and row["action"] in ACTIONS and row["asset_class"] in CLASSES
                 and row["ticker_source"] in TICKER_SOURCES, "trade enums", f"{where}:{row['id']}")
         c.check(opt(is_date)(row["date"]) and opt(is_date)(row["available"]), "schema", f"{where}:{row['id']} dates")
@@ -350,6 +379,7 @@ def main() -> int:
 
     seen_edges: dict[str, dict[str, Any]] = {}
     full_pairs: set[tuple[str, str]] = set()
+    terms: dict[str, list[dict[str, Any]]] = {}
     trade_rows = 0
     for mid in sorted(members):
         mf = read_json(OUT / "members" / f"{mid}.json")
@@ -357,6 +387,7 @@ def main() -> int:
         c.check(set(mf) == {"member", "edges", "board", "nodes", "ledger", "ledger_totals", "trade_summary", "cases", "coverage"},
                 "schema", f"{where} keys")
         c.check(mf["member"]["id"] == mid, "member file id", where)
+        terms[mid] = mf["member"]["terms"]
         for e in mf["edges"]:
             check_edge(c, e, where, sources, members, orgs)
             c.check(mid in (e["from"]["id"], e["to"]["id"]), "member file edges touch the member", f"{where}:{e['id']}")
@@ -390,7 +421,7 @@ def main() -> int:
                     "org chambers sum to degree", oid)
             c.check(isinstance(of["years"], list) and len(of["years"]) == 2 and of["years"][0] <= of["years"][1], "schema", f"{oid} years")
             ties = check_table(c, of["ties"], ORG_TIE_COLS, f"orgs/{k}:{oid}.ties")
-            check_split(c, of, ties, party, oid)
+            check_split(c, of, ties, party, terms, oid)
             for t in ties:
                 c.check(t["member"] in members and t["type"] in FAMILY, "org tie endpoint exists", f"{oid}:{t['member']}")
                 c.check(t["edge"] is None or (t["member"], t["edge"]) in full_pairs, "org tie edge id is in that member's file",

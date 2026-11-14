@@ -208,6 +208,11 @@ against the OpenFEC reports and Schedule A endpoints for the recipient committee
 What the site shows is therefore "what committees reported giving", which can exceed what the recipient reports
 receiving. Recipient-side refunds (22Z) and reclassifications are invisible in pas2 (see below).
 
+## Payees
+
+Independent-expenditure payees (the vendors and consultants a committee paid, individuals and organisations
+alike) are published as filed in the "(paid to ...)" evidence labels and in `review_large_funds_rows`.
+
 ## Known limitations
 
 - **Senate paper filings.** Senate committees filed on paper with the Secretary of the Senate until 2019, and a
