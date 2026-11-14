@@ -1,7 +1,8 @@
 "use client";
-
+// A dense raw-records table: sortable headers, per-column filters, CSV of the rows in view, windowed rendering for 40,000+ rows.
 import { useMemo, useRef, useState } from "react";
-import { filterRows, sortRows, toCSV, type Cell, type Col } from "@/lib/records";
+import { filterRows, sortRows, toCSV, type Cell, type Col } from "@/lib/domain/records";
+import { safeHttpUrl } from "@/lib/urls";
 
 const ROW_H = 30;
 const VIEW_H = 520;
@@ -31,7 +32,9 @@ function show(v: Cell, kind: Col["kind"]): React.ReactNode {
   if (kind === "bool") return v ? "yes" : "no";
   if (kind === "num" && typeof v === "number") return v.toLocaleString("en-US");
   if (kind === "links") {
-    const urls = String(v).split(" ").filter(Boolean);
+    // Only http(s) links become links; anything else in the data stays plain text.
+    const urls = String(v).split(" ").map(safeHttpUrl).filter((u): u is string => Boolean(u));
+    if (!urls.length) return String(v);
     return (
       <>
         <a href={urls[0]} target="_blank" rel="noreferrer">{host(urls[0])}</a>

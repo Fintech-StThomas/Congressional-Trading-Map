@@ -1,11 +1,13 @@
+// /method: sources and revisions from meta.json, the rule for each kind of tie, coverage and limits.
 import type { Metadata } from "next";
-import { IS_SAMPLE, getMeta, metaBuilt } from "@/lib/data";
-import { metaSources } from "@/lib/meta";
-import { FAMILY_LABEL, TYPE_LABEL, TYPE_RULE } from "@/lib/edges";
+import { IS_SAMPLE, getMeta, metaBuilt } from "@/lib/data/server";
+import { metaSources } from "@/lib/data/meta";
+import { safeHttpUrl } from "@/lib/urls";
+import { FAMILY_LABEL, TYPE_LABEL, TYPE_RULE } from "@/lib/domain/edges";
 import { count, date } from "@/lib/format";
-import { SITE } from "@/lib/site";
+import { SITE } from "@/lib/copy";
 import type { EdgeType } from "@/lib/types";
-import { LineSample } from "@/components/LineSample";
+import { LineSample } from "@/components/shared/LineSample";
 
 export const metadata: Metadata = {
   title: "Method and sources",
@@ -13,10 +15,10 @@ export const metadata: Metadata = {
 };
 
 const TYPES_BY_FAMILY: [keyof typeof FAMILY_LABEL, EdgeType[]][] = [
-  ["holding", ["traded", "owns", "position", "traded_together"]],
+  ["holding", ["traded", "owns", "traded_together"]],
   ["money", ["pac_money", "employee_money", "lobbyist_money", "outside_spending", "paid_travel", "funds", "fundraises_with", "shared_donors"]],
-  ["people", ["revolving_door", "oversees", "shared_staff"]],
-  ["context", ["sits_with", "legislates_with"]],
+  ["people", ["position", "revolving_door", "shared_staff"]],
+  ["context", ["oversees", "sits_with", "legislates_with"]],
 ];
 
 function label(k: string) {
@@ -79,9 +81,10 @@ export default function MethodPage() {
               const files = Array.isArray(s.files) ? (s.files as { rows?: number }[]) : null;
               const rows = isNum(s.rows) ? s.rows : files ? files.reduce((n, f) => n + (isNum(f.rows) ? f.rows : 0), 0) : null;
               const licence = (s.licence ?? s.license) as string | undefined;
+              const href = safeHttpUrl(s.url);
               return (
                 <li key={s.id}>
-                  <h3>{s.url ? <a href={s.url} target="_blank" rel="noopener noreferrer">{s.name ?? s.id}</a> : s.name ?? s.id}</h3>
+                  <h3>{href ? <a href={href} target="_blank" rel="noopener noreferrer">{s.name ?? s.id}</a> : s.name ?? s.id}</h3>
                   <dl className="kv kv--inline">
                     <div><dt>Source id</dt><dd className="mono">{s.id}</dd></div>
                     {s.revision && <div><dt>Revision</dt><dd className="mono">{String(s.revision)}</dd></div>}

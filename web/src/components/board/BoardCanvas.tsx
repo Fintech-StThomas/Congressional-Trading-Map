@@ -1,16 +1,20 @@
 "use client";
+// The board canvas: the map behind, the centre print or organisation card, the cards around it
+// placed by lib/board/layout (arrange), and one yarn string per tie, drawn in with a sway.
+// Data in: the edges BoardApp has already filtered, the name book, and the case / excluded sets.
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Edge, NodeRef, OrgSummary } from "@/lib/types";
-import type { MapGeometry } from "@/lib/geo";
-import { arrange, yarn, yarnAt, yarnPoint, type Rect, type Yarn } from "@/lib/layout";
-import { typeLabel, amountLabel, filteredAmount, otherEnd, stringStyle, strokeWidth, isFrayed, frayCue, tiePhrase, weakTag } from "@/lib/edges";
+import type { MapGeometry } from "@/lib/board/geo";
+import { arrange, yarn, yarnAt, type Rect } from "@/lib/board/layout";
+import { typeLabel, amountLabel, filteredAmount, otherEnd, stringStyle, strokeWidth, isFrayed, frayCue, tiePhrase, weakTag } from "@/lib/domain/edges";
 import { count, seat } from "@/lib/format";
-import { nodeName, ORG_KIND_LABEL, type BoardMember, type NameBook } from "@/lib/client";
+import { nodeName, ORG_KIND_LABEL, type BoardMember, type NameBook } from "@/lib/domain/names";
 import { fnv1a, tiltFor } from "@/lib/hash";
-import { frayed as fray } from "@/lib/fray";
-import { Print, PartyTag } from "../Print";
+import { Print, PartyTag } from "@/components/shared/Print";
+import { CASE_TAG_TEXT } from "@/lib/copy";
 import { USMap } from "./USMap";
+import { boxOf, distTo, FrayedYarn, LEAD, lightAt, lightVars, SAG_KEYS, SAG_SPLINES, SAG_TIMES, SETTLE, STAGGER, useRichYarn } from "./yarn";
 
 export type Center =
   | { kind: "member"; member: BoardMember; total: number }
@@ -42,106 +46,6 @@ type Props = {
 const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
 type NodeCard = { ref: NodeRef; edges: Edge[]; order: number };
-
-// ---- the lamp ------------------------------------------------------------------
-// One light above the board and slightly in front, centred a little above the
-// middle. Everything casts its shadow away from it; further out, longer and softer.
-const LAMP = { x: 0.5, y: 0.36 };
-type Light = { sx: number; sy: number; blur: number; dim: number; ang: number; gx: number; gy: number };
-function lightAt(W: number, H: number, x: number, y: number): Light {
-  const R = Math.max(200, Math.hypot(W, H) / 2);
-  const vx = (x - W * LAMP.x) / R, vy = (y - H * LAMP.y) / R;
-  const d = Math.min(1.1, Math.hypot(vx, vy));
-  const r = (v: number) => Math.round(v * 100) / 100;
-  const ul = Math.hypot(vx, vy) || 1;
-  return {
-    sx: r(vx * 10),
-    sy: r(2.2 + vy * 9),
-    blur: r(7 + d * 14),
-    dim: r(Math.min(1, d * 1.15)),
-    ang: Math.round((Math.atan2(vx, -vy) * 180) / Math.PI),
-    // Specular glint sits on the lamp side of a pin head.
-    gx: r(d < 0.05 ? 0 : (-vx / ul) * 1.7),
-    gy: r(d < 0.05 ? -1.6 : (-vy / ul) * 1.7 - 0.4),
-  };
-}
-const lightVars = (l: Light) =>
-  ({ "--sx": l.sx, "--sy": l.sy, "--sb": l.blur, "--dim": l.dim, "--lang": `${l.ang}deg` }) as React.CSSProperties;
-
-// ---- the draw-in -----------------------------------------------------------------
-const STAGGER = 55; // ms between strings
-const LEAD = 80; // ms before the first string
-const SETTLE = 620; // ms: overshoot, then a damped sway back to rest
-const SAG_KEYS = [0.55, 1.12, 0.95, 1.02, 1];
-const SAG_TIMES = "0;0.38;0.64;0.84;1";
-const SAG_SPLINES = "0.2 0.6 0.35 1;0.45 0 0.55 1;0.45 0 0.55 1;0.45 0 0.55 1";
-
-/** Bounding box of a yarn (control hull) padded for fibres and sway. */
-function boxOf(y: Yarn, pad: number) {
-  const xs = [y.p0.x, y.c.x, y.p1.x], ys = [y.p0.y, y.c.y, y.p1.y];
-  const x = Math.min(...xs) - pad, yy = Math.min(...ys) - pad;
-  return { x: Math.floor(x), y: Math.floor(yy), w: Math.ceil(Math.max(...xs) - x + pad), h: Math.ceil(Math.max(...ys) - yy + pad) };
-}
-
-/** Distance from a point to the yarn, sampled. Used so the nearer string wins. */
-function distTo(y: Yarn, px: number, py: number): number {
-  let best = Infinity;
-  for (let i = 0; i <= 24; i++) {
-    const p = yarnPoint(y, i / 24);
-    best = Math.min(best, Math.hypot(p.x - px, p.y - py));
-  }
-  return best;
-}
-
-/**
- * A weak or statistical string as worn yarn: the strand pinches at two or three
- * worn spots where its plies part into finer threads (one spot may hang by a
- * single thread), with loose fibres added once the board has settled.
- */
-function FrayedYarn({ id, y, w, anim, begin, fibres, px, py }: { id: string; y: Yarn; w: number; anim: boolean; begin: string; fibres: number; px: number; py: number }) {
-  const rest = useMemo(() => fray(id, y, w, 1, fibres), [id, y, w, fibres]);
-  const keys = useMemo(() => (anim ? SAG_KEYS.map((k) => fray(id, y, w, k, 0)) : null), [anim, id, y, w]);
-  const A = (pick: (f: ReturnType<typeof fray>) => string) =>
-    keys ? <animate attributeName="d" values={keys.map(pick).join(";")} keyTimes={SAG_TIMES} calcMode="spline" keySplines={SAG_SPLINES} dur={`${SETTLE}ms`} begin={begin} fill="freeze" /> : null;
-  return (
-    <>
-      <path className="yv__shadow yv__shadow--fill" d={rest.core}>{A((f) => f.core)}</path>
-      <path className="yv__shadow yv__shadow--thread" d={rest.threads}>{A((f) => f.threads)}</path>
-      <g className="yv__lift">
-        <path className="yv__corefill" d={rest.core}>{A((f) => f.core)}</path>
-        <path className="yv__ply yv__ply--dark" d={rest.plies} style={{ strokeWidth: Math.max(0.45, w * 0.45) }} transform={`translate(${px} ${py})`}>{A((f) => f.plies)}</path>
-        <path className="yv__ply yv__ply--lite" d={rest.plies} style={{ strokeWidth: Math.max(0.4, w * 0.35) }} transform={`translate(${-px} ${-py})`}>{A((f) => f.plies)}</path>
-        <path className="yv__thread" d={rest.threads}>{A((f) => f.threads)}</path>
-        {fibres !== 0 && (
-          <>
-            <path className="yv__fibre" d={rest.fibres} />
-            <path className="yv__fibre yv__fibre--fine" d={rest.fibresFine} />
-          </>
-        )}
-      </g>
-    </>
-  );
-}
-
-/** Renders the fuzz (displacement) only on capable, fine-pointer, wide screens. */
-function useRichYarn(): { rich: boolean; still: boolean } {
-  const [v, setV] = useState({ rich: false, still: false });
-  useEffect(() => {
-    const cheap = window.matchMedia("(max-width: 719px), (pointer: coarse)");
-    const still = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const nav = navigator as Navigator & { deviceMemory?: number; connection?: { saveData?: boolean } };
-    const weak = (nav.hardwareConcurrency ?? 8) <= 2 || (nav.deviceMemory ?? 8) < 4 || Boolean(nav.connection?.saveData);
-    const apply = () => setV({ rich: !cheap.matches && !weak, still: still.matches });
-    apply();
-    cheap.addEventListener("change", apply);
-    still.addEventListener("change", apply);
-    return () => {
-      cheap.removeEventListener("change", apply);
-      still.removeEventListener("change", apply);
-    };
-  }, []);
-  return v;
-}
 
 export function BoardCanvas(props: Props) {
   const { geo, counts, selectedState, onSelectState, center, edges, book, caseNodes, excluded, focusNode, drawKey, range, activeEdge, onOpenEdge, onRecenter, slip, loading } = props;
@@ -208,7 +112,8 @@ export function BoardCanvas(props: Props) {
     const placed = arrange(W, H, centerRect, nodes.map((n) => ({ id: `${n.ref.kind}:${n.ref.id}`, w: cw, h: ch })), avoid);
     const pos = new Map(placed.map((p) => [p.id, p]));
     const strings = nodes.flatMap((n) => {
-      const p = pos.get(`${n.ref.kind}:${n.ref.id}`)!;
+      const p = pos.get(`${n.ref.kind}:${n.ref.id}`);
+      if (!p) return [];
       // Pin on the edge facing the centre, clear of the text and the re-centre control.
       const ccx = centerRect.x + centerRect.w / 2;
       const pin =
@@ -230,7 +135,7 @@ export function BoardCanvas(props: Props) {
     const pins = new Map(strings.map((x) => [`${x.node.ref.kind}:${x.node.ref.id}`, x.pin]));
     // Draw order: strongest string first, as the edges arrived.
     const orderOf = new Map(edges.map((e, i) => [e.id, i]));
-    strings.sort((a, b) => orderOf.get(a.e.id)! - orderOf.get(b.e.id)!);
+    strings.sort((a, b) => (orderOf.get(a.e.id) ?? 0) - (orderOf.get(b.e.id) ?? 0));
     const lights = new Map(placed.map((p) => [p.id, lightAt(W, H, p.x + p.w / 2, p.y + p.h / 2)]));
     const slipLight = slipBox ? lightAt(W, H, slipBox.x + slipBox.w / 2, slipBox.y + slipBox.h / 2) : null;
     return { W, H, centerRect, placed, pos, strings, pins, lights, slipLight, cw, ch, compact };
@@ -297,7 +202,9 @@ export function BoardCanvas(props: Props) {
           </div>
 
           {layout.placed.map((p) => {
-            const n = nodes.find((x) => `${x.ref.kind}:${x.ref.id}` === p.id)!;
+            const n = nodes.find((x) => `${x.ref.kind}:${x.ref.id}` === p.id);
+            const light = layout.lights.get(p.id);
+            if (!n || !light) return null;
             const i = layout.strings.findIndex((s) => s.node === n);
             const isCase = caseNodes.has(n.ref.id);
             const wtag = n.edges.map(weakTag).find(Boolean) ?? null;
@@ -307,8 +214,7 @@ export function BoardCanvas(props: Props) {
             const says = n.edges.map((e) => tiePhrase(e, n.ref.id, centreName, range));
             const saysFull = n.edges.map((e) => tiePhrase(e, n.ref.id, centreName, range, true));
             const k = n.edges.length;
-            const openLabel = `${name}${o ? `, ${ORG_KIND_LABEL[o.kind]}` : m ? `, ${seat(m)}` : ""}: ${saysFull.join("; ")}.${isCase ? " Case: traded the stock and received PAC money in the same years." : ""} Open the evidence${k > 1 ? ` for ${k} strings` : ""}.`;
-            const light = layout.lights.get(p.id)!;
+            const openLabel = `${name}${o ? `, ${ORG_KIND_LABEL[o.kind]}` : m ? `, ${seat(m)}` : ""}: ${saysFull.join("; ")}.${isCase ? ` Case: ${CASE_TAG_TEXT}.` : ""} Open the evidence${k > 1 ? ` for ${k} strings` : ""}.`;
             return (
               <div
                 key={`${drawKey}-${p.id}`}
@@ -442,7 +348,8 @@ export function BoardCanvas(props: Props) {
 
             {layout.placed.map((p) => {
               const pin = layout.pins.get(p.id) ?? { x: p.x + p.w / 2, y: p.y + 7 };
-              const l = layout.lights.get(p.id)!;
+              const l = layout.lights.get(p.id);
+              if (!l) return null;
               return (
                 <g key={`pin-${drawKey}-${p.id}`} className="pinhead" transform={`translate(${pin.x} ${pin.y})`} aria-hidden="true">
                   <ellipse rx="5.6" ry="5" className="pinhead__shadow" cx={l.sx * 0.32} cy={l.sy * 0.32 + 0.8} />

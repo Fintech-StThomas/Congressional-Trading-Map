@@ -1,51 +1,34 @@
 "use client";
+// The board (home page): owns the selection (state, member or organisation, mirrored in the URL),
+// loads each view's strings on demand, applies the family / year / assumption filters, and lays out
+// the canvas, the table view, the side panel and the evidence drawer.
+// Data in: the props built by app/page.tsx; then /board-data/<state>, /board-member/<id> and org shards.
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Edge, EdgeType, NodeRef, OrgFileWire, OrgSummary } from "@/lib/types";
-import type { MapGeometry } from "@/lib/geo";
-import { FAMILIES, FAMILY_HINT, FAMILY_LABEL, TYPE_LABEL, inYears, sortEdges, type Family } from "@/lib/edges";
-import { date, plural, seat, stateName, TERRITORIES } from "@/lib/format";
-import { dataUrl, getJSON, loadSearchIndex, memberHref, orgHref, resolveTie, type BoardMember, type NameBook } from "@/lib/client";
-import { decodeOrgTies, type TieEdge } from "@/lib/decode";
-import { orgShard } from "@/lib/hash";
-import { YEAR_MAX, YEAR_MIN } from "@/lib/site";
-import { Print, PartyTag } from "../Print";
-import { LineSample } from "../LineSample";
-import { TieTable } from "../TieTable";
-import { EvidenceDrawer } from "../EvidenceDrawer";
-import { ErrorBoundary } from "../ErrorBoundary";
+import type { Edge, NodeRef } from "@/lib/types";
+import type { MapGeometry } from "@/lib/board/geo";
+import { inYears, sortEdges, type Family } from "@/lib/domain/edges";
+import { stateName } from "@/lib/format";
+import { resolveTie } from "@/lib/data/fetch";
+import type { BoardMember } from "@/lib/domain/names";
+import type { TieEdge } from "@/lib/data/decode";
+import { YEAR_MAX, YEAR_MIN } from "@/lib/years";
+import { AGAINST_SHOWN, isAgainst } from "@/lib/domain/pick";
+import { TieTable } from "@/components/shared/TieTable";
+import { EvidenceDrawer } from "@/components/shared/EvidenceDrawer";
+import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
+import { AssumptionBar, useAssumptions } from "@/components/shared/Assume";
 import { BoardCanvas, type Center } from "./BoardCanvas";
-import { YearRange } from "./YearRange";
+import { Toolbar } from "./Toolbar";
 import { Legend } from "./Legend";
 import { AgainstZone } from "./AgainstZone";
-import { AGAINST_SHOWN, isAgainst } from "@/lib/pick";
-import { CASE_NOT_SHOWN } from "@/lib/notshown";
-import { AssumptionBar, useAssumptions } from "../assume/Assume";
+import { Slip } from "./Slip";
+import { CaseList, Delegation, OrgSide, StateList } from "./SidePanel";
+import { StateTable } from "./StateTable";
+import { useBoardData } from "./useBoardData";
+import { EMPTY, type CaseLite, type Featured, type Sel, type StateChunk } from "./types";
 
-export type CaseLite = {
-  id: string;
-  member: string;
-  org: string;
-  orgName: string;
-  types: EdgeType[];
-  years: [number, number];
-  money: number;
-  trades: number;
-};
-
-/** Featured examples, most varied first: `reason` is the one sentence shown on the slip. */
-export type Featured = { picks: { member: string; reason: string; kinds: number }[] } | null;
-
-export type StateChunk = {
-  strings: Record<string, Edge[]>;
-  nodes: Record<string, OrgSummary>;
-  members: Record<string, BoardMember>;
-  /** Ties per member beyond the drawn strings. */
-  more: Record<string, number>;
-  /** Spenders against each member beyond the three shown in the "Spent against" zone. */
-  againstMore?: Record<string, number>;
-};
+export type { CaseLite, Featured, StateChunk } from "./types";
 
 type Props = {
   geo: MapGeometry;
@@ -55,13 +38,13 @@ type Props = {
   initialChunks: Record<string, StateChunk>;
   cases: CaseLite[];
   caseTotal: number;
+  /** The Case rule's minimum number of tie types (meta.json), for the wording of the cases list. */
+  caseMinTypes: number;
   caseIndex: Record<string, string[]>;
   sources: Record<string, string>;
   asOf: string | null;
 };
 
-type Sel = { s: string | null; m: string | null; o: string | null; focus: string | null };
-const EMPTY: Sel = { s: null, m: null, o: null, focus: null };
 const MAX_STRINGS = 12;
 
 function readLocation(): Sel | null {
@@ -84,7 +67,7 @@ function toQuery(sel: Sel): string {
 }
 
 export function BoardApp(props: Props) {
-  const { geo, states, featured, cases, caseTotal, caseIndex, sources, asOf } = props;
+  const { geo, states, featured, cases, caseTotal, caseMinTypes, caseIndex, sources, asOf } = props;
 
   const [featIdx, setFeatIdx] = useState(0);
   const featPick = featured?.picks[featIdx] ?? null;
@@ -103,17 +86,9 @@ export function BoardApp(props: Props) {
   const [openGroup, setOpenGroup] = useState<Edge[] | null>(null);
   const trigger = useRef<Element | null>(null);
 
-  const [chunks, setChunks] = useState<Record<string, StateChunk>>(props.initialChunks);
-  const [memberBook, setMemberBook] = useState<Record<string, BoardMember>>(props.members);
-  const [orgBook, setOrgBook] = useState<Record<string, OrgSummary>>(() => Object.assign({}, ...Object.values(props.initialChunks).map((c) => c.nodes)));
-  const [orgFiles, setOrgFiles] = useState<Record<string, { org: OrgSummary; ties: TieEdge[]; total: number }>>({});
-  const [memberFiles, setMemberFiles] = useState<Record<string, { edges: Edge[]; more: number; againstMore?: number }>>({});
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const book: NameBook = useMemo(() => ({ members: memberBook, orgs: orgBook }), [memberBook, orgBook]);
   const counts = useMemo(() => Object.fromEntries(Object.entries(states).map(([k, v]) => [k, v.length])), [states]);
   const current = useMemo(() => new Set(Object.values(states).flat()), [states]);
+  const { chunks, memberBook, orgBook, orgFiles, memberFiles, loading, error, book } = useBoardData(sel, props.initialChunks, props.members, current);
 
   // ---- URL <-> selection -------------------------------------------------------
   const go = useCallback((next: Sel, replace = false) => {
@@ -160,77 +135,6 @@ export function BoardApp(props: Props) {
   const centerMember = sel.m ? memberBook[sel.m] ?? null : null;
   const memberState = centerMember?.state ?? null;
   const viewState = sel.m ? memberState : sel.s;
-
-  const ensureMembers = useCallback(async (ids: string[]) => {
-    if (ids.every((id) => memberBook[id])) return;
-    const idx = await loadSearchIndex();
-    setMemberBook((prev) => {
-      const next = { ...prev };
-      for (const m of idx.members) if (!next[m.id]) next[m.id] = m;
-      return next;
-    });
-  }, [memberBook]);
-
-  useEffect(() => {
-    let live = true;
-    async function load() {
-      setError(null);
-      try {
-        // A member's strings come from their state's slice of board.json.
-        if (sel.m) {
-          if (!memberBook[sel.m]) await ensureMembers([sel.m]);
-          const st = memberBook[sel.m]?.state;
-          if (st && current.has(sel.m) && !chunks[st]?.strings[sel.m]) {
-            setLoading(true);
-            const chunk = await getJSON<StateChunk>(`/board-data/${st}`);
-            if (!live) return;
-            setChunks((c) => ({
-              ...c,
-              [st]: {
-                strings: { ...c[st]?.strings, ...chunk.strings },
-                nodes: { ...c[st]?.nodes, ...chunk.nodes },
-                members: { ...c[st]?.members, ...chunk.members },
-                more: { ...c[st]?.more, ...chunk.more },
-                againstMore: { ...c[st]?.againstMore, ...chunk.againstMore },
-              },
-            }));
-            setOrgBook((b) => ({ ...b, ...chunk.nodes }));
-            setMemberBook((b) => ({ ...chunk.members, ...b }));
-          } else if (!current.has(sel.m) && memberBook[sel.m] && !memberFiles[sel.m]) {
-            // Former members are not on board.json: their strings are cut from
-            // the case file at build time.
-            setLoading(true);
-            const body = await getJSON<{ edges: Edge[]; nodes: Record<string, OrgSummary>; members: Record<string, BoardMember>; more: number; againstMore?: number }>(`/board-member/${sel.m}`);
-            if (!live) return;
-            setOrgBook((b) => ({ ...b, ...body.nodes }));
-            setMemberBook((b) => ({ ...body.members, ...b }));
-            setMemberFiles((f) => ({ ...f, [sel.m!]: { edges: body.edges, more: body.more, againstMore: body.againstMore } }));
-          }
-        } else if (sel.o && !orgFiles[sel.o]) {
-          setLoading(true);
-          const shard = await orgShard(sel.o);
-          const body = await getJSON<Record<string, OrgFileWire>>(dataUrl(`orgs/${shard}.json`));
-          const file = body[sel.o];
-          if (!live) return;
-          if (!file) throw new Error("not-found");
-          const ties = decodeOrgTies(file);
-          // ledger_totals counts every tie, including those past the top rows shipped.
-          const totals = Object.values(file.ledger_totals ?? {}).reduce((n, t) => n + (t?.edges ?? 0), 0);
-          setOrgFiles((f) => ({ ...f, [sel.o!]: { org: file.org, ties, total: Math.max(ties.length, totals) } }));
-          setOrgBook((b) => ({ ...b, [file.org.id]: file.org }));
-          await ensureMembers(ties.slice(0, 60).map((e) => (e.from.kind === "member" ? e.from.id : e.to.id)));
-        }
-      } catch (err) {
-        if (live) setError(err instanceof Error && err.message === "not-found" ? "That organisation is not in this build." : "The records for this view failed to load. Check your connection and try again.");
-      } finally {
-        if (live) setLoading(false);
-      }
-    }
-    load();
-    return () => {
-      live = false;
-    };
-  }, [sel.m, sel.o, memberBook, chunks, orgFiles, memberFiles, current, ensureMembers]);
 
   // ---- what is on the board -------------------------------------------------------
   const center: Center = useMemo(() => {
@@ -359,7 +263,7 @@ export function BoardApp(props: Props) {
     <Slip
       sel={sel}
       center={center}
-      featured={isFeatured && featPick && featPick.member === sel.m ? { ...featPick, n: featIdx + 1, of: featured!.picks.length } : null}
+      featured={isFeatured && featured && featPick && featPick.member === sel.m ? { ...featPick, n: featIdx + 1, of: featured.picks.length } : null}
       onNextFeatured={nextFeatured}
       asOf={asOf}
       shown={visible.length}
@@ -373,78 +277,29 @@ export function BoardApp(props: Props) {
 
   return (
     <div className={`board view-${view}`} data-view={view}>
-      <div className="board__toolbar">
-        <nav className="crumbs" aria-label="Board position">
-          <button type="button" className="crumb" onClick={() => go(EMPTY)} aria-current={!sel.s && !sel.m && !sel.o ? "true" : undefined}>
-            United States
-          </button>
-          {viewState && (
-            <>
-              <Sep />
-              <button type="button" className="crumb" onClick={() => go({ ...EMPTY, s: viewState })} aria-current={sel.s && !sel.m ? "true" : undefined}>
-                {stateName(viewState)}
-              </button>
-            </>
-          )}
-          {centerMember && (
-            <>
-              <Sep />
-              <span className="crumb is-current" aria-current="true">{centerMember.name}</span>
-            </>
-          )}
-          {sel.o && !sel.m && (
-            <>
-              <Sep />
-              <span className="crumb is-current" aria-current="true">{orgBook[sel.o]?.name ?? "Organisation"}</span>
-            </>
-          )}
-        </nav>
-        <label className="statepick">
-          <span className="visually-hidden">Choose a state</span>
-          <select value={viewState ?? ""} onChange={(e) => (e.target.value ? selectState(e.target.value) : go(EMPTY))}>
-            <option value="">Choose a state…</option>
-            {Object.keys(states)
-              .sort((a, b) => stateName(a).localeCompare(stateName(b)))
-              .map((st) => (
-                <option key={st} value={st}>
-                  {stateName(st)} ({states[st].length})
-                </option>
-              ))}
-          </select>
-        </label>
-        <div className="board__controls">
-          <div className="chips" role="group" aria-label="Kinds of string to show">
-            {FAMILIES.map((f) => {
-              const on = families.has(f);
-              return (
-                <button
-                  key={f}
-                  type="button"
-                  className="chip"
-                  aria-pressed={on}
-                  title={FAMILY_HINT[f]}
-                  onClick={() =>
-                    setFamilies((prev) => {
-                      const next = new Set(prev);
-                      if (next.has(f)) next.delete(f);
-                      else next.add(f);
-                      return next;
-                    })
-                  }
-                >
-                  <LineSample style={f === "context" ? "context" : "filed"} width={18} />
-                  {FAMILY_LABEL[f]}
-                  {center && <span className="mono chip__n">{familyCounts[f]}</span>}
-                </button>
-              );
-            })}
-          </div>
-          <YearRange value={range} onChange={setRange} />
-          <button type="button" className="btn viewtoggle" aria-pressed={view === "table"} onClick={() => setView((v) => (v === "board" ? "table" : "board"))}>
-            {view === "board" ? "View as table" : "View as board"}
-          </button>
-        </div>
-      </div>
+      <Toolbar
+        sel={sel}
+        viewState={viewState}
+        memberName={centerMember?.name ?? null}
+        orgName={sel.o ? orgBook[sel.o]?.name ?? null : null}
+        states={states}
+        families={families}
+        familyCounts={center ? familyCounts : null}
+        range={range}
+        view={view}
+        go={go}
+        selectState={selectState}
+        onToggleFamily={(f) =>
+          setFamilies((prev) => {
+            const next = new Set(prev);
+            if (next.has(f)) next.delete(f);
+            else next.add(f);
+            return next;
+          })
+        }
+        onRange={setRange}
+        onToggleView={() => setView((v) => (v === "board" ? "table" : "board"))}
+      />
 
       <div className="board__main">
         {center?.kind === "member" && (
@@ -546,309 +401,12 @@ export function BoardApp(props: Props) {
             )}
           </div>
           <div id="panel-cases" role="tabpanel" aria-labelledby="tab-cases" hidden={panel !== "cases"} className="side__panel">
-            <CaseList cases={cases} total={caseTotal} book={book} onOpen={(c) => go({ s: memberBook[c.member]?.state ?? null, m: c.member, o: null, focus: c.org })} />
+            <CaseList cases={cases} total={caseTotal} minTypes={caseMinTypes} book={book} onOpen={(c) => go({ s: memberBook[c.member]?.state ?? null, m: c.member, o: null, focus: c.org })} />
           </div>
         </aside>
       </div>
 
       <EvidenceDrawer edge={open} book={book} sources={sources} range={range} onClose={closeEdge} loading={resolving} siblings={openGroup ?? undefined} onPick={showEdge} />
-    </div>
-  );
-}
-
-function Sep() {
-  return (
-    <svg className="crumbs__sep" viewBox="0 0 8 12" width="7" height="11" aria-hidden="true">
-      <path d="M2 1l4 5-4 5" fill="none" stroke="currentColor" strokeWidth="1.3" />
-    </svg>
-  );
-}
-
-function Slip({
-  sel, center, featured, onNextFeatured, asOf, shown, more, onClear, onState,
-}: {
-  sel: Sel; center: Center; featured: { reason: string; n: number; of: number } | null; onNextFeatured: (() => void) | null; asOf: string | null; shown: number; more: number;
-  onClear: () => void; onState: (s: string) => void;
-}) {
-  if (center?.kind === "member") {
-    const m = center.member;
-    return (
-      <div className="slip">
-        {featured && (
-          <p className="slip__kicker">
-            <span className="stamp-label">Featured example</span>
-            {asOf && <span className="mono">as of {date(asOf)}</span>}
-          </p>
-        )}
-        <h2 className="slip__title">
-          {m.name} <PartyTag party={m.party} />
-        </h2>
-        <p className="slip__sub">{seat(m)}</p>
-        {featured && <p className="slip__why">{featured.reason}</p>}
-        <p className="slip__meta">
-          <span className="mono">{shown}</span> {shown === 1 ? "string" : "strings"}
-          {more > 0 && (
-            <>
-              , plus <span className="mono">{more.toLocaleString("en-US")}</span> more {more === 1 ? "tie" : "ties"} in the full list
-            </>
-          )}{" "}
-          · <Link href={memberHref(m.id)}>Open case file</Link>
-          {featured ? (
-            <>
-              {" · "}
-              <button type="button" className="linkbtn" onClick={() => onState(m.state)}>
-                Browse {stateName(m.state)}
-              </button>
-              {featured && onNextFeatured && (
-                <>
-                  {" · "}
-                  <button type="button" className="linkbtn slip__next" onClick={onNextFeatured} aria-label={`Show another featured example (${featured.n} of ${featured.of})`}>
-                    Show another <span className="mono">{featured.n}/{featured.of}</span>
-                  </button>
-                </>
-              )}
-            </>
-          ) : null}
-        </p>
-      </div>
-    );
-  }
-  if (center?.kind === "org") {
-    const o = center.org;
-    return (
-      <div className="slip">
-        <h2 className="slip__title">{o.name}</h2>
-        <p className="slip__sub">
-          Tied to {plural(o.degree, "member")}. The {shown} largest {shown === 1 ? "tie is" : "ties are"} drawn
-          {more > 0 ? `, plus ${more.toLocaleString("en-US")} more in the full list` : ""}.
-        </p>
-        <p className="slip__meta">
-          <Link href={orgHref(o.id)}>Every tie to {o.name}</Link> ·{" "}
-          <button type="button" className="linkbtn" onClick={onClear}>
-            Back to the map
-          </button>
-        </p>
-      </div>
-    );
-  }
-  if (sel.s) {
-    return (
-      <div className="slip">
-        <h2 className="slip__title">{stateName(sel.s)}</h2>
-        <p className="slip__sub">Pick a member from the delegation to pull their strings.</p>
-      </div>
-    );
-  }
-  if (sel.m || sel.o) {
-    return (
-      <div className="slip">
-        <p className="slip__sub">Pulling the records…</p>
-      </div>
-    );
-  }
-  return (
-    <div className="slip">
-      <h2 className="slip__title">Pick a state</h2>
-      <p className="slip__sub">
-        Each number is the state&rsquo;s current delegation. Pick a state, then a member, to see who they are tied to and the filings behind each tie.
-      </p>
-    </div>
-  );
-}
-
-/** A case, described exactly as the rule defines it. */
-export function CaseSentence({ c }: { c: CaseLite }) {
-  const traded = c.types.includes("traded");
-  const pac = c.types.includes("pac_money");
-  const yrs = c.years[0] === c.years[1] ? `in ${c.years[0]}` : `in ${c.years[0]}–${c.years[1]}`;
-  if (traded && pac)
-    return (
-      <p className="slip__case">
-        The household traded <b>{c.orgName}</b> stock{c.trades ? ` (${c.trades.toLocaleString("en-US")} ${c.trades === 1 ? "trade" : "trades"})` : ""} {yrs}, and its PAC gave the member money in that period
-        {c.money ? ` ($${Math.round(c.money).toLocaleString("en-US")} across all years on record)` : ""}.
-      </p>
-    );
-  return (
-    <p className="slip__case">
-      Tied to <b>{c.orgName}</b> by {c.types.map((t) => TYPE_LABEL[t].toLowerCase()).join(" and ")} {yrs}.
-    </p>
-  );
-}
-
-function Delegation({ st, members, selected, onPick }: { st: string; members: BoardMember[]; selected: string | null; onPick: (id: string) => void }) {
-  const sens = members.filter((m) => m.chamber === "sen");
-  const reps = members.filter((m) => m.chamber === "rep");
-  return (
-    <div className="delegation" data-testid="delegation">
-      <h2 className="side__h">
-        {stateName(st)} <span className="mono">{members.length}</span>
-      </h2>
-      {sens.length > 0 && (
-        <>
-          <h3 className="side__sub">Senate</h3>
-          <ul className="senators">
-            {sens.map((m) => (
-              <li key={m.id}>
-                <button type="button" className={`pick pick--sen${selected === m.id ? " is-selected" : ""}`} aria-pressed={selected === m.id} onClick={() => onPick(m.id)} data-member={m.id}>
-                  <Print id={m.id} name={m.name} photo={m.photo} size="lg" />
-                  <span className="pick__name">{m.name}</span>
-                  <span className="pick__meta">
-                    <PartyTag party={m.party} /> Senator
-                    {m.cases > 0 && <span className="tag tag--inline">{m.cases === 1 ? "Case" : `${m.cases} cases`}</span>}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-      {reps.length > 0 && (
-        <>
-          <h3 className="side__sub">
-            House <span className="mono">{reps.length}</span>
-          </h3>
-          <ul className="reps">
-            {reps.map((m) => (
-              <li key={m.id}>
-                <button type="button" className={`pick pick--rep${selected === m.id ? " is-selected" : ""}`} aria-pressed={selected === m.id} onClick={() => onPick(m.id)} data-member={m.id}>
-                  <Print id={m.id} name={m.name} photo={m.photo} size="sm" />
-                  <span className="pick__text">
-                    <span className="pick__name">{m.name}</span>
-                    <span className="pick__meta">
-                      <PartyTag party={m.party} /> {seat(m, false).replace("Rep. · ", "")}
-                      {m.cases > 0 && <span className="tag tag--inline">Case</span>}
-                    </span>
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-    </div>
-  );
-}
-
-function StateList({ states, onPick }: { states: Record<string, string[]>; onPick: (s: string) => void }) {
-  const list = Object.keys(states).sort((a, b) => stateName(a).localeCompare(stateName(b)));
-  return (
-    <div>
-      <h2 className="side__h">States</h2>
-      <p className="side__note">Every state and territory with a current member. The map works the same way.</p>
-      <ul className="statelist">
-        {list.map((s) => (
-          <li key={s}>
-            <button type="button" className="statebtn" onClick={() => onPick(s)}>
-              <span>{stateName(s)}</span>
-              <span className="mono">{states[s].length}</span>
-            </button>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function StateTable({ states, onPick }: { states: Record<string, string[]>; onPick: (s: string) => void }) {
-  const list = Object.keys(states).sort((a, b) => stateName(a).localeCompare(stateName(b)));
-  const territories = list.filter((s) => TERRITORIES.includes(s));
-  return (
-    <div className="tablewrap">
-      <table className="ties">
-        <caption className="visually-hidden">States and their current delegations</caption>
-        <thead>
-          <tr>
-            <th scope="col">State</th>
-            <th scope="col" className="num">Members</th>
-            <th scope="col"><span className="visually-hidden">Open</span></th>
-          </tr>
-        </thead>
-        <tbody>
-          {list.map((s) => (
-            <tr key={s}>
-              <td data-label="State">
-                {stateName(s)}
-                {territories.includes(s) && <span className="ties__sub"> territory</span>}
-              </td>
-              <td data-label="Members" className="num mono">{states[s].length}</td>
-              <td className="ties__act">
-                <button type="button" className="btn btn--small" onClick={() => onPick(s)}>
-                  Delegation
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function OrgSide({ org, total, shown }: { org: OrgSummary; total: number; shown: number }) {
-  return (
-    <div>
-      <h2 className="side__h">{org.name}</h2>
-      <dl className="facts facts--side">
-        <div>
-          <dt>Kind</dt>
-          <dd>{org.kind.replace("_", " ")}</dd>
-        </div>
-        {org.ticker && (
-          <div>
-            <dt>Ticker</dt>
-            <dd className="mono">{org.ticker}</dd>
-          </div>
-        )}
-        {org.sector && (
-          <div>
-            <dt>Sector</dt>
-            <dd>{org.sector}</dd>
-          </div>
-        )}
-        <div>
-          <dt>Members tied</dt>
-          <dd className="mono">{org.degree}</dd>
-        </div>
-      </dl>
-      <p className="side__note">
-        The board shows the {shown} largest of {total} ties. <Link href={orgHref(org.id)}>See every tie</Link>.
-      </p>
-    </div>
-  );
-}
-
-function CaseList({ cases, total, book, onOpen }: { cases: CaseLite[]; total: number; book: NameBook; onOpen: (c: CaseLite) => void }) {
-  if (!cases.length) return <p className="side__note">No member and organisation pair has three or more kinds of filed tie in this build.</p>;
-  return (
-    <div>
-      <h2 className="side__h">Open cases</h2>
-      <p className="side__note">
-        A case is a member whose household traded a company&rsquo;s stock and who received money from that company&rsquo;s PAC in the same years. It is a reason to read the filings, not a finding.
-      </p>
-      <ol className="caselist">
-        {cases.map((c) => {
-          const m = book.members[c.member];
-          return (
-            <li key={c.id}>
-              <button type="button" className="casebtn" onClick={() => onOpen(c)}>
-                <span className="casebtn__who">
-                  {m?.name ?? c.member} {m && <PartyTag party={m.party} />}
-                </span>
-                <span className="casebtn__org">{c.orgName}</span>
-                <span className="casebtn__meta mono">
-                  {c.trades ? `${c.trades} trades · ` : ""}
-                  {c.money ? `$${Math.round(c.money).toLocaleString("en-US")} PAC · ` : ""}
-                  {c.years[0]}–{c.years[1]}
-                </span>
-                <span className="casebtn__not">{CASE_NOT_SHOWN}</span>
-              </button>
-            </li>
-          );
-        })}
-      </ol>
-      <p className="side__note">
-        <Link href="/cases">All {total} cases, ranked</Link>
-      </p>
     </div>
   );
 }

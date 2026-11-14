@@ -1,7 +1,7 @@
-// Unit tests for the featured-example picker (src/lib/featured.ts).
+// Unit tests for the featured-example picker (src/lib/domain/featured.ts).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { boardKinds, featuredReason, rankFeatured, TIE_KINDS } from "../src/lib/featured.ts";
+import { boardKinds, featuredReason, rankFeatured, TIE_KINDS } from "../src/lib/domain/featured.ts";
 
 let n = 0;
 function e(self, type, other, opts = {}) {

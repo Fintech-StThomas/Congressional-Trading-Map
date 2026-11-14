@@ -1,10 +1,23 @@
 import type { NextConfig } from "next";
-import { isRealDataBuild } from "./src/lib/source";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { isRealDataBuild } from "./src/lib/data/source";
 
 // Same rule as scripts/resolve-data.mjs: real data when the pipeline has
 // written public/data/members.json, otherwise the fixtures copied to
 // public/sample-data. The client reads these two values to fetch files.
 const hasRealData = isRealDataBuild();
+
+// The data's current year (wall-years.json `years[1]`), so every year axis ends where the data ends
+// and server and browser agree. Falls back to the build year.
+function dataYearMax(): number {
+  try {
+    const dir = hasRealData ? join("public", "data") : join("fixtures", "data");
+    const years = JSON.parse(readFileSync(join(process.cwd(), dir, "wall-years.json"), "utf8")).years;
+    if (Array.isArray(years) && Number.isInteger(years[1])) return years[1];
+  } catch {}
+  return new Date().getFullYear();
+}
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
@@ -15,6 +28,7 @@ const nextConfig: NextConfig = {
   env: {
     NEXT_PUBLIC_DATA_BASE: hasRealData ? "/data" : "/sample-data",
     NEXT_PUBLIC_SAMPLE: hasRealData ? "0" : "1",
+    NEXT_PUBLIC_YEAR_MAX: String(dataYearMax()),
   },
   // Organisation pages are rendered in the browser from the org shard, so
   // every /o/<id> is served by one static page instead of tens of thousands.

@@ -1,6 +1,12 @@
-"""Shared paths, cached HTTP downloads, deterministic JSON writing and small helpers."""
+"""Shared helpers every stage uses: paths, cached HTTP downloads with retry, deterministic JSON writing, the org
+override file, and name/ticker normalisation (data dictionary: "Identifiers"). Reads and writes only what callers ask.
+
+Environment: PT_OUT_DIR (publish somewhere other than web/public/data), PT_CACHE_ONLY=1 (reuse every cached download),
+SEC_USER_AGENT (User-Agent for every request).
+"""
 from __future__ import annotations
 
+import csv
 import hashlib
 import json
 import os
@@ -13,6 +19,8 @@ from typing import Any, Iterable, Iterator
 
 import requests
 
+from .config import DAY
+
 ROOT = Path(__file__).resolve().parents[1]
 PIPE = ROOT / "pipeline"
 CACHE = PIPE / ".cache"
@@ -20,16 +28,21 @@ BUILD = PIPE / "build"
 EDGES_DIR = BUILD / "edges"
 ORGS_DIR = BUILD / "orgs"
 SOURCES_DIR = BUILD / "sources"
-OUT = ROOT / "web" / "public" / "data"
+# PT_OUT_DIR redirects the published tree (tests, dry runs); the default is the folder the site reads.
+OUT = Path(os.environ["PT_OUT_DIR"]).resolve() if os.environ.get("PT_OUT_DIR") else ROOT / "web" / "public" / "data"
 PORTRAITS = ROOT / "web" / "public" / "portraits"
 CROSSWALK = PIPE / "crosswalk"
 
 DEFAULT_UA = "congressional-trading-map-class-project research@example.org"
-DAY = 86400.0
 
 
 def user_agent() -> str:
     return os.environ.get("SEC_USER_AGENT") or DEFAULT_UA
+
+
+def cache_only() -> bool:
+    """PT_CACHE_ONLY=1: reuse every cached download regardless of age (reproducible rebuilds, offline work)."""
+    return os.environ.get("PT_CACHE_ONLY") == "1"
 
 
 def utc_now() -> str:
@@ -75,7 +88,7 @@ def fetch(url: str, dest: Path, *, max_age: float | None = None, headers: dict[s
     meta_path = dest.with_name(dest.name + ".meta.json")
     if dest.exists() and meta_path.exists():
         meta = json.loads(meta_path.read_text())
-        if max_age is None or time.time() - dest.stat().st_mtime < max_age:
+        if max_age is None or cache_only() or time.time() - dest.stat().st_mtime < max_age:
             return meta
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_name(dest.name + ".part")
@@ -90,6 +103,11 @@ def fetch(url: str, dest: Path, *, max_age: float | None = None, headers: dict[s
                 with open(tmp, "wb") as out:
                     for chunk in r.iter_content(1 << 20):
                         out.write(chunk)
+                expected = r.headers.get("Content-Length")
+                # A server that closes early leaves a short file; never cache it (only for unencoded bodies,
+                # where Content-Length is the byte count on disk).
+                if expected and not r.headers.get("Content-Encoding") and tmp.stat().st_size != int(expected):
+                    raise requests.ConnectionError(f"short read: {tmp.stat().st_size} of {expected} bytes")
                 os.replace(tmp, dest)
                 meta = {"url": url, "retrieved": utc_now(), "bytes": dest.stat().st_size,
                         "sha256": sha256_file(dest), "etag": r.headers.get("ETag"),
@@ -100,7 +118,7 @@ def fetch(url: str, dest: Path, *, max_age: float | None = None, headers: dict[s
             if e.response is not None and 400 <= e.response.status_code < 500 and e.response.status_code != 429:
                 raise
             last_err = e
-        except (requests.ConnectionError, requests.Timeout, OSError) as e:
+        except (requests.RequestException, OSError) as e:  # includes ChunkedEncodingError and short reads
             last_err = e
         time.sleep(2 * (attempt + 1))
     raise RuntimeError(f"download failed after {retries} attempts: {url}: {last_err}")
@@ -167,6 +185,26 @@ def clean_sec_name(name: str) -> str:
 def normalise_ticker(ticker: str) -> str:
     """Uppercase and unify share-class punctuation: BRK/B, BRK-B, BRK B -> BRK.B."""
     return re.sub(r"[\s/\-_.]+", ".", ticker.strip().upper()).strip(".")
+
+
+def read_overrides(sources: set[str]) -> tuple[list[dict[str, str]], int]:
+    """Hand-reviewed org matches from pipeline/crosswalk/org_overrides.csv (data dictionary: "Org overrides").
+
+    Returns (rows whose `source` (case-insensitive) is in `sources` and that have a key, an org id and a reviewer,
+    with those fields stripped and `source` lower-cased; number of rows in the file). Unreviewed rows are ignored,
+    never applied: a match nobody checked is not evidence."""
+    path = CROSSWALK / "org_overrides.csv"
+    if not path.exists():
+        return [], 0
+    with open(path, newline="", encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    out = []
+    for r in rows:
+        r = {k: (v or "").strip() for k, v in r.items() if k}
+        r["source"] = r.get("source", "").lower()
+        if r["source"] in sources and r.get("source_id_or_name") and r.get("org_id") and r.get("reviewed_by"):
+            out.append(r)
+    return out, len(rows)
 
 
 def print_table(title: str, rows: Iterable[tuple[Any, ...]], headers: tuple[str, ...]) -> None:

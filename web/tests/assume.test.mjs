@@ -1,7 +1,7 @@
-// Unit tests for the assumption switches (src/lib/assume.ts).
+// Unit tests for the assumption switches (src/lib/domain/assume.ts).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { applyAssumptions, decodeAssumptions, DEFAULT_ASSUMPTIONS, encodeAssumptions, isDefault, ownOnly, readout, tradeCounts } from "../src/lib/assume.ts";
+import { applyAssumptions, decodeAssumptions, DEFAULT_ASSUMPTIONS, encodeAssumptions, isDefault, ownOnly, readout, tradeCounts } from "../src/lib/domain/assume.ts";
 
 const T = (owner, org, extra = {}) => ({ owner, org, asset_class: "stock", low: 15001, late: false, ...extra });
 const trades = [

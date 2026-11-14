@@ -1,5 +1,5 @@
 // Board strings for members not in board.json's states (former members).
-import { getBoard, getMembers, memberBoard } from "@/lib/data";
+import { getBoard, getMembers, memberBoard } from "@/lib/data/server";
 
 export const dynamic = "force-static";
 export const dynamicParams = false;

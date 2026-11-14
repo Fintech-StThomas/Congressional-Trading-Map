@@ -1,4 +1,5 @@
-"""SIC major groups (first two digits of a 4-digit SIC code), used as the org sector label."""
+"""SIC major groups (first two digits of a 4-digit SIC code), used as the org sector label (OrgSummary.sector), and
+the pooled-vehicle codes that keep commodity pools and unit trusts out of `traded_together`. Reads and writes nothing."""
 from __future__ import annotations
 
 MAJOR_GROUPS: dict[int, str] = {

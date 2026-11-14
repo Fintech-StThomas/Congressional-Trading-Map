@@ -1,5 +1,11 @@
-"""`traded` (member -> org) and `traded_together` (member <-> member) edges from trades.
+"""`traded` (member -> org) and `traded_together` (member <-> member) edges from trades (data dictionary:
+"Rules the pipeline must keep", "traded_together rule"; thresholds in config.py).
 
+traded: one edge per member and org summing every current trade (ranges kept apart, missing stays null), weak when a
+trade lacks a date or a closed range. traded_together: same org, same direction, within WINDOW_DAYS, tested
+against a seeded permutation baseline. Note on the keep rule: `(tickers >= MIN_TICKERS or observed >=
+MIN_OCCASIONS) and observed >= MIN_OBSERVED` reduces to `observed >= 5` while MIN_OCCASIONS == MIN_OBSERVED, so
+the ticker clause only decides `weak`, not whether an edge is drawn (as the contract states the rule).
 Writes pipeline/build/trades_resolved.parquet (trades with org ids), pipeline/build/edges/trades.jsonl
 and pipeline/build/orgs/trades.jsonl.
 """
@@ -8,7 +14,7 @@ from __future__ import annotations
 import random
 from collections import Counter, defaultdict
 from datetime import date, timedelta
-from typing import Any
+from typing import Any, Iterator
 
 import duckdb
 import pyarrow as pa
@@ -18,12 +24,10 @@ from .edges import by_year, make_edge, node, top_evidence
 from .trades import SOURCE_ID
 from .util import BUILD, EDGES_DIR, ORGS_DIR, print_table, read_json, write_jsonl, write_source_meta
 
-WINDOW_DAYS = 7
-MIN_TICKERS, MIN_OCCASIONS = 3, 5
-MIN_OBSERVED, MIN_LIFT = 5, 3.0
-SHUFFLES, SEED = 200, 20260101
-WEAK_P = 0.05  # passing pairs above this permutation p-value, or on fewer than MIN_TICKERS tickers, are drawn weak
-EXCLUDED_CLASSES = ("fund", "bond", "unknown")
+from .config import (TOGETHER_EXCLUDED_CLASSES as EXCLUDED_CLASSES, TOGETHER_MIN_LIFT as MIN_LIFT,
+                     TOGETHER_MIN_OBSERVED as MIN_OBSERVED, TOGETHER_MIN_OCCASIONS as MIN_OCCASIONS,
+                     TOGETHER_MIN_TICKERS as MIN_TICKERS, TOGETHER_SEED as SEED, TOGETHER_SHUFFLES as SHUFFLES,
+                     TOGETHER_WEAK_P as WEAK_P, TOGETHER_WINDOW_DAYS as WINDOW_DAYS)
 EPOCH = date(2000, 1, 1)
 OWNER_WORD = {"self": "Member", "spouse": "Spouse", "joint": "Joint", "dependent": "Dependent", "unspecified": "Owner not stated"}
 ACTION_WORD = {"buy": "bought", "sell": "sold", "exchange": "exchanged", "other": "reported"}
@@ -104,26 +108,32 @@ def cooccurrences(table: str, perm: bool) -> str:
     return f"select {cols}a.member as m1, b.member as m2, count(*) as n {PAIR_JOIN.format(t=table, p='a.perm = b.perm and ' if perm else '')} group by all"
 
 
-def shuffled(rows: list[dict[str, Any]]) -> pa.Table:
-    """SHUFFLES copies of rows; within each member-year the dates are permuted among that member's trades."""
+SHUFFLE_BATCH = 25  # permutations materialised at once (memory); results do not depend on it
+
+
+def shuffled(rows: list[dict[str, Any]]) -> Iterator[pa.Table]:
+    """SHUFFLES copies of rows, yielded SHUFFLE_BATCH at a time; within each member-year the dates are permuted among
+    that member's trades. One RNG stream in a fixed order, so the batches together equal one big table."""
     rng = random.Random(SEED)
     groups: dict[tuple[str, int], list[int]] = defaultdict(list)
     for i, r in enumerate(rows):
         groups[(r["member"], r["year"])].append(i)
     keys = sorted(groups)
-    perm_col, member, org, action, day = [], [], [], [], []
-    for s in range(SHUFFLES):
-        for k in keys:
-            idx = groups[k]
-            days = [rows[i]["day"] for i in idx]
-            rng.shuffle(days)
-            for i, d in zip(idx, days):
-                perm_col.append(s)
-                member.append(rows[i]["member"])
-                org.append(rows[i]["org"])
-                action.append(rows[i]["action"])
-                day.append(d)
-    return pa.table({"perm": perm_col, "member": member, "org": org, "action": action, "day": day})
+    order = [i for k in keys for i in groups[k]]
+    member = [rows[i]["member"] for i in order]
+    org = [rows[i]["org"] for i in order]
+    action = [rows[i]["action"] for i in order]
+    for start in range(0, SHUFFLES, SHUFFLE_BATCH):
+        perm_col: list[int] = []
+        day: list[int] = []
+        for s in range(start, min(start + SHUFFLE_BATCH, SHUFFLES)):
+            for k in keys:
+                days = [rows[i]["day"] for i in groups[k]]
+                rng.shuffle(days)
+                day.extend(days)
+            perm_col.extend([s] * len(order))
+        n = len(perm_col) // len(order) if order else 0
+        yield pa.table({"perm": perm_col, "member": member * n, "org": org * n, "action": action * n, "day": day})
 
 
 def traded_together(trades: list[dict[str, Any]], companies: dict[str, dict[str, Any]],
@@ -139,14 +149,16 @@ def traded_together(trades: list[dict[str, Any]], companies: dict[str, dict[str,
     con.register("d", pa.Table.from_pylist(rows))
     observed = {(m1, m2): n for m1, m2, n in con.execute(cooccurrences("d", False)).fetchall()}
     candidates = {k for k, n in observed.items() if n >= MIN_OBSERVED}
-    con.register("s", shuffled(rows))
     # totals[pair] = [co-occurrences summed over shuffles, shuffles with at least the observed count]
     totals: dict[tuple[str, str], list[int]] = defaultdict(lambda: [0, 0])
-    for _, m1, m2, n in con.execute(cooccurrences("s", True)).fetchall():
-        pair = (m1, m2)
-        if pair in candidates:
-            totals[pair][0] += n
-            totals[pair][1] += n >= observed[pair]
+    for batch in shuffled(rows):
+        con.register("s", batch)
+        for _, m1, m2, n in con.execute(cooccurrences("s", True)).fetchall():
+            pair = (m1, m2)
+            if pair in candidates:
+                totals[pair][0] += n
+                totals[pair][1] += n >= observed[pair]
+        con.unregister("s")
 
     detail = con.execute(f"""select a.member, b.member, a.org, a.action, a.day, b.day, a.id, b.id
         {PAIR_JOIN.format(t="d", p="")}""").fetchall()

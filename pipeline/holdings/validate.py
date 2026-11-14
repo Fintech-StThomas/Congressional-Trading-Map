@@ -2,7 +2,8 @@
 
 Checks schema, that totals and net-worth ranges equal the sums of their rows, that no owner is defaulted, that every
 row cites a used document with an official URL, that joins kept row counts, that no residence or street address is
-published, and the owns plug-in edges. Writes docs/validation/holdings-sample.csv: 25 asset rows (fixed seed) with the
+published, and the owns plug-in edges. Writes pipeline/build/holdings-sample.csv (and docs/validation/holdings-sample.csv only if that reviewed file does
+not exist yet; it is never overwritten): 25 asset rows (fixed seed) with the
 filing URL beside the parsed fields, machine-checked against the PDF text layer (pdftotext), and empty
 checked_by / matches_filing / comment columns for a human. Exits 1 on any failed check.
 """
@@ -23,7 +24,9 @@ from . import rules
 from .run import ASSET_COLS, EDGE_FILE, HOLD_DIR, INDEX, LIAB_COLS, band_sum, net_worth
 
 SEED = 20261113
-SAMPLE = ROOT / "docs" / "validation" / "holdings-sample.csv"
+SAMPLE = BUILD / "holdings-sample.csv"
+# The reviewed copy in docs/validation/ is filled in by people: it is created once and never overwritten.
+REVIEWED_SAMPLE = ROOT / "docs" / "validation" / "holdings-sample.csv"
 OWNERS = {"unspecified", "spouse", "joint", "dependent"}
 URL = re.compile(r"^https://disclosures-clerk\.house\.gov/public_disc/financial-pdfs/\d{4}/\d+\.pdf$")
 
@@ -56,6 +59,7 @@ def check_member(c: Checks, mid: str, m: dict[str, Any]) -> None:
             c.check(d["org"] is None or d["ticker"] is not None, "org only from ticker", f"{mid} {y}")
             c.check(not rules.is_personal_residence(d["asset"], d["income_type"]), "no residence published", f"{mid} {y} {d['row']}")
             c.check(not rules.A1.search(d["asset"] or ""), "no street address (A1) in asset", f"{mid} {y} {d['row']}")
+            c.check(not rules.redact_beneficiary(d["asset"])[1], "no beneficiary name in asset", f"{mid} {y} {d['row']}")
             c.check(d["location"] is None or d["location"].count(",") <= 1, "location at most city, state", f"{mid} {y}")
         for r in l_rows:
             d = dict(zip(LIAB_COLS, r))
@@ -157,6 +161,8 @@ def sample(c: Checks, pdf: bool) -> dict[str, Any]:
             w.writerow([r["member"], spine[r["member"]]["name"], r["year"], r["dataset_id"], r["asset"], asset_raw, r["ticker"],
                         r["org"], r["owner"], r["low"], r["high"], r["income_type"], r["income_low"], r["income_high"],
                         r["doc"], r["url"], words, val, note, "", "", ""])
+    if not REVIEWED_SAMPLE.exists():
+        REVIEWED_SAMPLE.write_bytes(SAMPLE.read_bytes())
     return dict(stats)
 
 

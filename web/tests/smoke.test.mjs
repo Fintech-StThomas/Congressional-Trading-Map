@@ -26,7 +26,8 @@ async function up(url) {
 before(async () => {
   if (!base) {
     base = "http://localhost:3123";
-    server = spawn("npx", ["next", "start", "-p", "3123"], { stdio: "ignore", cwd: new URL("..", import.meta.url).pathname });
+    // detached: its own process group, so after() can stop next-server too (killing npx alone left it running).
+    server = spawn("npx", ["next", "start", "-p", "3123"], { stdio: "ignore", cwd: new URL("..", import.meta.url).pathname, detached: true });
     await up(base);
   }
   browser = await chromium.launch();
@@ -34,7 +35,11 @@ before(async () => {
 
 after(async () => {
   await browser?.close();
-  server?.kill();
+  if (server?.pid) {
+    try {
+      process.kill(-server.pid);
+    } catch {}
+  }
 });
 
 async function page(width = 1440, height = 900) {
@@ -313,5 +318,43 @@ test("spending against sits in its own unconnected zone; frayed strings carry a 
   await zone.locator(".against__open").first().click();
   await p.getByTestId("evidence-drawer").waitFor();
   assert.ok(await p.locator(".bcard .tag--weak").count() >= 1, "frayed string's card is stamped");
+  await p.close();
+});
+
+// ---- fixes from the code review (REVIEW.md) ---------------------------------------
+
+test("an organisation's tie total adds the ledger-only ties to the listed ones", async () => {
+  const id = "co:732717";
+  const { createHash } = await import("node:crypto");
+  const shard = createHash("sha1").update(id).digest("hex").slice(0, 2);
+  const file = (await (await fetch(`${base}/data/orgs/${shard}.json`)).json())[id];
+  const listed = file.ties.rows.length;
+  const ledger = Object.values(file.ledger_totals ?? {}).reduce((n, t) => n + t.edges, 0);
+  const p = await page();
+  await p.goto(`${base}/o/${encodeURIComponent(id)}`);
+  await p.getByTestId("org-page").waitFor({ timeout: 20000 });
+  const note = await p.locator("#ties-h + .section__note").innerText();
+  if (ledger > 0) assert.match(note, new RegExp(`largest ${listed.toLocaleString("en-US")} of ${(listed + ledger).toLocaleString("en-US")} ties`));
+  await p.close();
+});
+
+test("a case built on a disclosed holding does not say the household traded", async () => {
+  const cases = await (await fetch(`${base}/data/cases.json`)).json();
+  const i = cases.findIndex((c) => !c.types.includes("traded"));
+  if (i < 0) return;
+  const p = await page();
+  await p.goto(base + "/cases");
+  const row = p.locator(".caserow").nth(i);
+  const what = await row.locator(".caserow__what").innerText();
+  assert.match(what, /held the stock/);
+  assert.doesNotMatch(what, /traded/);
+  await p.close();
+});
+
+test("ledger rows say which way the money went", async () => {
+  const p = await page();
+  await p.goto(base + "/m/K000389");
+  const dirs = await p.getByTestId("ledger").locator("tbody .ties__dir").allInnerTexts();
+  assert.ok(dirs.length > 0 && dirs.every((d) => /^(from|to|with)$/.test(d.trim())), "every ledger row has a direction word");
   await p.close();
 });

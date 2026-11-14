@@ -1,23 +1,25 @@
+// The root layout: fonts, global CSS (in cascade order), header with search and navigation, footer.
 import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import { Public_Sans, JetBrains_Mono, Courier_Prime } from "next/font/google";
-import { SITE } from "@/lib/site";
-import { IS_SAMPLE, getMeta, metaBuilt } from "@/lib/data";
+import { SITE } from "@/lib/copy";
+import { IS_SAMPLE, getMeta, metaBuilt } from "@/lib/data/server";
 import { date } from "@/lib/format";
-import { SearchBox } from "@/components/SearchBox";
-import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { Wordmark } from "@/components/Wordmark";
-import { NavLinks } from "@/components/NavLinks";
-import "./globals.css";
-import "./board.css";
-import "./pages.css";
+import { SearchBox } from "@/components/shared/SearchBox";
+import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
+import { Wordmark } from "@/components/shared/Wordmark";
+import { NavLinks } from "@/components/shared/NavLinks";
+import "@/styles/tokens.css";
+import "@/styles/globals.css";
+import "@/styles/board.css";
+import "@/styles/pages.css";
 
 const sans = Public_Sans({ subsets: ["latin"], variable: "--font-sans", display: "swap", weight: ["400", "500", "600", "700"] });
 const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono", display: "swap", weight: ["400", "500", "600"] });
 const type = Courier_Prime({ subsets: ["latin"], variable: "--font-type", display: "swap", weight: ["700"] });
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : "http://localhost:3000"),
+  metadataBase: new URL(process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : SITE.url),
   title: { default: `${SITE.name}: ${SITE.tagline}`, template: `%s · ${SITE.name}` },
   description: SITE.description,
   openGraph: { title: SITE.name, description: SITE.description, type: "website", siteName: SITE.name },

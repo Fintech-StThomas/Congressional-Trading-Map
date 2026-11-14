@@ -52,8 +52,8 @@ All JSON is minified with sorted keys; output is byte-stable between runs on the
 
 ## Publication budget
 
-Full `Edge` objects (with evidence) are written **only in member files**. Constants live at the top of `pipeline/assemble.py`
-and are echoed in `meta.json.publication_budget`.
+Full `Edge` objects (with evidence) are written **only in member files**. Constants live in `pipeline/config.py`
+and are echoed in `meta.json.publication_budget` (type `Meta`).
 
 - A member file holds, as full edges: every non-money edge touching the member except `sits_with`, every edge in one
   of the member's Cases, and the member's `MONEY_EDGES_PER_MEMBER` (10) largest money edges (by `amount.exact`, else `high`, else `low`).
@@ -292,6 +292,43 @@ type OrgIndex = {             // org-index.json
 type Board = {
   states: { [state: string]: string[] };        // current member ids, senators first
 };
+
+// meta.json: provenance and counts for the whole build. Only `build.time`, `build.pipeline_commit` and the
+// retrieval/generation times inside `sources` and `reports` change between two runs on the same inputs.
+type Meta = {
+  build: { time: string; pipeline_commit: string | null; contract: "docs/data-dictionary.md" }; // ISO 8601 UTC
+  sources: { [id: string]: Source };   // every Evidence.source is a key here
+  reports: { [plugin: string]: object }; // each plug-in's free-form report, keyed by its sources/<file stem>.json
+                                          // (fec, hf_trades, holdings, legislators, sec, trade_edges; lda when on)
+  counts: {
+    members: number; current_members: number; trades: number; orgs: number; cases: number; org_shards: number;
+    edges: number; edges_by_type: { [type: string]: number };            // every tie, published or not
+    edges_full: number; edges_full_by_type: { [type: string]: number };  // published as full Edges in member files
+    member_ties: number;               // edges in member-ties.json
+    ledger_money_ties: number;         // money ties that are ledger rows rather than full edges
+    ledger_rows_published: number; ledger_rows_former_members_cut: number;
+  };
+  publication_budget: {               // the constants of pipeline/config.py, see "Publication budget"
+    money_edges_per_member: number; former_member_ledger_rows: number; money_members_per_org: number;
+    ledger_only_types: string[]; case_rule: string; case_min_types: number; rule: string;
+  };
+  unmatched: { trades_without_ticker: number | null; tickers_without_sec_match: number | null;
+               trades_with_unmatched_ticker: number | null; edges_dropped_at_assembly: { [reason: string]: number } };
+  exclusions: { [what: string]: { rows: number; reason: string; filings?: unknown[][]; members?: string[] } }; // trades
+  assembly: { edges_read: { [file: string]: number }; edges_after_merge: number;
+              edges_dropped: { [reason: string]: number }; edges_dropped_examples: { [reason: string]: string[] };
+              org_files: string[] };
+  coverage_notes: string[];
+  files: { count: number; bytes: number; largest: { [path: string]: number } }; // assembled files (holdings excluded)
+};
+
+type Source = {
+  name: string; url: string; licence: string;
+  revision: string | null;            // commit SHA, Last-Modified or latest file date, whichever the source offers
+  retrieved: string | null;           // earliest retrieval time of its files
+  files?: { path: string; sha256: string | null; rows?: number; bytes?: number; url?: string; last_modified?: string | null }[];
+  [extra: string]: unknown;           // e.g. hf_trades.snapshot_generated, sec.fsds_quarters
+};
 ```
 
 ### Party split
@@ -314,7 +351,7 @@ org's listed ties plus `ledger_totals`, and that the members equal the listed ti
 One entry per year 2000..current year in which the member held office (a term ending on 3 January does not count).
 `trades`: `n/a` before 2012; `none` before the first year with filings for the chamber in the trade dataset (House
 2014, Senate 2012); `partial` for that first year when it starts after January, the current year, and years with a
-failed-extraction filing by the member; otherwise `full`. `money`: what a money plug-in declares for the chamber(s) served that
+failed-extraction filing by the member; otherwise `full` (the weaker level if both chambers were served that year). `money`: what a money plug-in declares for the chamber(s) served that
 year (the weaker level if both), for members with at least one FEC id; otherwise `none`. The FEC module declares House
 `full` and Senate `partial` before 2019 (paper filings keyed by a contractor), `full` from 2019, for the calendar years
 of the loaded cycles (2000 cycle = 1999-2000 onward).
@@ -422,7 +459,8 @@ Columns: `source, source_id_or_name, org_id, note, reviewed_by, reviewed_on`. Ro
 `org_id` is the target id (`co:<CIK>` and so on).
 
 The assembler picks up every `*.jsonl` and `*.json` in those directories, merges orgs by id (first non-null field
-wins, files in name order; `company` kind wins), assigns edge ids, aggregates duplicates of the same
+wins for ticker, cik and sector, files in name order; a `company` row sets kind and name over an `other` row, and among
+rows of equal standing the later file's name wins, so `trades.jsonl`'s SEC name beats `fec.jsonl`'s), assigns edge ids, aggregates duplicates of the same
 type/from/to/via, and writes the files above. Edges with an unknown endpoint, an unlisted evidence source, no evidence
 or an invalid type/family are dropped and counted in `meta.json.unmatched.edges_dropped_at_assembly`.
 
@@ -525,11 +563,17 @@ type Overlap = {              // a holding and a filed tie with the same org in 
   a personal residence or non-rental second home is never published (counted as `personal_residence`).
   `residence_secured` marks a liability whose type or creditor names a residence, home mortgage or home equity
   (and not rental, investment, commercial, farm or business).
+- **Beneficiary names.** Custodial and FBO accounts often name a filer's minor children. In asset text, the name
+  after `FBO`, `f/b/o`, `for the benefit of` or `custodian for`, and a "First [Middle] Last" name directly before
+  `UTMA`, `UGMA` or `UTA` (but not `UTA DTD`, a trust agreement), become `[name redacted]` (counted as
+  `asset_beneficiary_name_redacted`). Adults named this way are redacted too; the owner column still says whose
+  asset it is. An `other` org's name is the last segment of the asset text (the issuer, not the account path).
 - **Portfolio.** Latest report year; rows grouped by `org` when resolved, else by the asset text (`asset:<text>`);
   `share_low` = group low / total low, `share_high` = group high / total high (null when either is null); `sector`
   is the SIC major-group label from `companies.json` when SEC lists a SIC code.
 - **Overlaps.** For each report year, an org held that year that also has a `traded` edge with a trade in that
-  calendar year, or a full `pac_money` edge with money in that calendar year, in the member's published file.
+  calendar year, or a full `pac_money` edge with money in that calendar year, in the member's published file of the
+  same build (the stage runs again after `assemble`, as `holdings_publish`, so it never reads the previous build's).
   Ledger-only money rows have no years and are not checked (counted in the report).
 - **`owns` plug-in edges** (`pipeline/build/edges/holdings_owns.jsonl`): one per member and org (resolved assets only),
   family `holding`, basis `filed`, directed member → org. A holding is a stock, not a flow, so `amount`, `count` and the
@@ -539,5 +583,7 @@ type Overlap = {              // a holding and a filed tie with the same org in 
 - **Joins.** Holdings → filings and liabilities → filings are asserted 1:1; every document maps to one bioguide id;
   published rows + residence exclusions equal the rows of the used documents.
 - **Validation.** `python -m pipeline.holdings.validate` re-derives every total and net-worth range, checks owners,
-  document URLs, redaction and edges, and writes `docs/validation/holdings-sample.csv` (25 rows, seed 20261113, with a
-  machine check that the asset words and the band figures occur in the PDF text, and empty columns for a human).
+  document URLs, redaction (street addresses and beneficiary names) and edges, and writes
+  `pipeline/build/holdings-sample.csv` (25 rows, seed 20261113, with a machine check that the asset words and the band
+  figures occur in the PDF text, and empty columns for a human). It creates `docs/validation/holdings-sample.csv` from
+  it only when that reviewed file does not exist, and never overwrites it.

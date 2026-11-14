@@ -2,7 +2,9 @@
 
 Reads cached LDA API pages (pipeline/.cache/lda), optionally refreshing them first, and writes
 pipeline/build/edges/lda.jsonl, pipeline/build/orgs/lda.jsonl, pipeline/build/sources/lda.json and
-docs/validation/lda-sample.csv. Never fails on an API outage: it falls back to the cached pages and reports how
+pipeline/build/lda-sample.csv (copied to docs/validation/ only if no reviewed copy exists). Off by default
+(PT_ENABLE_LDA=1 in pipeline/run.py). Steps: download.py (resumable API pull) -> build.py (parse) -> match.py
+(resolve members) -> edges.py (emit lobbyist_money, revolving_door) -> this file (write plug-in files, sanity). Never fails on an API outage: it falls back to the cached pages and reports how
 old they are.
 """
 from __future__ import annotations
@@ -17,6 +19,7 @@ import random
 import sys
 from collections import Counter, defaultdict
 
+from .. import util
 from . import download as dl
 from .build import BUILD, REPO, OrgResolver, fec_committee_index, load_matcher, manifest_hash, read_slices
 from .edges import contribution_rows, door_edges, implausible, latest_reports, money_edges, position_rows
@@ -24,22 +27,18 @@ from .edges import contribution_rows, door_edges, implausible, latest_reports, m
 EDGES = BUILD / "edges" / "lda.jsonl"
 ORGS = BUILD / "orgs" / "lda.jsonl"
 SOURCES = BUILD / "sources" / "lda.json"
-SAMPLE = REPO / "docs" / "validation" / "lda-sample.csv"
+SAMPLE = BUILD / "lda-sample.csv"
+# The reviewed copy is filled in by people: created once from SAMPLE, never overwritten.
+REVIEWED_SAMPLE = REPO / "docs" / "validation" / "lda-sample.csv"
 DISCLAIMER = ("The Senate Office of Public Records and the Clerk of the House cannot vouch for the accuracy or "
               "completeness of data obtained through the LDA API; documents are as filed by registrants and "
               "lobbyists. Use is subject to the LDA API Terms of Service (https://lda.gov/api/tos/).")
 CONTRIB_KINDS = ["contrib-all"] + [f"contrib-{t}" for t in dl.CONTRIBUTION_TYPES]
 
 
-def dumps(o) -> str:
-    return json.dumps(o, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
-
-
 def write_jsonl(path, rows) -> tuple[int, int]:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    data = "".join(dumps(r) + "\n" for r in rows)
-    path.write_text(data, encoding="utf-8")
-    return len(rows), len(data.encode())
+    """Sorted, key-sorted, atomically written JSON lines (pipeline.util.write_jsonl), plus the file size."""
+    return util.write_jsonl(path, rows), path.stat().st_size
 
 
 def year_coverage(status: dict[int, dict]) -> dict[str, str]:
@@ -227,6 +226,8 @@ def write_sample(rows: list[dict]) -> None:
         for u in top_unmatched(rows):
             w.writerow(["unmatched_top", "", u["reason"], "", "", "", u["payee"], u["honoree"], "", u["dollars"], "",
                         u["rows"], "", ""])
+    if not REVIEWED_SAMPLE.exists():
+        REVIEWED_SAMPLE.write_bytes(SAMPLE.read_bytes())
 
 
 def print_summary(rep: dict) -> None:

@@ -1,12 +1,14 @@
-"""Pipeline entry point: python -m pipeline.run [--stage NAME ...]."""
+"""Pipeline entry point: python -m pipeline.run [--stage NAME ...]. The stage table is in pipeline/README.md."""
 from __future__ import annotations
 
 import argparse
+import resource
 import time
 from typing import Callable
 
 from . import assemble, companies, edges_committees, edges_trades, spine, trades, validate
 from .holdings import run as holdings
+from .util import EDGES_DIR, ORGS_DIR, OUT, SOURCES_DIR, read_json, write_json
 
 
 def fec() -> None:
@@ -23,6 +25,11 @@ def lda() -> None:
     if os.environ.get("PT_ENABLE_LDA") != "1":
         # Off by default: lobbying ties are not published until their attribution has been reviewed and the
         # assembler has been run and validated with them. Set PT_ENABLE_LDA=1 to turn the stage on.
+        # The assembler merges every plug-in file it finds, so "off" must also mean no lobbying files left over.
+        for stale in (EDGES_DIR / "lda.jsonl", ORGS_DIR / "lda.jsonl", SOURCES_DIR / "lda.json"):
+            if stale.exists():
+                stale.unlink()
+                print(f"  lda: removed {stale.name} left by an earlier enabled run")
         print("  lda: skipped (set PT_ENABLE_LDA=1 to enable)")
         return
     from .lda import download as lda_dl, run as lda_run
@@ -36,6 +43,17 @@ def lda() -> None:
         print(f"  lda: failed ({type(e).__name__}: {e}); previous plug-in files left in place")
 
 
+def holdings_publish() -> None:
+    """Rerun the holdings stage once the new tree is in place. Why: its overlaps compare each holding with the
+    member's *published* file (contract), and before assemble that file is the previous build's. The plug-in files
+    it rewrites are identical to the first pass, so assemble need not run again; meta.json's holdings report is
+    updated to this pass."""
+    holdings.run()
+    meta = read_json(OUT / "meta.json")
+    meta["reports"]["holdings"] = read_json(SOURCES_DIR / "holdings.json")["report"]
+    write_json(OUT / "meta.json", meta)
+
+
 STAGES: dict[str, Callable[[], None]] = {
     "spine": spine.run,
     "trades": trades.run,
@@ -46,6 +64,7 @@ STAGES: dict[str, Callable[[], None]] = {
     "lda": lda,
     "holdings": holdings.run,  # before assemble, so its `owns` edges are merged in the same run
     "assemble": assemble.run,  # carries the holdings files over when it swaps web/public/data
+    "holdings_publish": holdings_publish,
 }
 
 
@@ -65,7 +84,8 @@ def main() -> None:
                 raise SystemExit(1)
         else:
             STAGES[name]()
-        print(f"=== {name} done in {time.monotonic() - t0:.1f}s ===", flush=True)
+        peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 2**20  # KiB on Linux -> GiB
+        print(f"=== {name} done in {time.monotonic() - t0:.1f}s (peak RSS so far {peak:.2f} GiB) ===", flush=True)
 
 
 if __name__ == "__main__":

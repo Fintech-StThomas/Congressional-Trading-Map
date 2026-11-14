@@ -1,8 +1,8 @@
-// Unit test for the board's string picker (src/lib/pick.ts), loaded with Node's
+// Unit test for the board's string picker (src/lib/domain/pick.ts), loaded with Node's
 // built-in type stripping. No server needed.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { pickAgainst, pickBoard, pickBoardSplit } from "../src/lib/pick.ts";
+import { pickAgainst, pickBoard, pickBoardSplit } from "../src/lib/domain/pick.ts";
 
 const SELF = "M1";
 let n = 0;

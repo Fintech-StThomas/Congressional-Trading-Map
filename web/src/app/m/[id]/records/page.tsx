@@ -1,15 +1,15 @@
+// /m/<id>/records, "the full file": a plain technical view of every record held for one member.
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getHoldings, getMemberFile, getMemberIndex, getMembers, getMeta, getOrgIndex, metaBuilt } from "@/lib/data";
-import { metaSources } from "@/lib/meta";
+import { getHoldings, getMemberFile, getMemberIndex, getMembers, getMeta, getOrgIndex, metaBuilt } from "@/lib/data/server";
+import { metaSources } from "@/lib/data/meta";
 import { date, seat } from "@/lib/format";
-import { memberHref } from "@/lib/client";
-import { SITE } from "@/lib/site";
-import { USE_NOTICE } from "@/lib/records";
+import { memberHref } from "@/lib/urls";
+import { SITE, USE_NOTICE } from "@/lib/copy";
 import { RecordsView } from "@/components/records/RecordsView";
-import { ErrorBoundary } from "@/components/ErrorBoundary";
-import "../../../records.css";
+import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
+import "@/styles/records.css";
 
 export const dynamicParams = false;
 

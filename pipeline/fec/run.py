@@ -1,5 +1,10 @@
 """FEC campaign-finance module: python -m pipeline.fec.run [--cycles 2022,2024] [--min-total N]
 
+Steps: download/cache (download.py) -> parse (load.py) -> resolve identities (refs.py, build.prepare_reference_tables,
+build.resolve_orgs) -> classify every pas2 row under one rule (build.classify_rows) -> emit plug-in files (this
+file, build.aggregate, build.fundraises_with, build.org_records) -> self-check (asserts below, weball comparison).
+Rules: pipeline/fec/README.md; contract: docs/data-dictionary.md ("Intermediate plug-in format").
+
 Writes
   pipeline/build/edges/fec_pac_money.jsonl, fec_outside_spending.jsonl, fec_funds.jsonl,
   fec_fundraises_with.jsonl   (contract Edge without id)
@@ -19,6 +24,8 @@ from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .. import util
+from ..util import dumps
 from . import build, download, load, refs
 from .load import q
 
@@ -34,19 +41,9 @@ ALL_CYCLES = list(range(2000, 2027, 2))
 SANITY_MEMBERS = ["P000197", "S000148", "M000355", "O000172", "J000289", "C001098"]
 
 
-def dumps(o) -> str:
-    return json.dumps(o, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
-
-
 def write_jsonl(path: Path, rows: list[dict]) -> tuple[int, int]:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    lines = sorted(dumps(r) for r in rows)
-    tmp = path.with_name(path.name + ".tmp")
-    with open(tmp, "w", encoding="utf-8") as f:
-        for line in lines:
-            f.write(line + "\n")
-    os.replace(tmp, path)
-    return len(lines), path.stat().st_size
+    """Sorted key-sorted JSON lines (pipeline.util.write_jsonl), plus the file size."""
+    return util.write_jsonl(path, rows), path.stat().st_size
 
 
 class Summary:

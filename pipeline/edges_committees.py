@@ -1,4 +1,5 @@
-"""`sits_with` context edges: members who currently sit on the same full committee.
+"""`sits_with` context edges: members who currently sit on the same full committee (data dictionary: "Rules the
+pipeline must keep"; published only as ledger rows, see config.LEDGER_ONLY_TYPES).
 
 One edge per member pair (never one per committee), with the shared committees in `note` and up to
 five committee pages as evidence. Writes pipeline/build/edges/committees.jsonl.
