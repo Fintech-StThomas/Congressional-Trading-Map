@@ -1,9 +1,11 @@
 """Upload web/public/data to Cloudflare R2 under `data/` (S3-compatible API). See pipeline/README.md ("Publishing to R2").
 
-    python -m pipeline.publish_r2 [--dir web/public/data] [--verify]
+    python -m pipeline.publish_r2 [--dir web/public/data] [--verify] [--require]
 
 Environment: R2_ACCOUNT_ID, R2_BUCKET, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY (all four, or the upload is skipped
 with a message and exit 0, so local runs and forks work); R2_PUBLIC_URL for --verify.
+--require (or PT_R2_REQUIRED=1): a missing variable is an error (exit 2) instead of a skip, and with --verify so is a
+missing R2_PUBLIC_URL. The daily workflow sets it on the default branch, where publishing is the job's purpose.
 
 Order of operations, so a reader never sees a manifest that claims content the bucket does not hold:
 1. local manifest: every file's path -> sha256;
@@ -195,8 +197,14 @@ def verify(public_url: str, build_time: str, attempts: int = 6, sleep: Callable[
     raise PublishError(f"public meta.json build time {got!r} != {build_time!r}")
 
 
-def client_from_env() -> tuple[Any, str] | None:
+class MissingConfig(Exception):
+    """A required R2 variable is not set (only raised with --require)."""
+
+
+def client_from_env(require: bool = False) -> tuple[Any, str] | None:
     missing = [k for k in REQUIRED_ENV if not os.environ.get(k)]
+    if missing and require:
+        raise MissingConfig(f"{', '.join(missing)} not set")
     if missing:
         print(f"R2 upload skipped: {', '.join(missing)} not set (expected for local runs and forks).")
         return None
@@ -216,8 +224,18 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--dir", type=Path, default=OUT, help="directory to publish (default web/public/data)")
     ap.add_argument("--verify", action="store_true", help="fetch R2_PUBLIC_URL/data/meta.json afterwards")
     ap.add_argument("--allow-mass-delete", action="store_true")
+    ap.add_argument("--require", action="store_true",
+                    help="fail (exit 2) instead of skipping when an R2 variable is missing; also PT_R2_REQUIRED=1")
     args = ap.parse_args(argv)
-    got = client_from_env()
+    require = args.require or os.environ.get("PT_R2_REQUIRED") == "1"
+    try:
+        if require and args.verify and not os.environ.get("R2_PUBLIC_URL"):
+            raise MissingConfig("R2_PUBLIC_URL not set (needed by --verify)")
+        got = client_from_env(require)
+    except MissingConfig as exc:
+        print(f"R2 publish FAILED: {exc}. Publishing is required here; add the repository secret(s) "
+              "(Settings > Secrets and variables > Actions).", file=sys.stderr)
+        return 2
     if got is None:
         return 0
     client, bucket = got

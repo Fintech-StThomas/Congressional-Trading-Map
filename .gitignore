@@ -12,7 +12,11 @@ pipeline/.cache/
 pipeline/build/
 .DS_Store
 
-# Generated data: ignored until the pipeline regenerates it at the capped size. Remove this line then.
+# Generated data (pipeline output). Not stored in git: the daily workflow publishes it to Cloudflare R2 under data/
+# (https://pub-b6acb08f97e345d68ebc4629e915f8ab.r2.dev/data); see pipeline/README.md "Publishing to R2".
+web/public/data/
+web/public/data.staging/
+web/public/data.old/
 
 # Agent worktrees are local scratch checkouts
 .claude/worktrees/

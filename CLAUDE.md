@@ -1,4 +1,10 @@
-# Congressional Trading Map
+# Congressional Trading Map (Paper Trail)
+
+## Start here
+
+- Read `STATUS.md` first: what the project is, what is live, what is in progress, what is planned, and which decisions are settled. Update it in the same pull request whenever any of those change.
+- `AGENTS.md` holds the working rules that apply to every AI assistant, including the rule to keep the code organised as `web/README.md` and `pipeline/README.md` describe. Follow them.
+- Never push unfinished work to a branch that has an open pull request. Confirm a merge on GitHub before acting on it.
 
 ## Skills and plugins
 

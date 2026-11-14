@@ -1,5 +1,8 @@
 // Smoke tests against the built site. Run `npm run build` first, then `npm test`.
 // Uses BASE_URL when set; otherwise starts `next start` on port 3123 itself.
+// What they run against is whatever the build used (README "Tests"): the sample fixtures in a clean checkout,
+// real data when the build had DATA_BASE_URL or a pipeline build in public/data. Tests declared with realTest
+// need real members and files (K000389, the wall, organisations) and are skipped, with a message, on the sample site.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -11,6 +14,16 @@ const { chromium } = require("playwright");
 let base = process.env.BASE_URL;
 let server;
 let browser;
+let realData = false; // set in before(): does the site serve a real build at /data/meta.json?
+const NEEDS_REAL =
+  "needs real data: the site was built on the SAMPLE fixtures; build with DATA_BASE_URL=<bucket>/data (or a pipeline build in public/data)";
+
+function realTest(name, fn) {
+  test(name, async (t) => {
+    if (!realData) return t.skip(NEEDS_REAL);
+    return fn(t);
+  });
+}
 
 async function up(url) {
   for (let i = 0; i < 60; i++) {
@@ -30,6 +43,12 @@ before(async () => {
     server = spawn("npx", ["next", "start", "-p", "3123"], { stdio: "ignore", cwd: new URL("..", import.meta.url).pathname, detached: true });
     await up(base);
   }
+  // Real builds (local or remote) serve /data/meta.json with a publication budget; the sample site serves /sample-data.
+  realData = await fetch(base + "/data/meta.json")
+    .then((r) => (r.ok ? r.json() : null))
+    .then((m) => Boolean(m && m.publication_budget))
+    .catch(() => false);
+  if (!realData) console.log(`# smoke: ${NEEDS_REAL}`);
   browser = await chromium.launch();
 });
 
@@ -147,7 +166,7 @@ test("phone width shows the table layout without horizontal scroll", async () =>
   await p.close();
 });
 
-test("the wall renders prints, switches markers and opens the board", async () => {
+realTest("the wall renders prints, switches markers and opens the board", async () => {
   const p = await page();
   await p.goto(base + "/wall");
   await p.waitForSelector("[data-testid=wall] .wall__print");
@@ -169,7 +188,7 @@ test("the wall renders prints, switches markers and opens the board", async () =
   await p.close();
 });
 
-test("organisations page lists both rankings with split bars", async () => {
+realTest("organisations page lists both rankings with split bars", async () => {
   const p = await page();
   await p.goto(base + "/orgs");
   await p.waitForSelector("[data-testid=orgs-reach] .orgs__row");
@@ -180,7 +199,7 @@ test("organisations page lists both rankings with split bars", async () => {
   await p.close();
 });
 
-test("a large organisation shows its party split and reach", async () => {
+realTest("a large organisation shows its party split and reach", async () => {
   const p = await page();
   await p.goto(base + "/o/co%3A732717");
   const split = p.getByTestId("org-split");
@@ -194,7 +213,7 @@ test("a large organisation shows its party split and reach", async () => {
   await p.close();
 });
 
-test("wall and organisation pages do not scroll sideways at phone width", async () => {
+realTest("wall and organisation pages do not scroll sideways at phone width", async () => {
   const p = await page(390, 844);
   for (const url of ["/wall", "/orgs", "/o/co%3A732717"]) {
     await p.goto(base + url, { waitUntil: "networkidle" });
@@ -204,7 +223,7 @@ test("wall and organisation pages do not scroll sideways at phone width", async 
   await p.close();
 });
 
-test("wall by year: a year loads, members and summaries change, and 2008 trades say so in words", async () => {
+realTest("wall by year: a year loads, members and summaries change, and 2008 trades say so in words", async () => {
   const p = await page();
   await p.goto(base + "/wall");
   await p.waitForSelector("[data-testid=wall] .wall__print");
@@ -225,7 +244,7 @@ test("wall by year: a year loads, members and summaries change, and 2008 trades 
   await p.close();
 });
 
-test("wall state picker searches and filters", async () => {
+realTest("wall state picker searches and filters", async () => {
   const p = await page(390, 844);
   await p.goto(base + "/wall");
   await p.getByRole("button", { name: /State/ }).click();
@@ -250,7 +269,7 @@ test("featured example explains itself and steps to another", async () => {
   await p.close();
 });
 
-test("the full file: K000389 loads every table, filters, and CSV has rows", async () => {
+realTest("the full file: K000389 loads every table, filters, and CSV has rows", async () => {
   const p = await page();
   await p.goto(base + "/m/K000389/records");
   await p.getByTestId("records-ready").waitFor({ timeout: 60000 });
@@ -271,7 +290,7 @@ test("the full file: K000389 loads every table, filters, and CSV has rows", asyn
   await p.close();
 });
 
-test("member page links to the full file and assumption switches recompute cases", async () => {
+realTest("member page links to the full file and assumption switches recompute cases", async () => {
   const p = await page();
   await p.goto(base + "/m/K000389");
   assert.ok(await p.getByRole("link", { name: "Open the full file" }).count());
@@ -282,7 +301,7 @@ test("member page links to the full file and assumption switches recompute cases
   await p.close();
 });
 
-test("senators get a one-line holdings note; a House holdings file renders the section", async () => {
+realTest("senators get a one-line holdings note; a House holdings file renders the section", async () => {
   const p = await page();
   await p.goto(base + "/m/W000817/records");
   await p.getByTestId("records-ready").waitFor({ timeout: 30000 });
@@ -312,7 +331,7 @@ test("holdings: member section and full-file tables from a House holdings file",
   await p.close();
 });
 
-test("spending against sits in its own unconnected zone; frayed strings carry a word tag", async () => {
+realTest("spending against sits in its own unconnected zone; frayed strings carry a word tag", async () => {
   const p = await page();
   await p.goto(base + "/?s=CA&m=K000389");
   const zone = p.getByTestId("against-zone");
@@ -330,7 +349,7 @@ test("spending against sits in its own unconnected zone; frayed strings carry a 
 
 // ---- fixes from the code review (REVIEW.md) ---------------------------------------
 
-test("an organisation's tie total adds the ledger-only ties to the listed ones", async () => {
+realTest("an organisation's tie total adds the ledger-only ties to the listed ones", async () => {
   const id = "co:732717";
   const { createHash } = await import("node:crypto");
   const shard = createHash("sha1").update(id).digest("hex").slice(0, 2);
@@ -345,7 +364,7 @@ test("an organisation's tie total adds the ledger-only ties to the listed ones",
   await p.close();
 });
 
-test("a case built on a disclosed holding does not say the household traded", async () => {
+realTest("a case built on a disclosed holding does not say the household traded", async () => {
   const cases = await (await fetch(`${base}/data/cases.json`)).json();
   const i = cases.findIndex((c) => !c.types.includes("traded"));
   if (i < 0) return;
@@ -359,7 +378,7 @@ test("a case built on a disclosed holding does not say the household traded", as
   await p.close();
 });
 
-test("cases come 50 to a page, with a count, a pager and filters that keep each page small", async () => {
+realTest("cases come 50 to a page, with a count, a pager and filters that keep each page small", async () => {
   const cases = await (await fetch(`${base}/data/cases.json`)).json();
   if (cases.length <= 50) return;
   const p = await page();
@@ -391,7 +410,7 @@ test("every page links to a prefilled correction issue", async () => {
   await p.close();
 });
 
-test("ledger rows say which way the money went", async () => {
+realTest("ledger rows say which way the money went", async () => {
   const p = await page();
   await p.goto(base + "/m/K000389");
   const dirs = await p.getByTestId("ledger").locator("tbody .ties__dir").allInnerTexts();

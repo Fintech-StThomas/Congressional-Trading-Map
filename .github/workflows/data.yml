@@ -1,35 +1,41 @@
 name: Daily data refresh
 
-# Rebuilds web/public/data from the public sources, commits it only when validation passed and some data file
-# other than meta.json changed, and uploads it to Cloudflare R2 (changed files only). See pipeline/README.md
-# ("Daily workflow", "Publishing to R2").
+# Rebuilds the site data from the public sources and publishes it to Cloudflare R2 under data/, which the
+# production site reads (DATA_BASE_URL). Nothing is committed: the generated tree is not stored in git.
+# Order: unit tests -> pipeline (all stages, then validation) -> holdings validation -> publish to R2 -> verify that
+# the public URL serves the new build time. Any failure stops the job at that step (GitHub emails the owner).
+# See pipeline/README.md ("Daily workflow", "Publishing to R2").
 
 on:
   schedule:
     - cron: "41 7 * * *"   # 07:41 UTC daily, off the top of the hour
   workflow_dispatch:
     inputs:
-      publish_only:
-        description: "Skip the pipeline; upload the committed web/public/data to R2"
+      cache_only:
+        description: "Rebuild from the restored download cache only (PT_CACHE_ONLY=1, no downloads), then validate and publish"
         type: boolean
         default: false
 
 permissions:
-  contents: read           # the job below widens this to write; nothing else is granted
+  contents: read           # checkout only; the job commits and pushes nothing
 
 concurrency:
   group: data-refresh-${{ github.ref }}
-  cancel-in-progress: false  # never kill a run half-way through a commit; queue instead
+  cancel-in-progress: false  # never kill a run half-way through an upload; queue instead
 
 jobs:
   refresh:
     runs-on: ubuntu-latest
     timeout-minutes: 150
-    permissions:
-      contents: write      # push the data commit
+    env:
+      # On the default branch of the main repository publishing is the job's purpose, so missing R2 secrets fail
+      # the publish step (exit 2) instead of skipping it. Elsewhere (forks, other branches) the upload skips.
+      PT_R2_REQUIRED: ${{ (github.ref_name == github.event.repository.default_branch && !github.event.repository.fork) && '1' || '' }}
     steps:
       # Actions pinned to the commit of the tag in use (tag in the comment), so a moved tag cannot change the job.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false   # nothing is pushed
 
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
@@ -40,8 +46,8 @@ jobs:
       # Downloads are reused across runs. Freshness does not depend on this cache: each source refetches on its own
       # schedule (legislators, SEC: daily; FEC: daily for the two latest cycles, weekly for older ones; Hugging Face
       # datasets are addressed by commit). A new key per run saves the refreshed cache; restore takes the latest.
+      # The pipeline needs no previous build: it starts from this cache and an empty web/public/data.
       - name: Restore download cache
-        if: ${{ !inputs.publish_only }}
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: pipeline/.cache
@@ -52,51 +58,28 @@ jobs:
         run: pip install -r pipeline/requirements.txt
 
       - name: Unit tests
-        id: tests
         timeout-minutes: 10
         run: python -m pytest -q pipeline/tests
 
       # Exits non-zero when any stage fails or validation finds a failure; every later step is then skipped, so a
-      # build that failed validation is never committed. Secrets are passed to this step only and never printed.
+      # build that failed validation is never published. Secrets are passed to this step only and never printed.
       - name: Run pipeline (all stages, then validation)
-        id: pipeline
-        if: ${{ !inputs.publish_only }}
         timeout-minutes: 120
         env:
           LDA_API_KEY: ${{ secrets.LDA_API_KEY }}       # used only when PT_ENABLE_LDA=1 (off)
           SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+          PT_CACHE_ONLY: ${{ inputs.cache_only && '1' || '' }}
         run: python -m pipeline.run
 
       - name: Validate holdings
-        id: holdings
-        if: ${{ !inputs.publish_only }}
         timeout-minutes: 10
         run: python -m pipeline.holdings.validate --no-pdf
 
-      - name: Commit data only if file contents changed
-        if: ${{ !inputs.publish_only }}
-        run: |
-          git add -A web/public/data
-          # meta.json always carries a new build time; commit only when some other file changed.
-          if git diff --cached --quiet -- web/public/data ':(exclude)web/public/data/meta.json'; then
-            echo "No data changes."
-            exit 0
-          fi
-          git -c user.name="github-actions[bot]" \
-              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-              commit -m "Data refresh $(date -u +%Y-%m-%d)" -- web/public/data
-          git push origin "HEAD:${GITHUB_REF_NAME}"
-
-      # Upload to R2 only after validation passed (or, with publish_only, the committed data, which was validated
-      # when it was committed). Runs even if the commit step failed, but never after a failed test, stage or
-      # validation. The R2 secrets are passed to this step only; the script never prints them and skips with a
-      # message when they are absent (forks). Changed files only, meta.json and data/_manifest.json last, stale
-      # objects deleted after every upload succeeded; then <R2_PUBLIC_URL>/data/meta.json is fetched and its build
-      # time compared with the local one.
-      - name: Publish to R2
-        if: >-
-          ${{ !cancelled() && steps.tests.outcome == 'success' && (inputs.publish_only ||
-          (steps.pipeline.outcome == 'success' && steps.holdings.outcome == 'success')) }}
+      # Runs only when every step above succeeded (the default). The R2 secrets are passed to this step only; the
+      # script never prints them. Changed files only, meta.json and data/_manifest.json last, stale objects deleted
+      # after every upload succeeded; then <R2_PUBLIC_URL>/data/meta.json is fetched and its build time compared
+      # with the local one (--verify), so a run that did not reach the public URL fails here.
+      - name: Publish to R2 and verify the public URL
         timeout-minutes: 30
         env:
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
@@ -105,3 +88,10 @@ jobs:
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
         run: python -m pipeline.publish_r2 --verify
+
+      - name: Report failure
+        if: failure()
+        run: |
+          msg="Daily data refresh failed at the step marked failed above. A failure before the publish step uploads nothing; a failed upload there leaves meta.json (the switch) on the previous build."
+          echo "::error::$msg"
+          echo "### $msg" >> "$GITHUB_STEP_SUMMARY"

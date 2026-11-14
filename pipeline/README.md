@@ -1,6 +1,7 @@
 # Data pipeline
 
-Builds the JSON the site reads from `web/public/data/` out of filed public records: the member list, household
+Builds the JSON the site reads (written to `web/public/data/`, published to Cloudflare R2; not stored in git) out of
+filed public records: the member list, household
 stock trades, FEC committee money, House annual disclosures (holdings) and, when switched on, lobbying reports. The
 binding description of every output file, type and rule is [`docs/data-dictionary.md`](../docs/data-dictionary.md);
 this file is the map of the code.
@@ -15,11 +16,16 @@ pipeline/.venv/bin/python -m pipeline.run --stage assemble   # one stage (repeat
 pipeline/.venv/bin/python -m pipeline.validate               # validation only; exits 1 on failure
 pipeline/.venv/bin/python -m pipeline.holdings.validate      # holdings checks (--no-pdf skips the PDF text check)
 pipeline/.venv/bin/python -m pytest -q pipeline/tests        # unit tests
-pipeline/.venv/bin/python -m pipeline.publish_r2 --verify    # upload web/public/data to R2 (skips without R2_* vars)
+pipeline/.venv/bin/python -m pipeline.publish_r2 --verify    # upload web/public/data to R2 (skips without R2_* vars;
+                                                             # --require or PT_R2_REQUIRED=1 makes that an error)
 ```
 
-Run from the repository root. Downloads are cached in `pipeline/.cache/`; intermediate files go to `pipeline/build/`
-(both gitignored). Environment variables, all optional:
+Run from the repository root. Downloads are cached in `pipeline/.cache/`; intermediate files go to `pipeline/build/`;
+the output goes to `web/public/data/` (all three gitignored). A clean checkout needs none of them: no stage reads a
+previous build (the holdings overlaps are computed in the second holdings pass, against this build's member files),
+so a run from the download cache alone reproduces the published tree byte for byte except `meta.json`'s build time,
+commit and retrieval times. To get the published data without running the pipeline, point the site at the bucket
+(`web/README.md`, "Data modes"). Environment variables, all optional:
 
 | Variable | Effect |
 |---|---|
@@ -126,22 +132,28 @@ filled in by people and are never overwritten (see `docs/validation/README.md`).
 
 ## Daily workflow
 
-`.github/workflows/data.yml` runs tests, the whole pipeline and the holdings validator daily (07:41 UTC) and on manual
-dispatch, one run at a time per branch. Any failure (a stage, validation) skips the commit step. It commits only
-`web/public/data/`, and only when a file other than `meta.json` changed. Then it publishes the same tree to R2 (below).
-Actions are pinned to commit SHAs; the job alone has `contents: write`; each secret is given only to the step that
-needs it (the pipeline step: `LDA_API_KEY`, `SEC_USER_AGENT`; the publish step: the `R2_*` secrets) and never printed.
-Downloads are cached between runs, and each source refetches on its own schedule, so the cache never freezes data.
+`.github/workflows/data.yml` runs daily (07:41 UTC) and on manual dispatch, one run at a time per branch:
+unit tests -> `python -m pipeline.run` (every stage, then `validate.py`) -> `python -m pipeline.holdings.validate
+--no-pdf` -> `python -m pipeline.publish_r2 --verify` (upload, then check that the public URL serves the new
+`meta.json` build time). It commits nothing: the job has only `contents: read`, and checkout keeps no credentials.
+Each step runs only when every earlier one succeeded, so a build that failed a test, a stage or either validator is
+never published; the failing step exits non-zero with its reason in the log, a final step adds an error annotation,
+and GitHub emails the owner. On the default branch of the main repository the workflow sets `PT_R2_REQUIRED=1`, so
+missing R2 secrets fail the publish step (exit 2) instead of skipping it; forks and other branches skip the upload.
+Actions are pinned to commit SHAs; each secret is given only to the step that needs it (the pipeline step:
+`LDA_API_KEY`, `SEC_USER_AGENT`; the publish step: the `R2_*` secrets) and never printed. Downloads are cached
+between runs (`pipeline/.cache`), and each source refetches on its own schedule, so the cache never freezes data;
+the run needs no previous build.
 
-Manual dispatch has one input, `publish_only` (boolean, default off): it skips the cache, pipeline, holdings
-validation and commit, and uploads the committed `web/public/data/` to R2 (Actions tab -> "Daily data refresh" ->
-"Run workflow" -> tick `publish_only`; or `gh workflow run data.yml -f publish_only=true`). Use it for the first
-upload and to re-sync the bucket by hand.
+Manual dispatch has one input, `cache_only` (boolean, default off): the same run with `PT_CACHE_ONLY=1`, so the tree
+is rebuilt from the restored download cache with no downloads, then validated and published (about 5 minutes of
+pipeline). Use it to re-sync the bucket by hand (Actions tab -> "Daily data refresh" -> "Run workflow"; or
+`gh workflow run data.yml -f cache_only=true`).
 
 ## Publishing to R2
 
-First stage of moving generated data out of git: the site still reads `web/public/data/` from the repository, and the
-workflow still commits it. `pipeline/publish_r2.py` uploads the tree to Cloudflare R2 through the S3-compatible API
+The bucket is where the data lives: the production site reads it (`DATA_BASE_URL`), and `web/public/data/` is not
+in git. Public base URL: `https://pub-b6acb08f97e345d68ebc4629e915f8ab.r2.dev/data`. `pipeline/publish_r2.py` uploads the tree to Cloudflare R2 through the S3-compatible API
 (boto3, region `auto`, endpoint `https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com`) under the key prefix `data/`, so
 `web/public/data/members/A000001.json` becomes `<R2_PUBLIC_URL>/data/members/A000001.json`.
 
@@ -152,7 +164,9 @@ workflow still commits it. `pipeline/publish_r2.py` uploads the tree to Cloudfla
 | `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | an R2 API token with object read and write on that bucket |
 | `R2_PUBLIC_URL` | public base URL of the bucket (custom domain or r2.dev), used only to verify the upload |
 
-Without the first four the script prints "R2 upload skipped" and exits 0 (local runs, forks). What it does:
+Without the first four the script prints "R2 upload skipped" and exits 0 (local runs, forks); with `--require` (or
+`PT_R2_REQUIRED=1`, set by the workflow on the default branch) it prints "R2 publish FAILED" and exits 2, as it does
+when `--verify` is asked for without `R2_PUBLIC_URL`. What it does:
 
 1. Hashes every file (path -> SHA-256) and reads the previous manifest `data/_manifest.json`
    (`{build_time, prefix, files: {path: sha256}}`); when it is missing or unreadable, every file is uploaded.
@@ -253,5 +267,6 @@ contributions file (`indiv`), and publishes no individual contributor; the notic
   term in that year; years outside every term go to the nearest term (counted in `meta.json.assembly.party_split`).
   `MemberSummary.party` and the wall stay the latest term's.
 - **Validation runs after the swap.** `python -m pipeline.run` validates the tree it has just published, so after a
-  failed validation `web/public/data/` holds the failed build until the next run (the daily workflow never commits
-  it). Restore with `git checkout -- web/public/data` locally.
+  failed validation `web/public/data/` holds the failed build until the next run (the daily workflow never publishes
+  it). There is no copy in git to restore from: fix and rerun, or run the site against the published data
+  (`DATA_BASE_URL`, see `web/README.md`).

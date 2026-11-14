@@ -1,8 +1,8 @@
 import type { NextConfig } from "next";
-import { PHASE_PRODUCTION_SERVER } from "next/constants";
+import { PHASE_PRODUCTION_BUILD, PHASE_PRODUCTION_SERVER } from "next/constants";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { isRealDataBuild } from "./src/lib/data/source";
+import { isRealDataBuild, sampleFallbackError } from "./src/lib/data/source";
 import { remoteDataBase, remoteFileUrl, remoteRewrite } from "./src/lib/data/remote";
 
 // Two data modes (README "Data modes"):
@@ -42,6 +42,9 @@ async function dataYearMax(phase: string): Promise<number> {
 }
 
 export default async function config(phase: string): Promise<NextConfig> {
+  // A hosted build (Vercel, CI) never falls back to the sample data unless PT_DATA=fixtures says so.
+  const guard = phase === PHASE_PRODUCTION_BUILD ? sampleFallbackError(process.env, hasRealData) : null;
+  if (guard) throw new Error(guard);
   const nextConfig: NextConfig = {
     reactStrictMode: true,
     poweredByHeader: false,
