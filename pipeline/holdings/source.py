@@ -1,4 +1,5 @@
-"""Pinned download of the Hugging Face dataset ZipLime/congress-trading (holdings, liabilities, filings)."""
+"""Pinned download of the Hugging Face dataset ZipLime/congress-trading (holdings step 1: download/cache). Files are
+cached under pipeline/.cache/hf/ziplime-<revision>/ and, being addressed by commit, never refetched."""
 from __future__ import annotations
 
 import os

@@ -7,7 +7,12 @@ docs/data-dictionary.md ("Holdings and net worth") and pipeline/holdings/README.
 Writes web/public/data/holdings/<bioguide>.json, web/public/data/holdings-index.json,
 pipeline/build/edges/holdings_owns.jsonl, pipeline/build/orgs/holdings.jsonl, pipeline/build/sources/holdings.json
 and pipeline/build/holdings_rows.json (every published asset row, for validate.py).
-Run it after `assemble`: the assembler swaps web/public/data/ wholesale, and the overlaps read its member files.
+Runs twice in `python -m pipeline.run`: before `assemble` (which merges its owns edges and orgs) and after it as
+`holdings_publish`, because overlaps must compare with the member files of *this* build (contract: "Overlaps").
+The holdings/ folder is written beside the published one and swapped in.
+Steps: download (source.py) -> parse and join (load) -> resolve members (district rule) and tickers (TickerResolver,
+companies.py rules) -> redact (rules.py: residences, street addresses, beneficiary names) -> emit files and plug-ins
+-> self-check (pipeline/holdings/validate.py).
 """
 from __future__ import annotations
 

@@ -14,6 +14,14 @@ python -m pipeline.fec.run --out-dir /tmp/x     # write outputs somewhere else (
 Needs `duckdb` (2.x) and network access to www.fec.gov (redirects to an S3 bucket),
 unitedstates.github.io and www.sec.gov (fallbacks only). Peak memory is about 1.9 GB (DuckDB is capped at 1.5 GB).
 
+Shape (the same as every source module): `download.py` (cache; files of the two latest cycles are refetched after a
+day, older cycles after a week, `PT_CACHE_ONLY=1` reuses the cache) -> `load.py` (parse into DuckDB; rows = lines and
+delimiters = lines x (columns - 1) are asserted, so an upstream column change stops the run) -> `refs.py` and
+`build.prepare_reference_tables` / `build.resolve_orgs` (identities) -> `build.classify_rows` (one rule per row) ->
+`build.aggregate` / `build.fundraises_with` / `build.org_records` (plug-in files, written by `run.py`) -> the
+self-checks and the weball comparison in `run.py`. HTTP, JSON writing, name normalisation and the override file
+use the shared helpers in `pipeline/util.py`.
+
 Outputs:
 
 | File | Contents |
@@ -171,6 +179,34 @@ Matches: 410 of 8,493 pac_money committees (4.8%) map to a public company, cover
 committees name a connected organisation; most unmatched ones are trade associations and unions with no SEC
 filer. The top 50 unmatched by dollars are in the report (`top_unmatched_connected_orgs`) for human overrides.
 The 37 in-scope members with no FEC id are all historical except Alan Armstrong (A000383) and Darline Graham (G000608).
+
+## The weball comparison, and the Jordan and Cruz residuals
+
+`run.py` compares, for six members, our giver-side total (pac_money + funds + other candidates' campaigns, by
+transaction date in the two calendar years of the cycle) with weball's `OTHER_POL_CMTE_CONTRIB`, which is the
+recipient committee's own summary (Form 3 line 11c, latest amendment). Most member-cycles agree within a few percent.
+Two did not, and both differences are in the recipients' filings, not double counting here (checked 2026-11-14
+against the OpenFEC reports and Schedule A endpoints for the recipient committees):
+
+- **Jim Jordan, 2020 (ours $441,468 vs weball $142,548, +210%).** Jordan for Congress (C00416594) filed every
+  2019-2020 report in 2021 again as an amendment (file numbers 1495855-1497503). The original reports listed
+  $418,576 from other committees on line 11c; the amendments cut that to $142,548. The givers' own reports (pas2) were
+  not amended, and they still list about 215 non-conduit contributions (mostly $2,500-$5,000) to that committee. Our figure
+  is within 5.5% of the recipient's original reports. Nothing in the pipeline double counts: each row is one giver's
+  report of one contribution, re-reports are removed, and no second committee is involved (Jordan has one
+  authorised committee; his JFC C00484360 is excluded as a giver and is not a recipient).
+- **Ted Cruz, 2022 (ours $90,080 vs $68,080, +32%).** The committee's itemised receipts from committees (Schedule A
+  line 11C, non-memo) total exactly $68,080.45 = weball. The difference is giver-reported rows that the recipient
+  never itemised: LANK PAC $10,000 and Kansas Leadership PAC $10,000 (both leadership PACs, counted as `funds`),
+  Apache PAC $2,500, Professional Insurance Agents PAC $2,500, net of small timing differences. In the other
+  direction the recipient itemises earmarked money from conduits (Senate Conservatives Fund, Club for Growth) that we
+  exclude by rule.
+- **Ted Cruz, 2018 (ours $1,522,837 vs $1,281,824, +19%).** The recipient's own itemised line 11C receipts
+  (non-memo) for the cycle total $1,463,824, within 0.5% of our pac_money ($1,471,837); weball's summary is $182,000
+  lower than the committee's own itemisation. We cannot see from the bulk files which summary line absorbed it.
+
+What the site shows is therefore "what committees reported giving", which can exceed what the recipient reports
+receiving. Recipient-side refunds (22Z) and reclassifications are invisible in pas2 (see below).
 
 ## Known limitations
 

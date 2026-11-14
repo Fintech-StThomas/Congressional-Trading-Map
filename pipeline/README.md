@@ -1,48 +1,134 @@
 # Data pipeline
 
-Builds the JSON the site reads from `web/public/data/`. The binding description of every output file, type and
-rule is [`docs/data-dictionary.md`](../docs/data-dictionary.md).
+Builds the JSON the site reads from `web/public/data/` out of filed public records: the member list, household
+stock trades, FEC committee money, House annual disclosures (holdings) and, when switched on, lobbying reports. The
+binding description of every output file, type and rule is [`docs/data-dictionary.md`](../docs/data-dictionary.md);
+this file is the map of the code.
 
 ## Run
 
 ```bash
 python3.13 -m venv pipeline/.venv
 pipeline/.venv/bin/pip install -r pipeline/requirements.txt
-pipeline/.venv/bin/python -m pipeline.run                    # every stage, then validation
+pipeline/.venv/bin/python -m pipeline.run                    # every stage, then validation (about 5 minutes cached)
 pipeline/.venv/bin/python -m pipeline.run --stage assemble   # one stage (repeat --stage for several)
 pipeline/.venv/bin/python -m pipeline.validate               # validation only; exits 1 on failure
+pipeline/.venv/bin/python -m pipeline.holdings.validate      # holdings checks (--no-pdf skips the PDF text check)
 pipeline/.venv/bin/python -m pytest -q pipeline/tests        # unit tests
 ```
 
-Run from the repository root. Downloads are cached in `pipeline/.cache/` and reused; intermediate files go to
-`pipeline/build/` (both gitignored). Optional environment variables: `SEC_USER_AGENT` (default
-`congressional-trading-map-class-project research@example.org`), `HF_REVISION` (pin the trades dataset to a commit
-instead of its current one), and `FEC_API_KEY` / `LDA_API_KEY`, which the FEC module may read. Nothing fails when they
-are absent.
+Run from the repository root. Downloads are cached in `pipeline/.cache/`; intermediate files go to `pipeline/build/`
+(both gitignored). Environment variables, all optional:
 
-`.github/workflows/data.yml` runs the whole pipeline daily and on manual dispatch. It commits `web/public/data/` back to
-the branch only when validation passes and some file other than `meta.json` changed.
+| Variable | Effect |
+|---|---|
+| `SEC_USER_AGENT` | User-Agent for every request (default `congressional-trading-map-class-project research@example.org`) |
+| `HF_REVISION`, `HF_HOLDINGS_REVISION` | pin the trades / holdings datasets to a commit (default: their current commit) |
+| `PT_CACHE_ONLY=1` | reuse every cached download regardless of age (reproducible rebuilds, offline work) |
+| `PT_OUT_DIR` | publish somewhere other than `web/public/data/` (dry runs, comparisons) |
+| `PT_ENABLE_LDA=1`, `LDA_API_KEY` | switch the lobbying stage on (off by default; "off" also removes stale `lda.*` plug-in files) |
+
+To check that a change is a pure refactor, rebuild into a copy and compare hashes:
+`PT_CACHE_ONLY=1 PT_OUT_DIR=/tmp/out HF_REVISION=<sha> HF_HOLDINGS_REVISION=<sha> python -m pipeline.run` (the
+revisions are in `meta.json.sources`); only `meta.json`'s build time, commit and retrieval times may differ.
+
+## Data flow
+
+```
+congress-legislators ──► spine ──► spine.json, committees.json ─────────────────────────┐
+HF trades dataset ─────► trades ─► trades.parquet ──► companies ──► ticker_orgs.json ───┤
+SEC tickers + FSDS ──────────────────────────────────┘    │         companies.json      │
+                                                           │         company_names.json  │
+FEC bulk files ────────► fec ──────────────────────────────┴───────► edges/fec_*.jsonl   │
+                         edges_trades (traded, traded_together) ───► edges/trades.jsonl  │  pipeline/build/
+                         edges_committees (sits_with) ─────────────► edges/committees    │  (plug-in files:
+HF holdings dataset ───► holdings (pass 1) ────────────────────────► edges/holdings_owns │   edges/, orgs/,
+LDA API (off) ─────────► lda ──────────────────────────────────────► edges/lda.jsonl     │   sources/)
+                                                                                         ▼
+                         assemble ─► staging dir ─► swap ─► web/public/data/{members,trades,orgs,...}.json
+                         holdings_publish (pass 2: overlaps vs this build) ─► web/public/data/holdings/
+                         validate ─► exit 1 on any failure
+```
 
 ## Stages
 
-| Stage | Module | Writes (under `pipeline/build/` unless noted) |
-|---|---|---|
-| `spine` | `spine.py` | `spine.json` (bioguide -> name, party, terms, committees, FEC ids), `committees.json`, `sources/legislators.json` |
-| `trades` | `trades.py` | `trades.parquet` (current version of every trade event, contract enums), `sources/hf_trades.json` |
-| `companies` | `companies.py` | `ticker_orgs.json`, `companies.json`, `company_names.json`, `sources/sec.json` |
-| `fec` | `fec/` (maintained separately) | `edges/fec_*.jsonl`, `orgs/fec.jsonl`, `sources/fec.json` |
-| `edges_trades` | `edges_trades.py` | `trades_resolved.parquet`, `edges/trades.jsonl` (`traded`, `traded_together`), `orgs/trades.jsonl` |
-| `edges_committees` | `edges_committees.py` | `edges/committees.jsonl` (`sits_with`) |
-| `lda` | `lda/` (LDA API; `python -m pipeline.lda.download` for the resumable pull, skipped without key or cache) | `edges/lda.jsonl` (`lobbyist_money`, `revolving_door`), `orgs/lda.jsonl`, `sources/lda.json`, `docs/validation/lda-sample.csv` |
-| `assemble` | `assemble.py` | every file in `web/public/data/`, built in a staging directory and swapped in |
-| `holdings` | `holdings/` (see its README) | `web/public/data/holdings/<id>.json`, `web/public/data/holdings-index.json` (after `assemble`, which would otherwise delete them), `edges/holdings_owns.jsonl`, `orgs/holdings.jsonl`, `sources/holdings.json` |
-| `validate` | `validate.py` | checks the output; writes `validation_sample.csv` (25 trades, fixed seed, with filing URLs) |
+Times and peak memory (resident set of the whole process, which only grows) from a cached full run on 2026-11-14.
 
-New sources plug in without code changes: write `edges/<source>.jsonl`, `orgs/<source>.jsonl` and
-`sources/<source>.json` as described at the end of the data dictionary. The assembler picks up every file there.
+| Stage | Code | Reads | Writes (under `pipeline/build/` unless noted) | Time | Peak RSS |
+|---|---|---|---|---:|---:|
+| `spine` | `spine.py` | congress-legislators (daily) | `spine.json`, `committees.json`, `sources/legislators.json` | 1 s | 0.1 GB |
+| `trades` | `trades.py` | HF `austin-starks/congressional-stock-trades` (by commit) | `trades.parquet`, `sources/hf_trades.json` | 5 s | 1.2 GB |
+| `companies` | `companies.py`, `sic.py` | SEC tickers (daily), FSDS `sub.txt`, `trades.parquet`, overrides | `ticker_orgs.json`, `companies.json`, `company_names.json`, `sources/sec.json` | 1 s | 1.2 GB |
+| `fec` | `fec/` | FEC bulk files (see its README), `spine.json`, `company_names.json`, overrides | `edges/fec_*.jsonl`, `orgs/fec.jsonl`, `sources/fec.json` | 162 s | 1.9 GB |
+| `edges_trades` | `edges_trades.py` | `trades.parquet`, `ticker_orgs.json`, `companies.json` | `trades_resolved.parquet`, `edges/trades.jsonl`, `orgs/trades.jsonl` | 23 s | 1.5 GB |
+| `edges_committees` | `edges_committees.py` | `committees.json` | `edges/committees.jsonl` | 1 s | |
+| `lda` | `lda/` | LDA API pages (off unless `PT_ENABLE_LDA=1`) | `edges/lda.jsonl`, `orgs/lda.jsonl`, `sources/lda.json` | 0 s | |
+| `holdings` | `holdings/` | HF `ZipLime/congress-trading` (by commit), build files | `web/public/data/holdings/`, `holdings-index.json`, `edges/holdings_owns.jsonl`, `orgs/holdings.jsonl`, `sources/holdings.json`, `holdings_rows.json` | 21-23 s | 1.7 GB |
+| `assemble` | `assemble/` | every plug-in file, `trades_resolved.parquet` | every other file in `web/public/data/` (staging dir, then swap) | 84 s | 4.2 GB |
+| `holdings_publish` | `run.py` | the newly published member files | the holdings files again, with this build's overlaps; `meta.json.reports.holdings` | 21-23 s | |
+| `validate` | `validate.py` | `web/public/data/`, `trades*.parquet` | `validation_sample.csv` | 13 s | |
 
-Hand-reviewed org matches go in `crosswalk/org_overrides.csv` (`source, source_id_or_name, org_id, note, reviewed_by,
-reviewed_on`). `companies.py` applies rows with `source = ticker`, and a row without a reviewer and date is an error.
+Whole run: 322-332 s, peak 4.3 GB (before this review: 294 s, 5.9 GB).
+
+## Code layout
+
+```
+pipeline/
+  run.py              stage list and order; `python -m pipeline.run`
+  config.py           every tunable constant (caps, thresholds, windows, case rule, budget); echoed in meta.json
+  contract.py         contract shapes: TypedDicts (Edge, Evidence, Case, Trade, ...), column lists, edge families
+  util.py             paths, cached HTTP with retry, deterministic JSON, override file, name/ticker normalisation
+  edges.py            range arithmetic (sum_amounts), by_year, evidence ranking, edge ids
+  spine.py trades.py companies.py sic.py edges_trades.py edges_committees.py    core sources and edges
+  fec/                download -> load (parse) -> refs (identities) -> build (rules, edges, orgs) -> run (write, checks)
+  holdings/           source (download) -> run (parse, resolve, emit) -> rules (redaction) -> validate
+  lda/                download -> build (parse) -> match (identities) -> edges -> run (write, checks); off by default
+  assemble/           plugins (load, merge) cases budget orgs wall members publish, run (the orchestrator)
+  validate.py         output checks; holdings/validate.py for holdings
+  crosswalk/org_overrides.csv   hand-reviewed org matches
+  tests/              one test file per module: test_edges, test_trades, test_fec, test_assemble, test_holdings, ...
+```
+
+Every source module has the same shape: **download/cache** (through `util.fetch`: temporary file, rename, retries,
+a `.meta.json` sidecar with sha256 and Last-Modified) -> **parse** (assert row counts) -> **resolve identities**
+(exact ids and exact normalised names only, plus reviewed overrides) -> **emit plug-in files** -> **self-check**.
+
+## Adding a source
+
+1. Create `pipeline/<source>/` (or one module) that downloads through `util.fetch`, parses with explicit column lists
+   and asserts row counts at each join.
+2. Map members by an exact id (bioguide, FEC candidate id) or the strict rules in `lda/match.py`; map orgs by exact
+   ticker, exact `util.normalise_name`, or `util.read_overrides`. Never fuzzy-match.
+3. Build edges with `edges.make_edge` / `by_year` / `top_evidence` and write `edges/<source>.jsonl`,
+   `orgs/<source>.jsonl` (`util.write_jsonl`) and `sources/<source>.json` (`util.write_source_meta`) as in the data
+   dictionary's "Intermediate plug-in format". Every evidence `source` must be a key of your `sources` object.
+4. Add the stage to `STAGES` in `run.py` before `assemble`. The assembler needs no change: it merges every file in
+   `edges/`, `orgs/` and `sources/`, and drops (and counts) edges with unknown endpoints or unlisted sources.
+5. Add thresholds to `config.py`, rules to the data dictionary, tests to `tests/test_<source>.py`, and run
+   `python -m pipeline.run` to 0 validation failures.
+
+## Overrides
+
+`crosswalk/org_overrides.csv` (`source, source_id_or_name, org_id, note, reviewed_by, reviewed_on`) holds matches a
+person checked. `util.read_overrides` is the only reader: rows without `reviewed_by` are ignored (never applied).
+`source` = `ticker` (applied by `companies.py` and, for printed tickers, by `holdings/`), `fec` / `fec_committee` /
+`fec_connected_org` (FEC payers, by committee id or connected-organisation name), `lda_registrant` / `lda_client`.
+
+## Validation
+
+`python -m pipeline.run` ends with `validate.py` (12 million checks: schemas, row counts across joins, evidence and
+endpoints, by_year sums, ledger completeness and caps, the Case rule re-derived from published edges, cross-file
+counts, no beneficiary names in trade text). `python -m pipeline.holdings.validate` checks the holdings files. Both
+exit 1 on any failure. The hand-check samples are written to `pipeline/build/`; the copies in `docs/validation/` are
+filled in by people and are never overwritten (see `docs/validation/README.md`).
+
+## Daily workflow
+
+`.github/workflows/data.yml` runs tests, the whole pipeline and the holdings validator daily (07:41 UTC) and on manual
+dispatch, one run at a time per branch. Any failure (a stage, validation) skips the commit step. It commits only
+`web/public/data/`, and only when a file other than `meta.json` changed. Actions are pinned to commit SHAs; the job
+alone has `contents: write`; secrets are given only to the pipeline step and never printed. Downloads are cached
+between runs, and each source refetches on its own schedule, so the cache never freezes data.
 
 ## Sources and licences
 
@@ -62,6 +148,12 @@ establishing the credit rating of any individual; or (4) directly or indirectly 
 political, charitable, or other purpose. This site is a free, non-commercial public information project and must stay
 that way: no ads, no paid tiers, no fundraising, no credit uses. The pipeline never visits efdsearch.senate.gov and
 never accepts a site's click-through terms; it only reads the published dataset.
+
+**FEC sale-and-use restriction.** Under 52 U.S.C. 30111(a)(4), information copied from FEC reports may not be sold or
+used to solicit contributions or for any commercial purpose (using the name and address of a political committee
+to solicit contributions to it is allowed). The pipeline reads only committee-level files, never the individual
+contributions file (`indiv`), and publishes no individual contributor; the notice is also in
+`meta.json.sources.fec.licence`.
 
 ## Known limitations
 
@@ -84,4 +176,12 @@ never accepts a site's click-through terms; it only reads the published dataset.
   stays in `pipeline/build/`, and totals cover all of them.
 - **Late flag.** `late` compares public availability with the transaction date (more than 45 days). The legal
   deadline runs from the notification date, so a few flagged trades may have been filed on time.
-- **Memory.** Assembly holds every edge in memory: about 4-6 GB with the full FEC plug-in.
+- **Memory.** Assembly holds every edge (without evidence) in memory: about 4.2 GB peak with the full FEC plug-in.
+- **FEC totals are what givers reported.** They can differ from the recipient's own summary (weball) when the
+  recipient amended its reports or never itemised a receipt; see `pipeline/fec/README.md` (Jordan 2020, Cruz 2018 and
+  2022 are worked through there).
+- **Party is the latest term's** in `OrgSummary.split` and `org-index.json` (documented in the contract); per-year
+  party is only in `wall-years.json` terms.
+- **Validation runs after the swap.** `python -m pipeline.run` validates the tree it has just published, so after a
+  failed validation `web/public/data/` holds the failed build until the next run (the daily workflow never commits
+  it). Restore with `git checkout -- web/public/data` locally.

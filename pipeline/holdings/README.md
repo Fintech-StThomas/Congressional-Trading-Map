@@ -10,9 +10,11 @@ pipeline/.venv/bin/python -m pipeline.holdings.validate   # add --no-pdf to skip
 ```
 
 Reads `pipeline/build/{spine,companies,ticker_orgs}.json`, the SEC ticker file in `pipeline/.cache/sec/`, and the
-committed `web/public/data/members/<id>.json` (read-only, for overlaps). Runs **after** `assemble`, which swaps
-`web/public/data/` wholesale and would otherwise delete this stage's output. `HF_HOLDINGS_REVISION` pins the dataset
-commit (default: its current commit, recorded in `sources/holdings.json`).
+published `web/public/data/members/<id>.json` (read-only, for overlaps). `python -m pipeline.run` runs it twice:
+before `assemble` (which merges its `owns` edges and orgs and carries its files over in the swap) and after it as
+`holdings_publish`, so that overlaps are computed against the member files of the same build. The `holdings/` folder
+is written beside the published one and swapped in. `HF_HOLDINGS_REVISION` pins the dataset commit (default: its
+current commit, recorded in `sources/holdings.json`).
 
 | Writes | What |
 |---|---|
@@ -22,7 +24,7 @@ commit (default: its current commit, recorded in `sources/holdings.json`).
 | `pipeline/build/orgs/holdings.jsonl` | `OrgSummary` rows for every org those edges reference |
 | `pipeline/build/sources/holdings.json` | source (revision, files, sha256, row counts) and the full report: exclusions, joins, ticker resolution, redactions, validation |
 | `pipeline/build/holdings_rows.json` | every published asset row, flat, for validation |
-| `docs/validation/holdings-sample.csv` | 25 asset rows (seed 20261113) beside the filing URL, machine-checked against the PDF text |
+| `pipeline/build/holdings-sample.csv` | 25 asset rows (seed 20261113) beside the filing URL, machine-checked against the PDF text (written by `validate`; copied to `docs/validation/` only when no reviewed copy exists) |
 
 ## Source: ZipLime/congress-trading (Hugging Face)
 
@@ -53,6 +55,7 @@ Join holdings and liabilities 1:1 to filings (asserted). Assign each document to
 the filing's district is one that member held in the report year or the next; otherwise a unique exact match on
 surname + state/district + term; otherwise exclude. Per member and report year, require an annual report ("O") and
 use the latest filed document (an amendment if one exists; amendments are full restatements, median row ratio 1.0).
-Drop personal residences, redact street addresses, cut locations to city/state. Resolve printed tickers with the
+Drop personal residences, redact street addresses and beneficiary names (FBO / UTMA / UGMA / UTA accounts often name
+minor children), cut locations to city/state. Resolve printed tickers with the
 `companies.py` rules. Sum ranges (no midpoints), compute the disclosed net worth range, build the latest-year
 portfolio, same-year overlaps with the member's `traded` and `pac_money` edges, and the `owns` plug-in edges.

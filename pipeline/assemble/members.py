@@ -4,7 +4,7 @@
 Coverage rule: one entry per year 2000..this year in which the member held office (a term ending on 3 January does
 not count that year). Trades: n/a before the STOCK Act year; none before the chamber's first filing year in the
 dataset; partial in that first year when it starts after January, in the current year, and in years with a failed
-extraction of one of the member's filings; else full. Money: the weaker level the money plug-ins declare for the
+extraction of one of the member's filings; else full; the weaker level when both chambers were served that year. Money: the weaker level the money plug-ins declare for the
 chamber(s) served, for members with an FEC id; else none.
 """
 from __future__ import annotations
@@ -53,7 +53,9 @@ def trade_coverage(chambers: set[str], year: int, chamber_cov: dict[str, Any], f
             levels.append("partial")
         else:
             levels.append("full")
-    return min(levels, key=LEVELS.index)
+    # why the weaker level: a year served in both chambers is only as complete as its least-covered part
+    # (Markey 2013: House filings for 2013 are absent from the dataset, Senate ones present)
+    return max(levels, key=LEVELS.index)
 
 
 def coverage(m: SpineMember, chamber_cov: dict[str, Any], failed: set[int], money: dict[str, dict[str, str]],

@@ -1,7 +1,9 @@
-"""Member spine from unitedstates/congress-legislators.
+"""Member spine from unitedstates/congress-legislators (data dictionary: "Scope", "MemberSummary").
 
-Writes pipeline/build/spine.json: bioguide -> member record (name, party, terms, committees,
-fec_ids, ...) and pipeline/build/committees.json: committee id -> name, url and roster.
+Reads the four legislators JSON files (refetched daily). Writes pipeline/build/spine.json (bioguide -> name, party,
+terms, current committees, FEC candidate ids), pipeline/build/committees.json (committee id -> name, url, roster) and
+sources/legislators.json. Rule: a person is in scope when any term ends on or after config.MEMBER_CUTOFF; `party`
+and `chamber` are the most recent term's (each term keeps its own); anything but Democrat/Republican is I.
 """
 from __future__ import annotations
 

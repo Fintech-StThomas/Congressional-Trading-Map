@@ -1,6 +1,9 @@
-"""Company master: resolve filed tickers to SEC registrants by exact ticker, never by name.
+"""Company master: resolve filed tickers to SEC registrants by exact ticker, never by name (data dictionary:
+"Identifiers", "Org overrides").
 
-Writes pipeline/build/ticker_orgs.json (ticker as filed -> org id), pipeline/build/companies.json
+Reads SEC company_tickers_exchange.json and the Financial Statement Data Sets (SIC codes), trades.parquet and the
+reviewed `ticker` overrides. A unique exact ticker match is vetoed when no filed description shares a significant
+word with the SEC name (why: symbols get reassigned to other issuers after a trade). Writes pipeline/build/ticker_orgs.json (ticker as filed -> org id), pipeline/build/companies.json
 (org id -> company record with SIC) and pipeline/build/company_names.json (normalised name ->
 org id, unique names only) for other modules (the FEC module matches PAC connected organisations
 against it).

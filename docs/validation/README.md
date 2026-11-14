@@ -1,7 +1,10 @@
 # Trade validation sample
 
-`trade-sample.csv` is a fixed random sample (seed 13107) of 25 trades from the site's data,
-written by `python -m pipeline.validate`, with the original filing's URL beside the parsed fields.
+`trade-sample.csv` is a fixed random sample (seed 13107) of 25 trades from the site's data, with the original
+filing's URL beside the parsed fields. `python -m pipeline.validate` writes the same sample, freshly drawn, to
+`pipeline/build/validation_sample.csv`; the copy here is the one people fill in, and no stage overwrites it.
+`holdings-sample.csv` and `lda-sample.csv` work the same way (written to `pipeline/build/` by
+`python -m pipeline.holdings.validate` and the LDA stage, and copied here only when no copy exists).
 It exists so a person can check the data against the source documents.
 
 ## How to check a row

@@ -1,37 +1,41 @@
 name: Daily data refresh
 
+# Rebuilds web/public/data from the public sources and commits it only when validation passed and some data file
+# other than meta.json changed. See pipeline/README.md ("Daily workflow").
+
 on:
   schedule:
     - cron: "41 7 * * *"   # 07:41 UTC daily, off the top of the hour
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read           # the job below widens this to write; nothing else is granted
 
 concurrency:
   group: data-refresh-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: false  # never kill a run half-way through a commit; queue instead
 
 jobs:
   refresh:
     runs-on: ubuntu-latest
     timeout-minutes: 150
-    env:
-      # Optional secrets: empty when not configured, and the pipeline then uses its defaults.
-      FEC_API_KEY: ${{ secrets.FEC_API_KEY }}
-      LDA_API_KEY: ${{ secrets.LDA_API_KEY }}
-      SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+    permissions:
+      contents: write      # push the data commit
     steps:
-      - uses: actions/checkout@v4
+      # Actions pinned to the commit of the tag in use (tag in the comment), so a moved tag cannot change the job.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.13"
           cache: pip
           cache-dependency-path: pipeline/requirements.txt
 
+      # Downloads are reused across runs. Freshness does not depend on this cache: each source refetches on its own
+      # schedule (legislators, SEC: daily; FEC: daily for the two latest cycles, weekly for older ones; Hugging Face
+      # datasets are addressed by commit). A new key per run saves the refreshed cache; restore takes the latest.
       - name: Restore download cache
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: pipeline/.cache
           key: pipeline-cache-${{ github.run_id }}
@@ -41,10 +45,21 @@ jobs:
         run: pip install -r pipeline/requirements.txt
 
       - name: Unit tests
+        timeout-minutes: 10
         run: python -m pytest -q pipeline/tests
 
+      # Exits non-zero when any stage fails or validation finds a failure; every later step is then skipped, so a
+      # build that failed validation is never committed. Secrets are passed to this step only and never printed.
       - name: Run pipeline (all stages, then validation)
+        timeout-minutes: 120
+        env:
+          LDA_API_KEY: ${{ secrets.LDA_API_KEY }}       # used only when PT_ENABLE_LDA=1 (off)
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
         run: python -m pipeline.run
+
+      - name: Validate holdings
+        timeout-minutes: 10
+        run: python -m pipeline.holdings.validate --no-pdf
 
       - name: Commit data only if file contents changed
         run: |
@@ -56,5 +71,5 @@ jobs:
           fi
           git -c user.name="github-actions[bot]" \
               -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-              commit -m "Data refresh $(date -u +%Y-%m-%d)"
+              commit -m "Data refresh $(date -u +%Y-%m-%d)" -- web/public/data
           git push origin "HEAD:${GITHUB_REF_NAME}"

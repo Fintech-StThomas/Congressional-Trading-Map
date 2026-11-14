@@ -8,7 +8,7 @@ from typing import Callable
 
 from . import assemble, companies, edges_committees, edges_trades, spine, trades, validate
 from .holdings import run as holdings
-from .util import OUT, SOURCES_DIR, read_json, write_json
+from .util import EDGES_DIR, ORGS_DIR, OUT, SOURCES_DIR, read_json, write_json
 
 
 def fec() -> None:
@@ -25,6 +25,11 @@ def lda() -> None:
     if os.environ.get("PT_ENABLE_LDA") != "1":
         # Off by default: lobbying ties are not published until their attribution has been reviewed and the
         # assembler has been run and validated with them. Set PT_ENABLE_LDA=1 to turn the stage on.
+        # The assembler merges every plug-in file it finds, so "off" must also mean no lobbying files left over.
+        for stale in (EDGES_DIR / "lda.jsonl", ORGS_DIR / "lda.jsonl", SOURCES_DIR / "lda.json"):
+            if stale.exists():
+                stale.unlink()
+                print(f"  lda: removed {stale.name} left by an earlier enabled run")
         print("  lda: skipped (set PT_ENABLE_LDA=1 to enable)")
         return
     from .lda import download as lda_dl, run as lda_run

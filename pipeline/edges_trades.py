@@ -1,5 +1,11 @@
-"""`traded` (member -> org) and `traded_together` (member <-> member) edges from trades.
+"""`traded` (member -> org) and `traded_together` (member <-> member) edges from trades (data dictionary:
+"Rules the pipeline must keep", "traded_together rule"; thresholds in config.py).
 
+traded: one edge per member and org summing every current trade (ranges kept apart, missing stays null), weak when a
+trade lacks a date or a closed range. traded_together: same org, same direction, within WINDOW_DAYS, tested
+against a seeded permutation baseline. Note on the keep rule: `(tickers >= MIN_TICKERS or observed >=
+MIN_OCCASIONS) and observed >= MIN_OBSERVED` reduces to `observed >= 5` while MIN_OCCASIONS == MIN_OBSERVED, so
+the ticker clause only decides `weak`, not whether an edge is drawn (as the contract states the rule).
 Writes pipeline/build/trades_resolved.parquet (trades with org ids), pipeline/build/edges/trades.jsonl
 and pipeline/build/orgs/trades.jsonl.
 """

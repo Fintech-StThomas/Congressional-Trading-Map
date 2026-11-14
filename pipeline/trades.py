@@ -1,8 +1,10 @@
-"""Trades from the Hugging Face dataset austin-starks/congressional-stock-trades.
+"""Trades from the Hugging Face dataset austin-starks/congressional-stock-trades (data dictionary: "Trade").
 
-Pins the dataset revision, verifies each parquet file against snapshot.json, keeps the current
-version of every trade event, maps raw values to the contract enums with explicit tables, and
-writes pipeline/build/trades.parquet (one row per current event, org not yet resolved).
+Steps: pin the dataset revision (HF_REVISION or its current commit) -> download parquet files (content-addressed,
+verified against snapshot.json) -> keep the current version of every event (`supersededAt` null; `amended` when
+there were several) -> map raw values to contract enums with explicit tables (never guessing an owner) -> write
+pipeline/build/trades.parquet (one row per current event, org not yet resolved) and sources/hf_trades.json.
+Dates: availableAt is a UTC instant, converted to the Eastern calendar date; `late` = lag > config.LATE_DAYS.
 """
 from __future__ import annotations
 
