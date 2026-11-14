@@ -343,11 +343,44 @@ test("a case built on a disclosed holding does not say the household traded", as
   const i = cases.findIndex((c) => !c.types.includes("traded"));
   if (i < 0) return;
   const p = await page();
-  await p.goto(base + "/cases");
-  const row = p.locator(".caserow").nth(i);
+  const n = Math.floor(i / 50) + 1;
+  await p.goto(base + (n > 1 ? `/cases/page/${n}` : "/cases"));
+  const row = p.locator(".caserow").nth(i % 50);
   const what = await row.locator(".caserow__what").innerText();
   assert.match(what, /held the stock/);
   assert.doesNotMatch(what, /traded/);
+  await p.close();
+});
+
+test("cases come 50 to a page, with a count, a pager and filters that keep each page small", async () => {
+  const cases = await (await fetch(`${base}/data/cases.json`)).json();
+  if (cases.length <= 50) return;
+  const p = await page();
+  await p.goto(base + "/cases/page/2");
+  assert.equal(await p.locator(".caserow").count(), Math.min(50, cases.length - 50));
+  assert.match(await p.getByTestId("case-count").innerText(), new RegExp(`Cases 51–${Math.min(100, cases.length)} of ${cases.length.toLocaleString("en-US")}`));
+  assert.equal((await p.locator(".caserow__rank").first().innerText()).trim(), "51");
+  await p.getByTestId("case-pager").getByRole("link", { name: "Next →" }).click();
+  await p.waitForURL(/\/cases\/page\/3$/);
+  await p.getByTestId("case-filters").getByRole("link", { name: /^Senate/ }).click();
+  await p.waitForURL(/\/cases\/chamber\/senate$/);
+  const seats = await p.locator(".caserow__sub").allInnerTexts();
+  assert.ok(seats.length > 0 && seats.every((t) => /Senator|Senate|Sen\./i.test(t)), "senate filter shows senators only");
+  const html = await (await fetch(`${base}/cases`)).text();
+  assert.ok(html.length < 1_000_000, `page 1 is ${html.length} bytes`);
+  await p.close();
+});
+
+test("every page links to a prefilled correction issue", async () => {
+  const p = await page();
+  await p.goto(base + "/method");
+  const href = await p.locator("footer.site-footer [data-testid=correction-link]").getAttribute("href");
+  const u = new URL(href);
+  assert.equal(u.pathname, "/Fintech-StThomas/Congressional-Trading-Map/issues/new");
+  assert.equal(u.searchParams.get("labels"), "correction");
+  assert.match(u.searchParams.get("body"), /Page: .*\/method/);
+  assert.match(u.searchParams.get("body"), /Data build: /);
+  assert.ok(await p.locator("#corrections-h").isVisible());
   await p.close();
 });
 

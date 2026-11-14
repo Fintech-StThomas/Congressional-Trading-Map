@@ -52,8 +52,8 @@ function FlatCounts({ obj }: { obj: Record<string, unknown> }) {
   );
 }
 
-export default function MethodPage() {
-  const meta = getMeta();
+export default async function MethodPage() {
+  const meta = await getMeta();
   const built = metaBuilt(meta);
   const sources = metaSources(meta);
   const exclusions = meta.exclusions;

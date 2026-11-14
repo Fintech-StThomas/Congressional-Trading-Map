@@ -9,10 +9,10 @@ import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 // shell, filled in the browser from the organisation's shard.
 export const metadata: Metadata = { title: "Organisation" };
 
-export default function OrgPage() {
+export default async function OrgPage() {
   return (
     <ErrorBoundary label="organisation page">
-      <OrgView sources={sourceNames(getMeta())} />
+      <OrgView sources={sourceNames(await getMeta())} />
     </ErrorBoundary>
   );
 }

@@ -3,14 +3,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { IS_SAMPLE, getHoldings, getMemberFile, getMemberIndex, getMembers, getMeta, getOrgIndex, getTradeFile, metaBuilt, orgNodesOf } from "@/lib/data/server";
+import { IS_REMOTE, IS_SAMPLE, getHoldings, getMemberFile, getMemberIndex, getMembers, getMeta, getOrgIndex, getTradeFile, metaBuilt, orgNodesOf } from "@/lib/data/server";
 import { decodeLedger, decodeTradeFile, ledgerTotals } from "@/lib/data/decode";
 import { sortEdges, TYPE_LABEL } from "@/lib/domain/edges";
 import { count, date, money, PARTY_NAMES, plural, seat, served, stateName, yearRange } from "@/lib/format";
 import { boardHref, dataUrl } from "@/lib/urls";
 import { toBoardMember, type NameBook } from "@/lib/domain/names";
 import { caseMinTypes, metaSources, sourceNames } from "@/lib/data/meta";
-import { CASE_NOT_SHOWN, caseRuleText, SITE } from "@/lib/copy";
+import { CASE_NOT_SHOWN, CORRECTIONS, caseRuleText, SITE } from "@/lib/copy";
 import type { Edge, OrgSummary } from "@/lib/types";
 import { Print, PartyTag } from "@/components/shared/Print";
 import { TieSection } from "@/components/member/TieSection";
@@ -24,17 +24,21 @@ import { ownTradeCount } from "@/lib/domain/assume";
 import "@/styles/casefile.css";
 import { HoldingsSection } from "@/components/member/HoldingsSection";
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
+import { CorrectionLink } from "@/components/shared/CorrectionLink";
 import { AssumeCase, AssumeCount, AssumptionProvider, PageAssumptionBar } from "@/components/shared/Assume";
 
-export const dynamicParams = false;
+// Local data: every member is prerendered and unknown ids are 404s. Remote data (DATA_BASE_URL): none
+// is prerendered; each page renders on first request and is revalidated with the data (ISR).
+export const dynamicParams = IS_REMOTE;
 
-export function generateStaticParams() {
-  return getMembers().map((m) => ({ id: m.id }));
+export async function generateStaticParams() {
+  if (IS_REMOTE) return [];
+  return (await getMembers()).map((m) => ({ id: m.id }));
 }
 
 export async function generateMetadata({ params }: PageProps<"/m/[id]">): Promise<Metadata> {
   const { id } = await params;
-  const m = getMemberIndex().get(id);
+  const m = (await getMemberIndex()).get(id);
   if (!m) return {};
   return {
     title: `${m.name}: case file`,
@@ -46,18 +50,18 @@ const EDGE_CAP = 80;
 
 export default async function MemberPage({ params }: PageProps<"/m/[id]">) {
   const { id } = await params;
-  const file = getMemberFile(id);
+  const file = await getMemberFile(id);
   if (!file) notFound();
   const m = file.member;
-  const meta = getMeta();
-  const orgIndex = getOrgIndex();
-  const memberIndex = getMemberIndex();
+  const [meta, orgIndex, memberIndex, tradeFile, holdings] = await Promise.all([
+    getMeta(), getOrgIndex(), getMemberIndex(), (file.trade_summary?.count ?? 0) > 0 ? getTradeFile(file.member.id) : null, getHoldings(file.member.id),
+  ]);
   const sources = sourceNames(meta);
   const minTypes = caseMinTypes(meta);
 
   // Names for every node the page can show, slimmed to what the tables print.
   const book: NameBook = { members: {}, orgs: {} };
-  const fileOrgs = orgNodesOf(file);
+  const fileOrgs = orgNodesOf(file, orgIndex);
   const slimOrg = (id: string): OrgSummary | null => {
     if (fileOrgs[id]) return fileOrgs[id];
     const o = orgIndex.get(id);
@@ -96,7 +100,7 @@ export default async function MemberPage({ params }: PageProps<"/m/[id]">) {
 
   const ts = file.trade_summary;
   const nTrades = ts?.count ?? 0;
-  const initialTrades = nTrades ? decodeTradeFile(getTradeFile(m.id), 60) : [];
+  const initialTrades = nTrades ? decodeTradeFile(tradeFile, 60) : [];
   const tradeByYear: Record<number, number> = {};
   for (const [y, n] of Object.entries(ts?.by_year ?? {})) if (/^\d{4}$/.test(y)) tradeByYear[Number(y)] = n;
   const moneyByYear: Record<number, number> = {};
@@ -237,7 +241,7 @@ export default async function MemberPage({ params }: PageProps<"/m/[id]">) {
         <Timeline tradeByYear={tradeByYear} moneyByYear={moneyByYear} coverage={file.coverage} served={m.served} />
       </section>
 
-      <HoldingsSection h={getHoldings(m.id)} everHouse={m.terms.some((t) => t.chamber === "rep")} memberId={m.id} />
+      <HoldingsSection h={holdings} everHouse={m.terms.some((t) => t.chamber === "rep")} memberId={m.id} />
 
       <section className="section" aria-labelledby="trades-h">
         <h2 id="trades-h">Trades reported by this member&rsquo;s household</h2>
@@ -272,6 +276,9 @@ export default async function MemberPage({ params }: PageProps<"/m/[id]">) {
           <Link href={`/m/${m.id}/records`} className="no-print">Open the full file</Link>
           <span className="print-only">The full file (every record, unfiltered): /m/{m.id}/records</span>
           <span className="sub"> · every record held for this member, unfiltered, with CSV downloads</span>
+        </p>
+        <p className="no-print">
+          <CorrectionLink what={`${m.name} (${m.id})`} details={[`Member: ${m.name} (bioguide ${m.id})`]} /> <span className="sub">· {CORRECTIONS.note} Members and their offices can reply the same way.</span>
         </p>
         <p className="mono">
           {SITE.name} · member {m.id}

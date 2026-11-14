@@ -255,7 +255,7 @@ def _audit_tables(con, report: dict) -> None:
         for cy, c, nm, f, t, pn, d, a, et, img in big]
     print(f"\nfunds rows over $10,000 from one committee in one transaction (kept, listed for review): {len(big)}")
     for r in report["review_large_funds_rows"][:12]:
-        print(f"  {r['date']} {r['committee']} {r['committee_name'][:34]:34} -> {r['to']} payee={r['payee_as_filed'][:30]!s:30} "
+        print(f"  {r['date']} {r['committee']} {r['committee_name'][:34]:34} -> {r['to']} payee={(r['payee_as_filed'] or '(not named)')[:30]!s:30} "
               f"${r['amount']:,.0f}")
     table("earmarked contributions forwarded by conduits (excluded), top 15", ("committee", "name", "rows", "dollars"),
           [(c, (nm or "")[:60], n, float(s)) for c, nm, n, s in earm])

@@ -15,6 +15,7 @@ pipeline/.venv/bin/python -m pipeline.run --stage assemble   # one stage (repeat
 pipeline/.venv/bin/python -m pipeline.validate               # validation only; exits 1 on failure
 pipeline/.venv/bin/python -m pipeline.holdings.validate      # holdings checks (--no-pdf skips the PDF text check)
 pipeline/.venv/bin/python -m pytest -q pipeline/tests        # unit tests
+pipeline/.venv/bin/python -m pipeline.publish_r2 --verify    # upload web/public/data to R2 (skips without R2_* vars)
 ```
 
 Run from the repository root. Downloads are cached in `pipeline/.cache/`; intermediate files go to `pipeline/build/`
@@ -85,6 +86,7 @@ pipeline/
   lda/                download -> build (parse) -> match (identities) -> edges -> run (write, checks); off by default
   assemble/           plugins (load, merge) cases budget orgs wall members publish, run (the orchestrator)
   validate.py         output checks; holdings/validate.py for holdings
+  publish_r2.py       upload web/public/data to Cloudflare R2 (changed files only); run by the daily workflow
   crosswalk/org_overrides.csv   hand-reviewed org matches
   tests/              one test file per module: test_edges, test_trades, test_fec, test_assemble, test_holdings, ...
 ```
@@ -126,9 +128,47 @@ filled in by people and are never overwritten (see `docs/validation/README.md`).
 
 `.github/workflows/data.yml` runs tests, the whole pipeline and the holdings validator daily (07:41 UTC) and on manual
 dispatch, one run at a time per branch. Any failure (a stage, validation) skips the commit step. It commits only
-`web/public/data/`, and only when a file other than `meta.json` changed. Actions are pinned to commit SHAs; the job
-alone has `contents: write`; secrets are given only to the pipeline step and never printed. Downloads are cached
-between runs, and each source refetches on its own schedule, so the cache never freezes data.
+`web/public/data/`, and only when a file other than `meta.json` changed. Then it publishes the same tree to R2 (below).
+Actions are pinned to commit SHAs; the job alone has `contents: write`; each secret is given only to the step that
+needs it (the pipeline step: `LDA_API_KEY`, `SEC_USER_AGENT`; the publish step: the `R2_*` secrets) and never printed.
+Downloads are cached between runs, and each source refetches on its own schedule, so the cache never freezes data.
+
+Manual dispatch has one input, `publish_only` (boolean, default off): it skips the cache, pipeline, holdings
+validation and commit, and uploads the committed `web/public/data/` to R2 (Actions tab -> "Daily data refresh" ->
+"Run workflow" -> tick `publish_only`; or `gh workflow run data.yml -f publish_only=true`). Use it for the first
+upload and to re-sync the bucket by hand.
+
+## Publishing to R2
+
+First stage of moving generated data out of git: the site still reads `web/public/data/` from the repository, and the
+workflow still commits it. `pipeline/publish_r2.py` uploads the tree to Cloudflare R2 through the S3-compatible API
+(boto3, region `auto`, endpoint `https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com`) under the key prefix `data/`, so
+`web/public/data/members/A000001.json` becomes `<R2_PUBLIC_URL>/data/members/A000001.json`.
+
+| GitHub secret | Use |
+|---|---|
+| `R2_ACCOUNT_ID` | Cloudflare account id (only in the endpoint host) |
+| `R2_BUCKET` | bucket name |
+| `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | an R2 API token with object read and write on that bucket |
+| `R2_PUBLIC_URL` | public base URL of the bucket (custom domain or r2.dev), used only to verify the upload |
+
+Without the first four the script prints "R2 upload skipped" and exits 0 (local runs, forks). What it does:
+
+1. Hashes every file (path -> SHA-256) and reads the previous manifest `data/_manifest.json`
+   (`{build_time, prefix, files: {path: sha256}}`); when it is missing or unreadable, every file is uploaded.
+2. Uploads only files whose hash changed (16 at a time, each retried on network errors, 429 and 5xx), as plain JSON
+   with `Content-Type: application/json` and `Cache-Control: public, max-age=300, stale-while-revalidate=86400` (the
+   same URLs are overwritten daily). No gzip and no Content-Encoding: plain JSON objects (Cloudflare can compress
+   responses on a custom domain; that is not relied on).
+3. Uploads `meta.json` after every other data file, then the new manifest. Readers can treat `meta.json`'s
+   `build.time` as the switch: when it changes, every file of that build is in place.
+4. Only after all of that succeeded, deletes objects under `data/` that are not in the build (refusing to delete more
+   than half the bucket in one run unless `--allow-mass-delete`).
+5. With `--verify`, fetches `<R2_PUBLIC_URL>/data/meta.json` (cache-busting query) and compares the build time.
+
+Any failed upload exits 1 before `meta.json`, the manifest and deletions, so the bucket keeps the previous manifest
+and `meta.json`; files that did upload are sent again next run because the old manifest still lists their old hashes.
+The script never prints secrets or the endpoint. Tests: `pipeline/tests/test_publish_r2.py` (moto's fake S3).
 
 ## Sources and licences
 

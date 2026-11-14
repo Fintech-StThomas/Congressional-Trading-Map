@@ -4,6 +4,7 @@
 //   public/data/members.json exists  -> real data, served from /data
 //   otherwise                        -> fixtures, copied to public/sample-data
 //                                       and served from /sample-data
+//   DATA_BASE_URL set                -> remote mode: nothing copied, nothing read
 //
 // The site never writes to public/data (the pipeline owns it).
 // next.config.ts makes the same check and exposes the result to the client.
@@ -28,7 +29,15 @@ function isRealDataBuild() {
   }
 }
 
-if (isRealDataBuild()) {
+// Remote mode (DATA_BASE_URL set, see src/lib/data/remote.ts): the data is fetched from that URL by the
+// server and proxied for the browser, so nothing is copied or read here; public/data, if present, is
+// left alone and is not used (next.config.ts puts the /data rewrite ahead of public files).
+const remote = (process.env.DATA_BASE_URL ?? "").trim();
+
+if (remote) {
+  rmSync(sampleOut, { recursive: true, force: true });
+  console.log(`[data] remote mode: data from DATA_BASE_URL=${remote}; public/data is not read or served`);
+} else if (isRealDataBuild()) {
   rmSync(sampleOut, { recursive: true, force: true });
   console.log("[data] using real data from public/data");
 } else {

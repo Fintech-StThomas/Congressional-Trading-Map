@@ -112,6 +112,27 @@ export function caseRuleText(minTypes = 2): string {
   return `A case is a member and an organisation tied by at least ${n} kinds of filed record in the same years: a holding (the household traded or held its stock) and money or people (such as its PAC giving the member money).`;
 }
 
+/** The /cases list: filters, count and pager. */
+export const CASES_COPY = {
+  filterLabel: "Filter cases",
+  ties: "Ties",
+  chamber: "Chamber",
+  party: "Party",
+  any: "Any",
+  both: "Both",
+  clear: "Clear filters",
+  none: "No case matches these filters.",
+  range: (first: number, last: number, total: number) =>
+    `Cases ${first.toLocaleString("en-US")}–${last.toLocaleString("en-US")} of ${total.toLocaleString("en-US")}.`,
+  rankNote: "Numbers are each case’s rank among all cases.",
+  pagerLabel: "Pages of cases",
+  prev: "← Previous",
+  next: "Next →",
+  pageLabel: (n: number) => `Page ${n}`,
+  jump: "Go to page",
+  of: (n: number) => `of ${n.toLocaleString("en-US")}`,
+} as const;
+
 /** The Legend line and the board's card label for a Case tag. */
 export const CASE_TAG_TEXT = "the household traded or held the company’s stock and the member received money from it in the same years";
 

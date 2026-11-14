@@ -3,7 +3,7 @@ import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import { Public_Sans, JetBrains_Mono, Courier_Prime } from "next/font/google";
 import { SITE } from "@/lib/copy";
-import { IS_SAMPLE, getMeta, metaBuilt } from "@/lib/data/server";
+import { IS_SAMPLE, getMetaForLayout, metaBuilt } from "@/lib/data/server";
 import { date } from "@/lib/format";
 import { SearchBox } from "@/components/shared/SearchBox";
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
@@ -35,8 +35,8 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
-  const built = metaBuilt(getMeta());
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const built = metaBuilt(await getMetaForLayout());
   return (
     <html lang="en" className={`${sans.variable} ${mono.variable} ${type.variable}`}>
       <body className={IS_SAMPLE ? "is-sample" : undefined}>
