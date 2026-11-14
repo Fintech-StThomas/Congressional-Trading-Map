@@ -95,7 +95,8 @@ _NOT_PERSON = {
     "CORP", "CO", "COMPANY", "CHASE", "CITI", "CITIBANK", "UBS", "PERSHING", "JANNEY", "BAIRD", "STIFEL", "NUVEEN",
     "INVESCO", "PIMCO", "BLACKROCK", "ISHARES", "SPDR", "PLC", "LTD", "LP", "HOLDINGS", "PARTNERS", "MANAGEMENT",
     "ADVISORS", "WEALTH", "ASSET", "ASSETS", "OF", "AND", "THE", "FOR", "DC", "SPOUSE", "SELF", "UNIFORM", "GIFT", "GIFTS",
-    "TRANSFER", "TRANSFERS", "TO", "MINORS", "MINOR", "ACT"}
+    "TRANSFER", "TRANSFERS", "TO", "MINORS", "MINOR", "ACT", "SVGS", "SAV", "PRGM", "PROGRAM", "PGM",
+    "CLASS", "OPTION", "AGE", "BASED", "SEP", "SIMPLE", "TRAD", "TRADITIONAL", "ROLLOVER", "BROKERAGE"}
 _RUN = re.compile(r"\b[A-Z][A-Za-z'\-]*\.?(?:\s+[A-Z][A-Za-z'\-]*\.?){1,3}")
 
 
@@ -139,11 +140,16 @@ def redact_beneficiary(text: str | None, owner: str | None = None) -> tuple[str 
     rule = minor_rule(text, owner)
     if not text or rule is None:
         return text, None
-    out = B2.sub(NAME_REDACTED, B1.sub(_b1, text))
-    if rule == "dependent":
-        parts = out.split("⇒")
-        if len(parts) > 1:
-            out = "⇒".join([_person_runs(p) for p in parts[:-1]] + [parts[-1]])
+    out = text
+    for _ in range(4):                       # to a fixed point, so a second pass over published text finds nothing
+        prev = out
+        out = B2.sub(NAME_REDACTED, B1.sub(_b1, out))
+        if rule == "dependent":
+            parts = out.split("⇒")
+            if len(parts) > 1:
+                out = "⇒".join([_person_runs(p) for p in parts[:-1]] + [parts[-1]])
+        if out == prev:
+            break
     return (out, rule) if out != text else (text, None)
 
 
