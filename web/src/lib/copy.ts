@@ -8,11 +8,62 @@ export const SITE = {
   tagline: "Talk is cheap. Follow the money.",
   description:
     "A map of every member of Congress and the organisations and colleagues they are tied to by filed public records: stock trades, PAC money, outside spending, member-to-member money and committee seats. Every string shows its records.",
-  // Placeholder: replace with a monitored address before launch.
-  correctionsEmail: "corrections@example.org",
   /** The live site, for plain URLs printed on paper and as the metadata base outside Vercel. */
   url: "https://red-paper-trail.vercel.app",
   disclaimer: "A tie is not a finding. This shows what the filings say, not why.",
+} as const;
+
+// ---------------------------------------------------------------- corrections
+// Corrections go through the public issue tracker: every report and its outcome is in the open.
+
+export const CORRECTIONS = {
+  /** The public repository whose issues are the corrections log. */
+  repo: "https://github.com/Fintech-StThomas/Congressional-Trading-Map",
+  /** The label every correction report carries; the filtered issue list is the public log. */
+  label: "correction",
+  /** Footer, member page, full file. */
+  link: "Report a correction",
+  /** The evidence drawer. */
+  recordLink: "Something wrong with this record?",
+  /** Shown next to the link where there is room. */
+  note: "Opens a public issue on GitHub, prefilled with this page. A free GitHub account is needed.",
+  /** Issue title: "Correction: <what>". */
+  title: (what: string) => `Correction: ${what}`,
+  /** The prefilled body: what the site knows, then three prompts for the reader. */
+  body: (lines: { page: string; built: string | null; details?: string[] }) =>
+    [
+      `Page: ${lines.page}`,
+      `Data build: ${lines.built ?? "unknown"}`,
+      ...(lines.details ?? []),
+      "",
+      "### What is wrong",
+      "<!-- What does the site show that the filing does not say? A wrong match of a company, PAC or person? A missing record? -->",
+      "",
+      "### What the filing says",
+      "",
+      "",
+      "### Link to the filing",
+      "<!-- The official record (FEC, House Clerk, Senate eFD), if you have it. -->",
+      "",
+      "<!-- Reports are public. Please do not include personal contact details beyond what you are happy to publish. -->",
+    ].join("\n"),
+} as const;
+
+/** The Corrections policy on /method, one paragraph per entry. */
+export const CORRECTIONS_POLICY = {
+  heading: "Corrections policy",
+  counts:
+    "A correction is due when this site shows something the filing does not say, when it matches a record to the wrong company, PAC or person, or when a filed record is missing. A tie we draw correctly from a filing that is itself wrong is not something we can fix: only the filer can amend a filing, with the House Clerk, the Senate or the FEC. When a filer amends, the next build picks up the amended version.",
+  how:
+    "Report a correction through the public issue tracker. The link at the foot of every page, on each member page, in the full file and in every evidence drawer opens a new issue already filled in with the page you were on and the data build; add what is wrong, what the filing says and a link to it if you have one.",
+  reply:
+    "Members of Congress and their offices can use the same route to reply to anything shown about them. We treat their reports exactly like anyone else’s: against the filings.",
+  response:
+    "We read every report. We check it against the filing and say on the issue what we found and what, if anything, changed. We do not promise a turnaround time.",
+  where:
+    "Corrections are made in the data pipeline, never by hand on a page, so the same fix reaches every page that shows the record. They take effect at the next daily build.",
+  log: "The list of reports is the public corrections log:",
+  logLink: "every issue labelled correction",
 } as const;
 
 /** 5 U.S.C. 13107(c), quoted on the full file, the printed case file and in downloads. */

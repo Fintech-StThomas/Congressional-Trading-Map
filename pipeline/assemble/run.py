@@ -20,7 +20,7 @@ from ..util import BUILD, PORTRAITS, print_table, read_json, utc_now, write_json
 from .budget import ledger_totals, member_end, member_ledger, org_ties, split_member_edges
 from .cases import find_cases
 from .members import board_order, coverage, node_info, trade_row, trade_summary
-from .orgs import org_index, party_split, shard
+from .orgs import SplitStats, org_index, party_split, shard
 from .plugins import attach_evidence, load_edges, load_orgs, load_sources
 from .publish import git_commit, staging_dir, swap_into_place
 from .wall import wall_rows, wall_years
@@ -56,10 +56,11 @@ def run() -> None:
     for e in edges:
         for end in {e["from"]["id"]: e["from"], e["to"]["id"]: e["to"]}.values():
             (member_edges if end["kind"] == "member" else org_edges)[end["id"]].append(e)
-    party = {mid: m["party"] for mid, m in spine.items()}
+    split_stats = SplitStats()
     used_orgs = {o: {**orgs[o], "degree": len({end["id"] for e in es for end in (e["from"], e["to"]) if end["kind"] == "member"}),
-                     "split": party_split(es, party)}
+                     "split": party_split(es, spine, split_stats)}
                  for o, es in sorted(org_edges.items())}
+    split_report = party_split_report(split_stats, spine)
     cases = find_cases(edges)
     case_edges = {eid for c in cases for eid in c["edges"]}
     member_cases: dict[str, list[Case]] = defaultdict(list)
@@ -149,7 +150,7 @@ def run() -> None:
             "edges_dropped_at_assembly": edge_report["edges_dropped"],
         },
         "exclusions": trades_report.get("exclusions", {}),
-        "assembly": {**edge_report, "org_files": org_files},
+        "assembly": {**edge_report, "org_files": org_files, "party_split": split_report},
         "coverage_notes": [
             f"House trades: the dataset's House filings begin {trades_report['coverage']['rep']['first_filing']}; "
             "earlier House years are marked none (a few late-filed earlier trades still appear).",
@@ -175,6 +176,22 @@ def run() -> None:
     write_json(staging / "meta.json", meta)
     swap_into_place(staging)
     report(sizes, edge_types, edge_report, full_ids, full_types, ledger_stats, len(used_orgs), len(cases), len(current))
+
+
+def party_split_report(st: SplitStats, spine: dict[str, Any]) -> dict[str, Any]:
+    """meta.json.assembly.party_split: how often a tie-year fell outside every term, and how many dollars the
+    party-at-the-time rule counts under a party other than the member's latest one. The per-member list goes to
+    pipeline/build/party_split_moves.json (not published)."""
+    moved = sorted(((mid, a, b, round(v, 2)) for (mid, a, b), v in st.moved.items() if v), key=lambda r: (-r[3], r[0]))
+    write_json(BUILD / "party_split_moves.json", [{"member": mid, "name": spine[mid]["name"], "latest": a, "counted": b,
+                                                   "dollars": v} for mid, a, b, v in moved])
+    out = {"rule": "each tie's by_year amounts count under the party of the member's term in that year",
+           "tie_years_outside_terms": st.out_of_term_years, "edges_with_years_outside_terms": len(st.out_of_term_edges),
+           "dollars_outside_terms": round(st.out_of_term_dollars, 2),
+           "members_with_dollars_under_another_party": len({r[0] for r in moved}),
+           "dollars_under_another_party": round(sum(r[3] for r in moved), 2)}
+    print(f"party split: {out}")
+    return out
 
 
 def report(sizes: dict[str, int], edge_types: Counter[str], edge_report: dict[str, Any], full_ids: set[str],

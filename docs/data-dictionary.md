@@ -284,7 +284,8 @@ type WallYears = {            // wall-years.json, rows sorted by id, one per row
 type OrgIndex = {             // org-index.json
   cols: ["id", "name", "kind", "ticker", "members_D", "members_I", "members_R", "dollars_D", "dollars_I", "dollars_R", "degree"];
   rows: unknown[][];          // sorted by id; members_* = distinct CURRENT members with a pac_money or outside_spending
-                              // tie, by party; dollars_* = pac_money dollars to current members, by party; degree as OrgSummary
+                              // tie, by party at the time of the tie; dollars_* = pac_money dollars to current members,
+                              // by party at the time; degree as OrgSummary (see "Party split")
   by_members: number[];       // row indexes, top 300 by members (then dollars, then id)
   by_dollars: number[];       // row indexes, top 300 by dollars > 0 (then members, then id)
 };
@@ -317,7 +318,12 @@ type Meta = {
   exclusions: { [what: string]: { rows: number; reason: string; filings?: unknown[][]; members?: string[] } }; // trades
   assembly: { edges_read: { [file: string]: number }; edges_after_merge: number;
               edges_dropped: { [reason: string]: number }; edges_dropped_examples: { [reason: string]: string[] };
-              org_files: string[] };
+              org_files: string[];
+              // "Party split": tie-years outside every term (counted under the nearest term), and dollars counted
+              // under a party other than the member's latest one
+              party_split: { rule: string; tie_years_outside_terms: number; edges_with_years_outside_terms: number;
+                             dollars_outside_terms: number; members_with_dollars_under_another_party: number;
+                             dollars_under_another_party: number } };
   coverage_notes: string[];
   files: { count: number; bytes: number; largest: { [path: string]: number } }; // assembled files (holdings excluded)
 };
@@ -341,10 +347,22 @@ computed from **every** tie between the org and a member, full edges and ledger 
   against the member);
 - `traded`: `traded` ties (the member's household traded the org's stock); member counts only, dollars null.
 
-Members are counted once per measure. Each member is counted under the party of their `MemberSummary` (most recent
-term), so a member who switched party is counted under the later party for all years. Dollars sum each tie's
-`amount.exact`, else `high`, else `low` (FEC money is always exact). The validator checks that the dollars equal the
-org's listed ties plus `ledger_totals`, and that the members equal the listed ties by party where every tie is listed.
+Each tie counts under the member's party **at the time of the tie**, not their latest party: the tie's `by_year`
+amounts (each year's `exact`, else `high`, else `low`; any remainder against the tie's size goes to its latest year,
+and a tie without `by_year` counts in the year of `last`) are split by the party of the member's term in that year.
+
+- A year inside a term follows the coverage rule (a term ending on 3 January does not count that year). When two terms
+  in different parties share a year, the term covering more days of it wins; equal days go to the later term.
+- A year outside every term (money to a challenger before taking office, a former member's leftover committee) goes
+  to the nearest term in time (equal distance: the later term). How often this happens is reported in
+  `meta.json.assembly.party_split`.
+- A member is counted once per measure **per party they were tied under**: a party switcher with ties on both sides
+  of the switch counts under both parties, so the member counts can sum to more than the distinct members.
+
+Dollars sum each tie's `amount.exact`, else `high`, else `low` (FEC money is always exact). `org-index.json` applies
+the same rule to current members. The validator checks that the dollars equal the org's listed ties plus
+`ledger_totals`, and, where every tie of a type is listed, that each party's members and dollars lie between the ties
+whose whole span (first to last year) falls in that party and the ties whose span touches it.
 
 ### Coverage
 

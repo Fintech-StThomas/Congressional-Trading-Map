@@ -269,7 +269,7 @@ test("member page links to the full file and assumption switches recompute cases
   await p.goto(base + "/m/K000389");
   assert.ok(await p.getByRole("link", { name: "Open the full file" }).count());
   await p.locator(".assume summary").first().click();
-  await p.getByRole("switch", { name: "Member’s own trades only" }).click();
+  await p.getByRole("switch", { name: "Member’s own and jointly owned trades only" }).click();
   await p.waitForFunction(() => /of .* trades count/.test(document.querySelector("[data-testid=assume-line]")?.textContent ?? ""), null, { timeout: 60000 });
   assert.match(new URL(p.url()).search, /as=own/);
   await p.close();

@@ -214,3 +214,43 @@ def print_table(title: str, rows: Iterable[tuple[Any, ...]], headers: tuple[str,
     print("  " + "  ".join(h.ljust(w) for h, w in zip(headers, widths)))
     for r in rows:
         print("  " + "  ".join(v.ljust(w) for v, w in zip(r, widths)))
+
+
+# ------------------------------------------------------------------------------------------ payee names
+# Private individuals who are not the subject of the site are never named. A payee (FEC independent expenditure
+# vendor, consultant, ...) is published only when it is clearly an organisation: the FEC entity type is not an
+# individual's (IND, CAN) AND the name carries an organisational marker. Anything else is dropped (when unsure, drop).
+INDIVIDUAL_ENTITY_TYPES = {"IND", "CAN"}
+ORG_MARKER_WORDS = {
+    "LLC", "LLP", "PLLC", "LP", "LTD", "INC", "INCORPORATED", "CORP", "CORPORATION", "CO", "COMPANY", "COMPANIES",
+    "PLC", "MEDIA", "GROUP", "PARTNERS", "PARTNERSHIP", "STRATEGIES", "STRATEGY", "STRATEGIC", "CONSULTING",
+    "CONSULTANTS", "COMMUNICATIONS", "COMMUNICATION", "PRODUCTIONS", "PRODUCTION", "ASSOCIATES", "USPS", "POSTMASTER",
+    "POSTAL", "PRINTING", "PRINTERS", "MAILING", "MARKETING", "ADVERTISING", "ADVERTISEMENTS", "DIGITAL", "RESEARCH",
+    "SOLUTIONS", "SERVICES", "AGENCY", "ENTERPRISES", "INTERNATIONAL", "WORLDWIDE", "NETWORK", "NETWORKS",
+    "BROADCASTING", "TELEVISION", "RADIO", "NEWSPAPER", "PUBLISHING", "BANK", "COMMITTEE", "PAC", "PARTY",
+    "FUND", "FOUNDATION", "ASSOCIATION", "UNION", "COUNCIL", "INSTITUTE", "COALITION", "FEDERATION", "SOCIETY",
+    "CAMPAIGN", "CAMPAIGNS", "POLLING", "ANALYTICS", "TECHNOLOGIES", "TECHNOLOGY", "SYSTEMS",
+    "AMERICA", "AMERICANS", "FACEBOOK", "GOOGLE", "META",
+    "TWITTER", "YAHOO", "COMCAST", "VERIZON", "UPS", "FEDEX", "STAPLES", "AMAZON", "PAYPAL", "STRIPE"}
+ORG_MARKER_PHRASES = ("FRIENDS OF ", " FOR CONGRESS", " FOR SENATE", " FOR AMERICA", " FOR PRESIDENT")
+ORG_MARKER_SUBSTRINGS = (".COM", ".NET", ".ORG", ".IO", ".CO ", "WWW.")
+
+
+def has_org_marker(name: str | None) -> bool:
+    """True when the name carries a clear organisational marker (LLC, INC, MEDIA, GROUP, ".com", ...)."""
+    if not name:
+        return False
+    up = f" {name.upper().strip()} "
+    if any(s in up for s in ORG_MARKER_SUBSTRINGS) or any(p in up for p in ORG_MARKER_PHRASES):
+        return True
+    words = re.sub(r"[^A-Z0-9]+", " ", re.sub(r"[.'\u2019]", "", up)).split()
+    return any(w in ORG_MARKER_WORDS for w in words)
+
+
+def public_payee(name: str | None, entity_type: str | None = None) -> str | None:
+    """The payee name as published, or None when it is (or might be) a private individual."""
+    if not name or not name.strip():
+        return None
+    if (entity_type or "").strip().upper() in INDIVIDUAL_ENTITY_TYPES:
+        return None
+    return " ".join(name.split()) if has_org_marker(name) else None

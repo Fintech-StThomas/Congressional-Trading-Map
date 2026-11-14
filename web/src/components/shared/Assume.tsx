@@ -5,7 +5,7 @@ import "@/styles/reach.css";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { dataUrl } from "@/lib/urls";
 import { getJSON } from "@/lib/data/fetch";
-import { applyAssumptions, DEFAULT_ASSUMPTIONS, decodeAssumptions, encodeAssumptions, isDefault, ownOnly, readout, SWITCHES, type AssumptionEffect, type Assumptions, type TradeLite } from "@/lib/domain/assume";
+import { applyAssumptions, DEFAULT_ASSUMPTIONS, decodeAssumptions, encodeAssumptions, isDefault, isOwnOnly, OWN_SWITCH, ownOnly, readout, SWITCHES, type AssumptionEffect, type Assumptions, type TradeLite } from "@/lib/domain/assume";
 import { Switch } from "./ChipSelect";
 
 const NONE: TradeLite[] = [];
@@ -82,7 +82,7 @@ export function useAssumptions(member: string | null, hasTrades: boolean, edges:
 export function AssumptionBar({ state, scope }: { state: AssumptionState; scope: string }) {
   const { assume, setAssume, status, line } = state;
   const active = !isDefault(assume);
-  const own = assume.self && !assume.family && !assume.unstated;
+  const own = isOwnOnly(assume);
   return (
     <details className={`assume${active ? " is-active" : ""}`} open={active || undefined}>
       <summary>
@@ -90,7 +90,7 @@ export function AssumptionBar({ state, scope }: { state: AssumptionState; scope:
         <span className="assume__v">{active ? "changed" : "household, every trade"}</span>
       </summary>
       <div className="assume__body" role="group" aria-label={`Assumptions for ${scope}`}>
-        <Switch label="Member’s own trades only" on={own} onChange={(v) => setAssume(ownOnly(assume, v))} hint="Trades marked as the member’s own or a joint account" />
+        <Switch label={OWN_SWITCH.label} on={own} onChange={(v) => setAssume(ownOnly(assume, v))} hint={OWN_SWITCH.hint} />
         {SWITCHES.map((s) => (
           <Switch key={s.key} label={s.label} on={assume[s.key]} hint={s.hint}
             onChange={(v) => setAssume({ ...assume, [s.key]: v, ...(s.key === "family" || s.key === "unstated" ? { self: true } : {}) })} />

@@ -2,10 +2,11 @@
 import type { Metadata } from "next";
 import { IS_SAMPLE, getMeta, metaBuilt } from "@/lib/data/server";
 import { metaSources } from "@/lib/data/meta";
-import { safeHttpUrl } from "@/lib/urls";
+import { correctionsLogUrl, safeHttpUrl } from "@/lib/urls";
 import { FAMILY_LABEL, TYPE_LABEL, TYPE_RULE } from "@/lib/domain/edges";
 import { count, date } from "@/lib/format";
-import { SITE } from "@/lib/copy";
+import { CORRECTIONS, CORRECTIONS_POLICY, SITE } from "@/lib/copy";
+import { CorrectionLink } from "@/components/shared/CorrectionLink";
 import type { EdgeType } from "@/lib/types";
 import { LineSample } from "@/components/shared/LineSample";
 
@@ -192,9 +193,20 @@ export default function MethodPage() {
         </p>
         <p>FEC data may not be used to solicit contributions or for commercial purposes (52 U.S.C. 30111(a)(4)).</p>
         <p><strong>Not investment advice.</strong> Nothing on this site is a recommendation to buy or sell any security.</p>
+      </section>
+
+      <section className="section" id="corrections" aria-labelledby="corrections-h">
+        <h2 id="corrections-h">{CORRECTIONS_POLICY.heading}</h2>
+        <p>{CORRECTIONS_POLICY.counts}</p>
+        <p>{CORRECTIONS_POLICY.how}</p>
+        <p>{CORRECTIONS_POLICY.reply}</p>
+        <p>{CORRECTIONS_POLICY.response}</p>
+        <p>{CORRECTIONS_POLICY.where}</p>
         <p>
-          <strong>Corrections.</strong> If a record is wrong or mismatched, write to <a href={`mailto:${SITE.correctionsEmail}`}>{SITE.correctionsEmail}</a> with the page address and the record id.
-          Corrections are made in the source data and noted in the next build.
+          {CORRECTIONS_POLICY.log} <a href={correctionsLogUrl()} target="_blank" rel="noopener noreferrer">{CORRECTIONS_POLICY.logLink}</a>.
+        </p>
+        <p>
+          <CorrectionLink className="btn btn--small" /> <span className="sub">{CORRECTIONS.note}</span>
         </p>
       </section>
     </div>

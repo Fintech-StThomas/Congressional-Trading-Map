@@ -20,6 +20,7 @@ import { Timeline } from "@/components/member/Timeline";
 import { PrintButton } from "@/components/member/PrintButton";
 import { CaseFile, caseNumber } from "@/components/member/CaseFile";
 import { pickAgainst, pickBoard } from "@/lib/domain/pick";
+import { ownTradeCount } from "@/lib/domain/assume";
 import "@/styles/casefile.css";
 import { HoldingsSection } from "@/components/member/HoldingsSection";
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
@@ -107,7 +108,7 @@ export default async function MemberPage({ params }: PageProps<"/m/[id]">) {
   const past = m.committees.filter((c) => !c.current);
   const lateCount = ts?.late ?? 0;
   const owners = ts?.by_owner ?? {};
-  const ownTrades = owners.self ?? 0;
+  const ownTrades = ownTradeCount(owners);
 
   // Only what the assumption switches need: traded strings and case orgs.
   const tradedEdges = file.edges.filter((e) => e.type === "traded").map((e) => ({ id: e.id, type: e.type, from: e.from, to: e.to }));
@@ -243,7 +244,7 @@ export default async function MemberPage({ params }: PageProps<"/m/[id]">) {
         <p className="section__note">
           {nTrades > 0 && (
             <>
-              Of {count(nTrades)} trades, {count(ownTrades)} {ownTrades === 1 ? "is" : "are"} marked as the member&rsquo;s own; the rest belong to a spouse, a dependent child, a joint account, or an owner the filing does not state.{" "}
+              Of {count(nTrades)} trades, {count(ownTrades)} {ownTrades === 1 ? "is" : "are"} marked as the member&rsquo;s own or jointly owned; the rest belong to a spouse, a dependent child, or an owner the filing does not state.{" "}
             </>
           )}
           Periodic transaction reports as filed. Amounts are the disclosed ranges. A report is late when the public could see it more than 45 days after the trade.

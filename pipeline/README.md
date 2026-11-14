@@ -180,8 +180,9 @@ contributions file (`indiv`), and publishes no individual contributor; the notic
 - **FEC totals are what givers reported.** They can differ from the recipient's own summary (weball) when the
   recipient amended its reports or never itemised a receipt; see `pipeline/fec/README.md` (Jordan 2020, Cruz 2018 and
   2022 are worked through there).
-- **Party is the latest term's** in `OrgSummary.split` and `org-index.json` (documented in the contract); per-year
-  party is only in `wall-years.json` terms.
+- **Party at the time.** `OrgSummary.split` and `org-index.json` count each tie year under the party of the member's
+  term in that year; years outside every term go to the nearest term (counted in `meta.json.assembly.party_split`).
+  `MemberSummary.party` and the wall stay the latest term's.
 - **Validation runs after the swap.** `python -m pipeline.run` validates the tree it has just published, so after a
   failed validation `web/public/data/` holds the failed build until the next run (the daily workflow never commits
   it). Restore with `git checkout -- web/public/data` locally.

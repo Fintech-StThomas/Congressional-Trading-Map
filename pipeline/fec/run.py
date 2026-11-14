@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .. import util
-from ..util import dumps
+from ..util import dumps, public_payee
 from . import build, download, load, refs
 from .load import q
 
@@ -166,6 +166,8 @@ def main(argv: list[str] | None = None) -> int:
     build.classify_rows(con, cycles, build.today_iso())
     build.resolve_orgs(con, companies, overrides, report)
     build.edge_inputs(con)
+    report["outside_spending_payees"] = build.payee_report(con)
+    print(f"outside_spending payees: {report['outside_spending_payees']}")
     member_names = {b: m["name"] for b, m in members.info.items()}
     current = {b for b, m in members.info.items() if m.get("current")}
     summ = Summary()
@@ -247,7 +249,7 @@ def _audit_tables(con, report: dict) -> None:
                            r.ENTITY_TP, r.IMAGE_NUM FROM p_rules r LEFT JOIN cm_latest c USING (CMTE_ID)
                     WHERE r.rule = 'keep:funds' AND r.amt > 10000 ORDER BY r.amt DESC, r.SUB_ID""")
     report["review_large_funds_rows"] = [
-        {"cycle": cy, "committee": c, "committee_name": nm, "from": f, "to": t, "payee_as_filed": pn,
+        {"cycle": cy, "committee": c, "committee_name": nm, "from": f, "to": t, "payee_as_filed": public_payee(pn, et),
          "date": d.isoformat(), "amount": float(a), "entity_type": et,
          "url": f"https://docquery.fec.gov/cgi-bin/fecimg/?{img}" if img else None}
         for cy, c, nm, f, t, pn, d, a, et, img in big]

@@ -15,6 +15,7 @@ import duckdb
 
 from . import download
 from .load import q
+from ..util import public_payee
 from .refs import Companies, Members, Overrides, normalise_name
 
 # --- code-list choices (see README "Code-list choices") ----------------------------------
@@ -346,7 +347,7 @@ def edge_inputs(con: duckdb.DuckDBPyConnection) -> None:
              WHEN r.rule = 'keep:outside_oppose' THEN 'oppose' END AS direction,
         CASE WHEN r.rule = 'keep:funds' AND r.giver_auth_member IS NULL THEN 'leadership PAC' END AS lpac,
         r.CMTE_ID, coalesce(c.CMTE_NM, 'FEC committee ' || r.CMTE_ID) AS giver_name,
-        r.tp, r.amt, r.dt, r.date_fallback, r.NAME AS counterparty, r.IMAGE_NUM, r.TRAN_ID, r.SUB_ID, r.cycle
+        r.tp, r.amt, r.dt, r.date_fallback, r.NAME AS counterparty, r.ENTITY_TP AS counterparty_tp, r.IMAGE_NUM, r.TRAN_ID, r.SUB_ID, r.cycle
       FROM p_rules r
       LEFT JOIN giver_org g USING (CMTE_ID)
       LEFT JOIN cm_latest c USING (CMTE_ID)
@@ -354,6 +355,29 @@ def edge_inputs(con: duckdb.DuckDBPyConnection) -> None:
     a = q(con, "SELECT count(*) FROM e_in")[0][0]
     b = q(con, "SELECT count(*) FROM p_rules WHERE rule LIKE 'keep:%'")[0][0]
     assert a == b, f"edge-input join multiplied rows: {b} -> {a}"
+
+
+def payee_report(con: duckdb.DuckDBPyConnection) -> dict:
+    """Kept vs dropped payee names on kept outside_spending rows (meta.json.reports.fec.outside_spending_payees)."""
+    out = {"rule": "payee named only if its FEC entity type is not IND/CAN and its name carries an organisational "
+                   "marker (util.public_payee); otherwise dropped",
+           "rows": 0, "rows_payee_kept": 0, "rows_payee_dropped": 0, "rows_no_payee": 0,
+           "dropped_by_entity_type": {}, "kept_by_entity_type": {}}
+    for name, tp, n in q(con, """SELECT counterparty, counterparty_tp, count(*) FROM e_in
+                                 WHERE type = 'outside_spending' GROUP BY 1, 2"""):
+        out["rows"] += n
+        et = (tp or "none").strip() or "none"
+        if not name or not name.strip():
+            out["rows_no_payee"] += n
+        elif public_payee(name, tp):
+            out["rows_payee_kept"] += n
+            out["kept_by_entity_type"][et] = out["kept_by_entity_type"].get(et, 0) + n
+        else:
+            out["rows_payee_dropped"] += n
+            out["dropped_by_entity_type"][et] = out["dropped_by_entity_type"].get(et, 0) + n
+    for k in ("dropped_by_entity_type", "kept_by_entity_type"):
+        out[k] = dict(sorted(out[k].items()))
+    return out
 
 
 def _evidence_label(r: dict, member_names: dict[str, str]) -> str:
@@ -366,7 +390,9 @@ def _evidence_label(r: dict, member_names: dict[str, str]) -> str:
         who = member_names.get(r["to_id"], r["to_id"])
         verb = "supporting" if r["direction"] == "support" else "opposing"
         what = "a communication" if tp in ("24F", "24N") else "an independent expenditure"
-        payee = f" (paid to {r['counterparty']})" if r["counterparty"] else ""
+        # the payee is named only when it is clearly an organisation (util.public_payee; pipeline/fec/README.md)
+        name = public_payee(r["counterparty"], r.get("counterparty_tp"))
+        payee = f" (paid to {name})" if name else ""
         return f"{r['giver_name']} reported {what} of {amt} {verb} {who} on {d}{payee}"
     kind = "an in-kind contribution of " if tp == "24Z" else ""
     to = f" to {r['counterparty']}" if r["counterparty"] else ""
@@ -389,7 +415,7 @@ def aggregate(con: duckdb.DuckDBPyConnection, member_names: dict[str, str], edge
     nonpos = stats.setdefault("edges_dropped_nonpositive_net", {}).setdefault(
         edge_type, {"count": 0, "dollars": 0.0, "records": 0})
     cols = ["from_kind", "from_id", "to_id", "v", "d", "CMTE_ID", "giver_name", "tp", "amt", "dt",
-            "counterparty", "IMAGE_NUM", "TRAN_ID", "SUB_ID", "direction", "date_fallback", "rk"]
+            "counterparty", "counterparty_tp", "IMAGE_NUM", "TRAN_ID", "SUB_ID", "direction", "date_fallback", "rk"]
     for i in range(0, len(to_ids), chunk):
         ids = to_ids[i:i + chunk]
         where = "type = ? AND to_id IN (" + ",".join("?" * len(ids)) + ")"
@@ -406,7 +432,7 @@ def aggregate(con: duckdb.DuckDBPyConnection, member_names: dict[str, str], edge
         evid: dict[tuple, list] = {}
         for row in q(con, f"""SELECT * FROM (
                           SELECT from_kind, from_id, to_id, coalesce(via_id,'') v, coalesce(direction,'') d,
-                                 CMTE_ID, giver_name, tp, amt, dt, counterparty, IMAGE_NUM, TRAN_ID, SUB_ID, direction,
+                                 CMTE_ID, giver_name, tp, amt, dt, counterparty, counterparty_tp, IMAGE_NUM, TRAN_ID, SUB_ID, direction,
                                  date_fallback, row_number() OVER (PARTITION BY {key} ORDER BY amt DESC, dt DESC, SUB_ID) rk
                           FROM e_in WHERE {where} AND amt > 0) WHERE rk <= 5 ORDER BY 1,2,3,4,5,rk""", params):
             r = dict(zip(cols, row))
