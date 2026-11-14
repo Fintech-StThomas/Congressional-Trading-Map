@@ -1,13 +1,8 @@
 // The featured example on the home board: the current member whose drawn board
 // shows the widest mix of tie kinds. Pure; tests load it directly.
-import type { Edge } from "./types";
-
-// Same rule as pick.ts spendingSide (duplicated: this file has no runtime imports).
-function spendingSide(e: Pick<Edge, "note" | "via">): "support" | "oppose" | null {
-  if (e.note === "oppose" || e.via?.id.endsWith(":oppose")) return "oppose";
-  if (e.note === "support" || e.via?.id.endsWith(":support")) return "support";
-  return null;
-}
+import type { Edge } from "../types.ts";
+import { andList } from "../format.ts";
+import { spendingSide } from "./pick.ts";
 
 export type TieKind = "case" | "support" | "oppose" | "funds_in" | "funds_out" | "traded_together" | "pac";
 export const TIE_KINDS: TieKind[] = ["case", "support", "oppose", "funds_in", "funds_out", "traded_together", "pac"];
@@ -60,6 +55,6 @@ export function featuredReason(kinds: TieKind[], top = true): string {
     else if (k === "funds_out" && has.has("funds_in")) continue;
     else ps.push(TIE_KIND_PHRASE[k]);
   }
-  const list = ps.length <= 1 ? ps.join("") : `${ps.slice(0, -1).join(", ")} and ${ps[ps.length - 1]}`;
+  const list = andList(ps);
   return `Shown because this member’s filings include ${list}: ${kinds.length} of the ${TIE_KINDS.length} kinds of tie the site tracks, ${top ? "the widest mix of any current member" : "one of the widest mixes among current members"}.`;
 }

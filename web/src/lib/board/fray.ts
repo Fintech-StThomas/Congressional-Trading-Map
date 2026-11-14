@@ -3,7 +3,9 @@
 // plies separate into finer threads that splay apart and rejoin; at most one spot
 // hangs by a single thread. Short loose fibres stand off the strand, denser near
 // the worn spots. Everything follows the path's normals and is seeded by edge id.
-// Pure and free of runtime imports so tests can load it directly.
+// Pure; tests can load it directly with Node type stripping.
+
+import { fnv1a as hash } from "../hash.ts";
 
 type Pt = { x: number; y: number };
 export type Curve = { p0: Pt; c: Pt; p1: Pt; length: number };
@@ -22,15 +24,6 @@ export type Fray = {
   fibresFine: string;
 };
 
-/** FNV-1a 32-bit, as lib/hash.ts. */
-function hash(s: string): number {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return h >>> 0;
-}
 
 /** mulberry32: small deterministic PRNG. */
 export function rng(seed: number): () => number {

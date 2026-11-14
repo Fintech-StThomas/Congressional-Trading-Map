@@ -1,6 +1,6 @@
 // The wall for one year: who was serving, in which party and chamber, and that
 // year's measures. Pure and free of runtime imports so tests can load it directly.
-import type { WallRow } from "./party";
+import type { WallRow } from "./party.ts";
 
 export type WallMeasure = "cases" | "trades" | "pac" | "oppose";
 export const WALL_MEASURES: WallMeasure[] = ["cases", "trades", "pac", "oppose"];

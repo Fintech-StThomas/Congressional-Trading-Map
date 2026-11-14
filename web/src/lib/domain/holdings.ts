@@ -1,6 +1,7 @@
 // Holdings and net worth (House annual reports): types and wording. Browser-safe,
 // no runtime imports. Contract: docs/data-dictionary.md, "Holdings and net worth".
-import type { Cell, Col } from "./records";
+import type { Cell, Col } from "./records.ts";
+import { signedShortMoney as usd } from "../format.ts";
 
 type Table = { cols: string[]; rows: unknown[][] };
 export type BandSum = { n: number; unvalued: number; open_ended: number; low: number; high: number | null; high_valued: number | null };
@@ -23,15 +24,6 @@ export type HoldingsFile = {
   coverage: { year: number; status: string }[];
 };
 
-export const HOLDINGS_YEARS: [number, number] = [2013, 2025];
-export const SENATE_NOTE = "No annual-report data for senators yet: the source has House annual reports only.";
-
-function usd(n: number): string {
-  const a = Math.abs(n);
-  const s = a >= 1e9 ? `$${(a / 1e9).toFixed(a >= 1e10 ? 0 : 1)}B` : a >= 1e6 ? `$${(a / 1e6).toFixed(a >= 1e7 ? 0 : 1)}M` : a >= 1e3 ? `$${Math.round(a / 1e3)}K` : `$${Math.round(a)}`;
-  return n < 0 ? `−${s}` : s;
-}
-export { usd as compactUsd };
 
 /** The figure in words: always a "disclosed net worth range", never "net worth". */
 export function netWorthText(nw: NetWorth): string {

@@ -1,11 +1,13 @@
-// Server-only data access. Reads the static JSON at build time.
-// Real data: web/public/data (written by the pipeline). Fallback: web/fixtures/data.
+// Server-only data access: reads the static JSON at build time (never at request time).
+// Real data: web/public/data (written by the pipeline). Fallback: web/fixtures/data (see source.ts).
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Board, Case, Edge, MemberFileWire, MemberSummary, Meta, OrgSummary, TradeFile } from "./types";
-import { toBoardMember, type BoardMember, type NameBook } from "./client";
-import { isRealDataBuild } from "./source";
-import { pickBoardSplit } from "./pick";
+import type { Board, Case, Edge, MemberFileWire, MemberSummary, Meta, OrgSummary, TradeFile } from "../types.ts";
+import { toBoardMember, type BoardMember, type NameBook } from "../domain/names.ts";
+import type { HoldingsFile } from "../domain/holdings.ts";
+import { pickBoardSplit } from "../domain/pick.ts";
+import { metaBuilt as builtFrom } from "./meta.ts";
+import { isRealDataBuild } from "./source.ts";
 
 const ROOT = process.cwd();
 const REAL_DIR = join(ROOT, "public", "data");
@@ -84,11 +86,9 @@ export function readData<T>(rel: string, fallback: T): T {
   return read<T>(rel, fallback);
 }
 
-/** Build date as an ISO string, from whichever key the pipeline used. */
+/** Build date as an ISO string (see meta.ts metaBuilt). */
 export function metaBuilt(meta: Meta = getMeta()): string | null {
-  const build = (meta as Record<string, unknown>).build as { time?: string } | undefined;
-  const v = build?.time ?? meta.built ?? meta.build_time ?? (meta as Record<string, unknown>).generated_at ?? (meta as Record<string, unknown>).built_at;
-  return typeof v === "string" ? v : null;
+  return builtFrom(meta);
 }
 
 /** Every name an edge list refers to, for labelling in the browser. */
@@ -143,7 +143,8 @@ export function memberBoard(id: string): MemberBoard {
       if (n.id === id) continue;
       drawn.add(n.id);
       if (n.kind === "org" && all[n.id]) nodes[n.id] = all[n.id];
-      if (n.kind === "member" && mi.get(n.id)) members[n.id] = toBoardMember(mi.get(n.id)!);
+      const member = n.kind === "member" ? mi.get(n.id) : undefined;
+      if (member) members[n.id] = toBoardMember(member);
     }
   const m = file.member;
   const more = Math.max(0, (m.counts?.orgs ?? 0) + (m.counts?.members ?? 0) - drawn.size);
@@ -154,12 +155,12 @@ export function memberBoard(id: string): MemberBoard {
  * A member's holdings file (House annual reports), or null. PT_HOLDINGS_DIR points
  * at another folder of holdings/<id>.json files (testing against unmerged data).
  */
-export function getHoldings(id: string): import("./holdings").HoldingsFile | null {
+export function getHoldings(id: string): HoldingsFile | null {
   const dir = process.env.PT_HOLDINGS_DIR || join(DATA_DIR, "holdings");
   const p = join(dir, `${id}.json`);
   if (!existsSync(/*turbopackIgnore: true*/ p)) return null;
   try {
-    return JSON.parse(readFileSync(/*turbopackIgnore: true*/ p, "utf8"));
+    return JSON.parse(readFileSync(/*turbopackIgnore: true*/ p, "utf8")) as HoldingsFile;
   } catch {
     return null;
   }

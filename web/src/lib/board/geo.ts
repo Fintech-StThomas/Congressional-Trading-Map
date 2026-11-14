@@ -7,7 +7,7 @@ import { feature, mesh } from "topojson-client";
 import type { Topology, GeometryCollection } from "topojson-specification";
 import type { Feature, Geometry } from "geojson";
 
-import { MAP_H, MAP_W } from "./mapsize";
+import { MAP_H, MAP_W } from "./mapsize.ts";
 export { MAP_H, MAP_W };
 
 export type StateShape = {

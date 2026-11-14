@@ -1,5 +1,6 @@
-// Turns the compact wire shapes into plain objects, once. Browser and server safe.
-import type { Columnar, Edge, EdgeType, LedgerTotals, MemberFileWire, OrgFileWire, Trade, TradeWire } from "./types";
+// Turns the compact columnar wire shapes (trades, ledger rows, organisation ties) into plain
+// objects, once. Browser and server safe; pure, so tests/decode.test.mjs loads it directly.
+import type { Columnar, Edge, EdgeType, LedgerTotals, MemberFileWire, OrgFileWire, Trade, TradeWire } from "../types.ts";
 
 /** A trade as the site uses it: the contract Trade plus the resolved filing URL. */
 export type TradeRow = Omit<Trade, "url"> & { url: string | null; ticker_source: string | null };
@@ -58,6 +59,8 @@ export type LedgerRow = {
   first: string | null;
   last: string | null;
   note: string | null;
+  /** in: this member is the payee; out: the payer; both: undirected (LedgerRow.dir in the contract). */
+  dir: "in" | "out" | "both";
 };
 
 function viaOf(v: unknown): LedgerRow["via"] {
@@ -88,6 +91,7 @@ export function decodeLedger(file: { ledger?: Columnar }): LedgerRow[] {
     first: (r.first as string | null) ?? null,
     last: (r.last as string | null) ?? null,
     note: (r.note as string | null) ?? null,
+    dir: r.dir === "in" || r.dir === "out" ? r.dir : "both",
   }));
 }
 
@@ -95,13 +99,13 @@ export function ledgerSize(file: { ledger?: Columnar }): number {
   return isColumnar(file.ledger) ? file.ledger.rows.length : 0;
 }
 
-/** Edge type -> family, for ties that arrive without a full Edge. */
+/** Edge type -> family, for ties that arrive without a full Edge. Fixed by the contract (EdgeType families). */
 export const FAMILY_OF: Record<EdgeType, Edge["family"]> = {
-  traded: "holding", owns: "holding", position: "holding", traded_together: "holding",
+  traded: "holding", owns: "holding", traded_together: "holding",
   pac_money: "money", employee_money: "money", lobbyist_money: "money", outside_spending: "money",
   paid_travel: "money", funds: "money", fundraises_with: "money", shared_donors: "money",
-  revolving_door: "people", oversees: "people", shared_staff: "people",
-  sits_with: "context", legislates_with: "context",
+  position: "people", revolving_door: "people", shared_staff: "people",
+  oversees: "context", sits_with: "context", legislates_with: "context",
 };
 const ORG_PAYS = new Set<EdgeType>(["pac_money", "employee_money", "lobbyist_money", "outside_spending", "paid_travel"]);
 
@@ -157,11 +161,16 @@ export function ledgerTotals(file: { ledger_totals?: LedgerTotals }): LedgerTota
   return file.ledger_totals ?? {};
 }
 
-/** A link to the official record that can be built from an id alone. */
-export function recordUrlFor(id: string): string | null {
-  const m = /^pac:(C\d{8})$/.exec(id);
-  if (m) return `https://www.fec.gov/data/committee/${m[1]}/`;
-  const c = /^co:(\d+)$/.exec(id);
-  if (c) return `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${c[1]}`;
-  return null;
+/** Number of ties counted in `ledger_totals`, optionally leaving some types out (e.g. sits_with, which is not money). */
+export function ledgerTieCount(totals: LedgerTotals | undefined, skip: string[] = []): number {
+  return Object.entries(totals ?? {}).reduce((n, [type, t]) => n + (skip.includes(type) ? 0 : t?.edges ?? 0), 0);
 }
+
+/**
+ * Every tie an organisation has: the listed `ties` rows plus the money ties that only
+ * `ledger_totals` counts. The contract says ledger_totals covers the ties NOT listed, so the two add.
+ */
+export function orgTieTotal(file: OrgFileWire & { ties?: Columnar }): number {
+  return orgTieCount(file) + ledgerTieCount(file.ledger_totals);
+}
+

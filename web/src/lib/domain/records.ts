@@ -1,23 +1,11 @@
 // "The full file": every record the site holds for one member, flattened into
 // tables, plus CSV. Pure and free of runtime imports so tests can load it directly.
-import type { Edge, MemberFileWire } from "./types";
+import type { Edge, MemberFileWire } from "../types.ts";
+import { recordUrlFor as idUrl } from "../urls.ts";
 
 export type Cell = string | number | boolean | null;
 export type Col = { key: string; label: string; kind: "text" | "num" | "date" | "bool" | "links"; width?: number };
 export type RecTable = { id: string; title: string; cols: Col[]; rows: Cell[][] };
-
-export const USE_NOTICE =
-  "Use is restricted by 5 U.S.C. 13107(c): it is unlawful to obtain or use a financial disclosure report for any unlawful purpose, for any commercial purpose other than by news and communications media for dissemination to the general public, for determining or establishing the credit rating of any individual, or for use, directly or indirectly, in the solicitation of money for any political, charitable or other purpose.";
-
-/** A link to the official record that can be built from an id alone (as decode.ts recordUrlFor). */
-export function idUrl(id: string | null | undefined): string | null {
-  if (!id) return null;
-  const m = /^pac:(C\d{8})/.exec(id);
-  if (m) return `https://www.fec.gov/data/committee/${m[1]}/`;
-  const c = /^co:(\d+)$/.exec(id);
-  if (c) return `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${c[1]}`;
-  return null;
-}
 
 type Names = (id: string) => string;
 type Wire = Pick<MemberFileWire, "member" | "edges" | "ledger" | "cases" | "coverage"> & { ledger_totals?: MemberFileWire["ledger_totals"] };
@@ -176,13 +164,18 @@ export function caveats(file: Wire, trades: TradeWire): string[] {
   return out;
 }
 
-function csvCell(v: Cell): string {
+/**
+ * One CSV cell. Text that a spreadsheet would run as a formula (starting with = + - @, tab or
+ * carriage return) is prefixed with an apostrophe; numbers stay numbers, so negative amounts survive.
+ */
+export function csvCell(v: Cell): string {
   if (v === null || v === undefined) return "";
-  const s = String(v);
+  let s = String(v);
+  if (typeof v === "string" && /^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-/** RFC 4180 CSV with a header row. */
+/** RFC 4180 CSV with a header row, safe to open in a spreadsheet (see csvCell). */
 export function toCSV(cols: Col[], rows: Cell[][]): string {
   return [cols.map((c) => csvCell(c.label)).join(","), ...rows.map((r) => r.map(csvCell).join(","))].join("\r\n") + "\r\n";
 }

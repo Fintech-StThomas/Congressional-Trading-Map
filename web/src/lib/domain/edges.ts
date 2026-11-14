@@ -1,6 +1,10 @@
-import type { Edge, EdgeType, NodeRef } from "./types";
-import { amountText, type Amount } from "./format";
-import { YEAR_MAX, YEAR_MIN } from "./site";
+// Tie vocabulary (families, type labels and rules) and the logic every view shares for one Edge:
+// amounts within a year window, stroke width, frayed/weak cues and the short phrase on a board card.
+// Pure; tests/edges.test.mjs loads it directly.
+import type { Amount, Edge, EdgeType, NodeRef } from "../types.ts";
+import { amountText } from "../format.ts";
+import { YEAR_MAX, YEAR_MIN } from "../years.ts";
+import { spendingSide } from "./pick.ts";
 
 export type Family = Edge["family"];
 export const FAMILIES: Family[] = ["money", "holding", "people", "context"];
@@ -14,9 +18,9 @@ export const FAMILY_LABEL: Record<Family, string> = {
 
 export const FAMILY_HINT: Record<Family, string> = {
   money: "Contributions, outside spending, paid travel and member-to-member money",
-  holding: "Stock trades, holdings and outside positions",
-  people: "Staff, lobbyists and committee seats",
-  context: "Shared committees and co-sponsored bills. Common, so off by default",
+  holding: "Stock trades and holdings",
+  people: "Outside positions, staff and lobbyists",
+  context: "Committee oversight, shared committees and co-sponsored bills. Common, so off by default",
 };
 
 /** Plain-words name for each kind of string. */
@@ -64,7 +68,7 @@ export const TYPE_RULE: Record<EdgeType, string> = {
 /** Type label for one edge: outside spending says which way the money went. */
 export function typeLabel(e: Pick<Edge, "type" | "note" | "via">): string {
   if (e.type === "outside_spending") {
-    const side = e.note === "oppose" || e.via?.id.endsWith(":oppose") ? "oppose" : e.note === "support" || e.via?.id.endsWith(":support") ? "support" : null;
+    const side = spendingSide(e);
     if (side === "oppose") return "Outside spending opposing";
     if (side === "support") return "Outside spending to support (independent)";
   }
@@ -77,18 +81,23 @@ export function size(e: Edge, range?: [number, number]): number {
   return dollars ?? 0;
 }
 
-/** Totals limited to a year window, summing lows and highs separately (never a midpoint). */
-export function filteredAmount(e: Edge, range?: [number, number]): Amount & { n: number } {
+/**
+ * Totals limited to a year window, by the contract's Sums rule (never a midpoint): `low` adds the
+ * known lows (null only when none is known); `high` and `exact` become null as soon as any year in
+ * the window lacks them, because an unknown part makes the total unknown.
+ */
+export function filteredAmount(e: Pick<Edge, "amount" | "count" | "by_year">, range?: [number, number]): Amount & { n: number } {
   if (!range || (range[0] <= YEAR_MIN && range[1] >= YEAR_MAX)) return { ...e.amount, n: e.count };
-  let low: number | null = null, high: number | null = null, exact: number | null = null, n = 0;
+  let low: number | null = null, high: number | null = 0, exact: number | null = 0, n = 0, any = false;
   for (const b of e.by_year) {
     if (b.y < range[0] || b.y > range[1]) continue;
+    any = true;
     n += b.n;
     if (b.low != null) low = (low ?? 0) + b.low;
-    if (b.high != null) high = (high ?? 0) + b.high;
-    if (b.exact != null) exact = (exact ?? 0) + b.exact;
+    high = high == null || b.high == null ? null : high + b.high;
+    exact = exact == null || b.exact == null ? null : exact + b.exact;
   }
-  return { low, high, exact, n };
+  return any ? { low, high, exact, n } : { low: null, high: null, exact: null, n: 0 };
 }
 
 export function inYears(e: Edge, range: [number, number]): boolean {
@@ -200,8 +209,8 @@ export function tiePhrase(e: Edge, cardId: string, centre: string, range?: [numb
     case "funds":
       return cardIsFrom ? `gave${$} to ${surname(centre)}` : `received${$} from ${surname(centre)}`;
     case "outside_spending": {
-      const side = spendingSideOf(e);
-      if (!cardIsOrg) return `${amt ?? "money"} spent ${side === "oppose" ? "opposing" : "independently to support"} them`;
+      const side = spendingSide(e);
+      if (!cardIsOrg) return `${amt ?? "money"} spent ${side === "oppose" ? "opposing" : side === "support" ? "independently to support" : "in the race of"} them`;
       return `spent${$} ${side === "oppose" ? "opposing" : side === "support" ? "independently to support" : "in the race of"}${of}`;
     }
     case "pac_money":
@@ -225,10 +234,4 @@ export function tiePhrase(e: Edge, cardId: string, centre: string, range?: [numb
     default:
       return typeLabel(e).toLowerCase();
   }
-}
-
-function spendingSideOf(e: Pick<Edge, "note" | "via">): "support" | "oppose" | null {
-  if (e.note === "oppose" || e.via?.id.endsWith(":oppose")) return "oppose";
-  if (e.note === "support" || e.via?.id.endsWith(":support")) return "support";
-  return null;
 }

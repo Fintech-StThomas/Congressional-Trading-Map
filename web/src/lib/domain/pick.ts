@@ -1,7 +1,7 @@
 // Which strings the board draws for one member, chosen from the member file's
 // full edge list. Pure and deterministic: same edges in, same board out.
 // Kept free of runtime imports so tests/pick.test.mjs can load it directly.
-import type { Edge } from "./types";
+import type { Edge } from "../types.ts";
 
 export const PICK_LIMITS = { cards: 12, strings: 14, cases: 5 } as const;
 
