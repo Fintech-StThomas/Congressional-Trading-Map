@@ -9,7 +9,7 @@ missing R2_PUBLIC_URL. The daily workflow sets it on the default branch, where p
 
 Order of operations, so a reader never sees a manifest that claims content the bucket does not hold:
 1. local manifest: every file's path -> sha256;
-2. remote manifest `data/_manifest.json` (missing or unreadable: upload everything);
+2. remote manifest `data/_manifest.json` (missing, unreadable, or recorded with another `cache_control`: upload everything);
 3. upload changed files (retrying transient failures), meta.json last of the data files;
 4. only if every upload succeeded: upload the new manifest, then delete objects under `data/` that are no longer
    in the build. Any failure exits 1 and leaves the previous manifest in place (files that did upload are
@@ -35,7 +35,11 @@ from .util import OUT
 PREFIX = "data/"
 MANIFEST = "_manifest.json"
 LAST = "meta.json"                       # uploaded after every other data file
-CACHE_CONTROL = "public, max-age=300, stale-while-revalidate=86400"   # same URLs are overwritten daily
+# Browsers recheck after 5 minutes; Vercel's edge (which proxies /data/*) keeps a copy for an hour and may serve a
+# stale one for a day while it refetches. Same URLs are overwritten daily, so an hour of edge staleness is fine.
+CACHE_CONTROL = "public, max-age=300, s-maxage=3600, stale-while-revalidate=86400"
+# The manifest records the header policy it was uploaded with. A changed CACHE_CONTROL does not change any file's
+# hash, so without this the new header would only reach files whose content changes; a mismatch re-uploads all.
 REQUIRED_ENV = ("R2_ACCOUNT_ID", "R2_BUCKET", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY")
 ATTEMPTS = 4
 WORKERS = 16
@@ -95,19 +99,24 @@ def retry(fn: Callable[[], Any], what: str, sleep: Callable[[float], None] = tim
 
 
 def read_remote_manifest(client: Any, bucket: str, prefix: str) -> dict[str, str] | None:
-    """The `files` map of the remote manifest, or None when it is missing or unreadable."""
+    """The `files` map of the remote manifest, or None when it is missing, unreadable, or was uploaded with a
+    different Cache-Control policy (every object then needs the new header)."""
     try:
         body = retry(lambda: client.get_object(Bucket=bucket, Key=prefix + MANIFEST)["Body"].read(), "read manifest")
     except PublishError as exc:
         print(f"remote manifest not readable ({exc}); uploading every file")
         return None
     try:
-        files = json.loads(body)["files"]
+        doc = json.loads(body)
+        files = doc["files"]
         assert isinstance(files, dict) and all(isinstance(k, str) and isinstance(v, str) for k, v in files.items())
-        return files
     except Exception:  # noqa: BLE001
         print("remote manifest malformed; uploading every file")
         return None
+    if doc.get("cache_control") != CACHE_CONTROL:
+        print(f"cache policy changed ({doc.get('cache_control')!r} -> {CACHE_CONTROL!r}); uploading every file")
+        return None
+    return files
 
 
 def put(client: Any, bucket: str, key: str, body: bytes, ctype: str, sleep: Callable[[float], None]) -> None:
@@ -157,7 +166,7 @@ def publish(client: Any, bucket: str, root: Path, prefix: str = PREFIX, sleep: C
         raise PublishError(f"{len(failed)} of {len(first)} uploads failed; meta.json, manifest and deletions skipped")
     if LAST in changed:
         put(client, bucket, prefix + LAST, (root / LAST).read_bytes(), content_type(LAST), sleep)
-    manifest = {"build_time": build_time, "prefix": prefix, "files": files}
+    manifest = {"build_time": build_time, "prefix": prefix, "cache_control": CACHE_CONTROL, "files": files}
     put(client, bucket, prefix + MANIFEST, json.dumps(manifest, indent=0, sort_keys=True).encode(), "application/json", sleep)
 
     keep = {prefix + p for p in files} | {prefix + MANIFEST}
