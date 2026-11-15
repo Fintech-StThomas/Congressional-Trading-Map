@@ -91,10 +91,9 @@ export function Slip({
     );
   }
   return (
-    <div className="slip">
-      <h2 className="slip__title">Pick a state</h2>
+    <div className="slip slip--hint">
       <p className="slip__sub">
-        Each number is the state&rsquo;s current delegation. Pick a state, then a member, to see who they are tied to and the filings behind each tie.
+        <strong>Pick a state.</strong> Each number is its delegation. Then pick a member to see their ties and the filings behind them.
       </p>
     </div>
   );

@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { allCasePaths, CASES_PER_PAGE, casesHref, casesSlug, comboOf, pageOf, pageWindow, parseCasesPath } from "../src/lib/domain/casepages.ts";
 import { correctionIssueUrl, correctionsLogUrl } from "../src/lib/urls.ts";
 import { remoteDataBase, remoteFileUrl, remoteRewrite } from "../src/lib/data/remote.ts";
+import { sampleFallbackError } from "../src/lib/data/source.ts";
 
 const members = new Map([
   ["A", { chamber: "rep", party: "D" }],
@@ -79,4 +80,13 @@ test("DATA_BASE_URL: unset is local mode; set is normalised; malformed fails lou
   assert.throws(() => remoteDataBase("ftp://x/data"));
   assert.equal(remoteFileUrl("https://h/data", "members/A1.json"), "https://h/data/members/A1.json");
   assert.deepEqual(remoteRewrite("https://h/data"), { source: "/data/:path*", destination: "https://h/data/:path*" });
+});
+
+test("hosted builds never fall back to the sample data unless PT_DATA=fixtures", () => {
+  assert.equal(sampleFallbackError({}, false), null); // local: fixtures fallback
+  assert.match(sampleFallbackError({ VERCEL: "1" }, false), /refusing to build the SAMPLE site on Vercel/);
+  assert.match(sampleFallbackError({ CI: "true" }, false), /on CI/);
+  assert.equal(sampleFallbackError({ VERCEL: "1", PT_DATA: "fixtures" }, false), null);
+  assert.equal(sampleFallbackError({ VERCEL: "1", DATA_BASE_URL: "https://x/data" }, false), null);
+  assert.equal(sampleFallbackError({ CI: "true" }, true), null); // a real local build
 });

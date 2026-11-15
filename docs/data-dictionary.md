@@ -1,7 +1,8 @@
 # Data dictionary and build contract
 
 This file is the contract between the data pipeline (`pipeline/`) and the site (`web/`).
-The pipeline writes JSON under `web/public/data/`; the site only reads those files.
+The pipeline writes JSON under `web/public/data/` and publishes the same tree to object storage; the site only reads
+those files (see "Where the files live"). The tree is not stored in git.
 Change this file first when a field changes. `python -m pipeline.validate` checks the output against it.
 
 ## Scope
@@ -29,6 +30,22 @@ Matching is exact on a normalised name, plus a hand-reviewed override file (`pip
 **Normalised name**: uppercase; delete periods and apostrophes; replace every other non-alphanumeric character with a space; collapse spaces; drop trailing words in {INC, CORP, CORPORATION, CO, COMPANY, LLC, LTD, PLC, HOLDINGS, GROUP, THE} repeatedly; drop a leading THE. `pipeline/build/company_names.json` maps each normalised SEC company name that is unique to its `co:` id.
 
 **Tickers**: a filed ticker is uppercased and share-class punctuation (`/`, `-`, `_`, space, `.`) becomes `.` (`BRK/B` → `BRK.B`), then matched exactly to SEC `company_tickers_exchange.json`. A match is vetoed (never added) when no filed description for that ticker shares a significant word with the SEC name, because the symbol has probably been reassigned since the trade. Vetoed and unmatched tickers become `tk:<TICKER>` and are listed in `meta.json`.
+
+## Where the files live
+
+- **Built** by `python -m pipeline.run` into `web/public/data/` (gitignored; a clean checkout has none).
+- **Published** by the daily workflow (`.github/workflows/data.yml`, `pipeline/publish_r2.py`) to a Cloudflare R2
+  bucket under the key prefix `data/`, only after both validators passed. Public base URL:
+  `https://pub-b6acb08f97e345d68ebc4629e915f8ab.r2.dev/data`, so `web/public/data/members/A000001.json` is served at
+  `<base>/members/A000001.json`. The production site reads this base (`DATA_BASE_URL`, `web/README.md`).
+- **Headers**: every object is plain JSON (no Content-Encoding) with `Content-Type: application/json` and
+  `Cache-Control: public, max-age=300, stale-while-revalidate=86400` (the same URLs are overwritten each build).
+- **Manifest**: `<base>/_manifest.json` is `{build_time, prefix, files: {<path>: <sha256>}}` for the build in the
+  bucket. It is not a data file: the publisher compares against it to upload only changed files, and uploads it
+  after every data file.
+- **`meta.json` is the switch**: it is uploaded after every other data file of a build, so when its `build.time`
+  changes every file of that build is in place. Objects no longer in the build are deleted only after that.
+  A failed upload leaves the previous `meta.json` and manifest in place.
 
 ## Files in `web/public/data/`
 

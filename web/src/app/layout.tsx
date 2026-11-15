@@ -10,6 +10,7 @@ import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 import { Wordmark } from "@/components/shared/Wordmark";
 import { CorrectionLink, CorrectionProvider } from "@/components/shared/CorrectionLink";
 import { NavLinks } from "@/components/shared/NavLinks";
+import { Analytics } from "@vercel/analytics/next";
 import "@/styles/tokens.css";
 import "@/styles/globals.css";
 import "@/styles/board.css";
@@ -81,6 +82,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 {IS_SAMPLE ? " (sample)" : ""}
               </span>
               <Link href="/method">Sources and method</Link>
+              <Link href="/about">About</Link>
               <span>Not investment advice</span>
               <span>No commercial use or solicitation (5 U.S.C. 13107(c))</span>
               <CorrectionLink />
@@ -88,6 +90,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           </div>
         </footer>
         </CorrectionProvider>
+        {/* Cookie-free page-view counts (Vercel Web Analytics). Active only on Vercel. */}
+        <Analytics />
       </body>
     </html>
   );

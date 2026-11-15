@@ -19,3 +19,19 @@ export function isRealDataBuild(root: string = process.cwd()): boolean {
     return false;
   }
 }
+
+/**
+ * Guard against a hosted build silently publishing the sample site. On Vercel or CI (VERCEL or CI set), a build
+ * with neither DATA_BASE_URL nor a real local build would fall back to the fixtures; that is refused unless
+ * PT_DATA=fixtures asks for them explicitly. Returns the error message, or null when the build may go ahead.
+ * Local builds (neither variable set) keep the fixtures fallback.
+ */
+export function sampleFallbackError(env: Record<string, string | undefined>, hasRealData: boolean): string | null {
+  const hosted = Boolean(env.VERCEL || env.CI);
+  if (!hosted || hasRealData || (env.DATA_BASE_URL ?? "").trim() || env.PT_DATA === "fixtures") return null;
+  return (
+    `[data] refusing to build the SAMPLE site on ${env.VERCEL ? "Vercel" : "CI"}: DATA_BASE_URL is not set and ` +
+    "web/public/data holds no real build. Set DATA_BASE_URL to the published data " +
+    "(https://pub-b6acb08f97e345d68ebc4629e915f8ab.r2.dev/data), or set PT_DATA=fixtures to build the sample site on purpose."
+  );
+}

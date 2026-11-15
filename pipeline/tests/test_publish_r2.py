@@ -114,3 +114,17 @@ def test_missing_env_skips_and_refuses_incomplete_build(monkeypatch, tmp_path, c
     assert "R2 upload skipped" in capsys.readouterr().out
     with pytest.raises(pr.PublishError):
         pr.publish(None, BUCKET, tmp_path)                                  # no meta.json
+
+
+def test_require_turns_missing_env_into_a_failure(monkeypatch, tmp_path, capsys) -> None:
+    for k in (*pr.REQUIRED_ENV, "R2_PUBLIC_URL", "PT_R2_REQUIRED"):
+        monkeypatch.delenv(k, raising=False)
+    assert pr.main(["--dir", str(tmp_path), "--require"]) == 2
+    err = capsys.readouterr().err
+    assert "R2 publish FAILED" in err and "R2_BUCKET" in err
+    monkeypatch.setenv("PT_R2_REQUIRED", "1")
+    assert pr.main(["--dir", str(tmp_path)]) == 2
+    for k in pr.REQUIRED_ENV:                                               # all four set, but --verify has no URL
+        monkeypatch.setenv(k, "x")
+    assert pr.main(["--dir", str(tmp_path), "--verify"]) == 2
+    assert "R2_PUBLIC_URL" in capsys.readouterr().err

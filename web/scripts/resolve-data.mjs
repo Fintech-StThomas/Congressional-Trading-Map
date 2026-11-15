@@ -5,6 +5,9 @@
 //   otherwise                        -> fixtures, copied to public/sample-data
 //                                       and served from /sample-data
 //   DATA_BASE_URL set                -> remote mode: nothing copied, nothing read
+//   VERCEL or CI set, no DATA_BASE_URL, no real build, PT_DATA != fixtures
+//                                    -> fails: a hosted build never publishes the sample site by accident
+//                                       (same rule as sampleFallbackError in src/lib/data/source.ts)
 //
 // The site never writes to public/data (the pipeline owns it).
 // next.config.ts makes the same check and exposes the result to the client.
@@ -41,6 +44,14 @@ if (remote) {
   rmSync(sampleOut, { recursive: true, force: true });
   console.log("[data] using real data from public/data");
 } else {
+  if ((process.env.VERCEL || process.env.CI) && process.env.PT_DATA !== "fixtures") {
+    console.error(
+      `[data] refusing to build the SAMPLE site on ${process.env.VERCEL ? "Vercel" : "CI"}: DATA_BASE_URL is not set and ` +
+        "web/public/data holds no real build. Set DATA_BASE_URL to the published data " +
+        "(https://pub-b6acb08f97e345d68ebc4629e915f8ab.r2.dev/data), or set PT_DATA=fixtures to build the sample site on purpose.",
+    );
+    process.exit(1);
+  }
   if (!existsSync(join(fixtures, "members.json"))) {
     execFileSync(process.execPath, [join(root, "scripts", "make-fixtures.mjs")], { stdio: "inherit" });
   }

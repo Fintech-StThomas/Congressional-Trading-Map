@@ -71,11 +71,24 @@ test("leaving lists prints that drop out between years", () => {
   assert.deepEqual(leaving(rowsForYear(base, wy, 2006), rowsForYear(base, wy, 2009)).map((r) => r.id), ["B2"]);
 });
 
-test("real wall-years.json: per-year trades sum to wall.json totals", () => {
-  const dir = new URL("../public/data/", import.meta.url);
-  if (!existsSync(new URL("wall-years.json", dir))) return;
-  const real = decodeWallYears(JSON.parse(readFileSync(new URL("wall-years.json", dir), "utf8")));
-  const wall = JSON.parse(readFileSync(new URL("wall.json", dir), "utf8"));
+// Real data: DATA_BASE_URL when set (the published tree), else a local pipeline build in public/data,
+// else skipped (a clean checkout has neither).
+const remoteBase = (process.env.DATA_BASE_URL ?? "").trim().replace(/\/+$/, "");
+const localDir = new URL("../public/data/", import.meta.url);
+const realSource = remoteBase ? "DATA_BASE_URL" : existsSync(new URL("wall-years.json", localDir)) ? "public/data" : null;
+
+async function realJson(name) {
+  if (!remoteBase) return JSON.parse(readFileSync(new URL(name, localDir), "utf8"));
+  const res = await fetch(`${remoteBase}/${name}`);
+  if (!res.ok) throw new Error(`${res.status} from ${remoteBase}/${name}`);
+  return res.json();
+}
+
+test("real wall-years.json: per-year trades sum to wall.json totals", {
+  skip: realSource ? false : "needs real data: set DATA_BASE_URL or build web/public/data with the pipeline",
+}, async () => {
+  const real = decodeWallYears(await realJson("wall-years.json"));
+  const wall = await realJson("wall.json");
   const at = Object.fromEntries(wall.cols.map((c, i) => [c, i]));
   for (const r of wall.rows.slice(0, 300)) {
     const m = real.members.get(r[at.id]);

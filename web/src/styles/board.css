@@ -236,9 +236,13 @@ button.crumb:hover {
   transform-origin: 0 0;
   transition: transform 520ms cubic-bezier(0.22, 0.8, 0.24, 1);
 }
+/* The country's outline, Alaska and Hawaii included, is drawn firmly so the map reads at a glance. */
 .usmap__nation {
-  fill: oklch(0.235 0.013 55 / 0.55);
-  stroke: none;
+  fill: oklch(0.27 0.014 55 / 0.7);
+  stroke: oklch(0.86 0.012 85 / 0.78);
+  stroke-width: 1.5px;
+  vector-effect: non-scaling-stroke;
+  stroke-linejoin: round;
 }
 .usmap__state {
   fill: transparent;
@@ -267,8 +271,8 @@ button.crumb:hover {
 }
 .usmap__borders {
   fill: none;
-  stroke: oklch(0.72 0.012 80 / 0.42);
-  stroke-width: 0.7px;
+  stroke: oklch(0.8 0.012 80 / 0.62);
+  stroke-width: 0.95px;
   vector-effect: non-scaling-stroke;
   stroke-linejoin: round;
   pointer-events: none;
@@ -320,6 +324,21 @@ button.crumb:hover {
   top: 16px;
   z-index: 6;
   max-width: min(330px, 34%);
+}
+/* Country view: the hint sits in the empty band above the Great Lakes, clear of every state,
+   and lets clicks through in case a small window pushes it over the map. */
+.canvas__slip--country {
+  left: auto;
+  right: 16px;
+  top: 8px;
+  max-width: min(470px, 46%);
+  pointer-events: none;
+}
+.slip--hint {
+  padding: 9px 13px;
+}
+.slip--hint .slip__sub {
+  margin: 0;
 }
 .slip {
   position: relative;

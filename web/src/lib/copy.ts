@@ -13,6 +13,21 @@ export const SITE = {
   disclaimer: "A tie is not a finding. This shows what the filings say, not why.",
 } as const;
 
+// ---------------------------------------------------------------- about
+// Who builds the site, how it is paid for, and what it keeps about visitors. Shown on /about.
+export const ABOUT = {
+  team: ["Yuepheng Yang", "Cole Pawlenty", "Jacob Moreno", "Nikhil Jangir"],
+  origin: "Paper Trail began as a university class project in financial technology and is built and maintained by four students.",
+  funding: "Paper Trail is not funded by anyone. It is free to use, carries no advertising and asks for no donations.",
+  openSource:
+    "The code for the site and for the data build is open source under the MIT licence. Anyone can read it, run it and check how every figure is produced.",
+  independence:
+    "The site has no affiliation with any party, campaign, company or member of Congress. Every party is treated by the same rules, which are published on the method page.",
+  visitors:
+    "The site sets no cookies and has no accounts. It counts page views with a cookie-free tool that does not identify or follow individual visitors.",
+  repoUrl: "https://github.com/Fintech-StThomas/Congressional-Trading-Map",
+} as const;
+
 // ---------------------------------------------------------------- corrections
 // Corrections go through the public issue tracker: every report and its outcome is in the open.
 
