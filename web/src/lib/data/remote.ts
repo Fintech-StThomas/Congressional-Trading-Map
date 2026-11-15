@@ -4,8 +4,8 @@
 // same-origin /data/... (rewritten to it in next.config.ts), and nothing reads web/public/data.
 // Pure (no Node or Next imports) so next.config.ts, the server code and tests share one rule.
 
-/** How long fetched data and the pages built from it stay fresh, in seconds (15 minutes). */
-export const REVALIDATE_SECONDS = 900;
+/** How long fetched data and the pages built from it stay fresh, in seconds (one hour; the data changes once a day). */
+export const REVALIDATE_SECONDS = 3600;
 
 /** The normalised base URL (no trailing slash), or null when remote mode is off. Throws on a malformed value. */
 export function remoteDataBase(raw: string | undefined | null): string | null {

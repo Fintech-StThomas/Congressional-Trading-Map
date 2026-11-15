@@ -422,7 +422,7 @@ export function BoardCanvas(props: Props) {
         </>
       )}
 
-      <div className="canvas__slip" ref={slipRef} style={layout?.slipLight ? lightVars(layout.slipLight) : undefined}>
+      <div className={`canvas__slip${!center && !selectedState ? " canvas__slip--country" : ""}`} ref={slipRef} style={layout?.slipLight ? lightVars(layout.slipLight) : undefined}>
         {slip}
       </div>
       {loading && (

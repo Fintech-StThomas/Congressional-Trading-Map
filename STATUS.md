@@ -3,12 +3,14 @@
 **Read this first.** It is the single shared picture of the project for every teammate and every AI assistant (Claude, ChatGPT or any other), in any session.
 **Rule:** whoever changes what is live, what is in progress, or what is planned updates this file in the same pull request. If this file and the code disagree, the code is right and this file must be fixed.
 
-Last updated: 2026-11-14
+Last updated: 2026-11-15
 
 ## What this is
 
 Paper Trail maps every member of Congress who served since 2000 to the organisations and other members that filed public records tie them to: household stock trades, disclosed holdings, PAC money, outside spending, and money between members. Every tie links to its source record. The site reports what filings say and never asserts wrongdoing. Audience: journalists and curious citizens. Tagline: "Talk is cheap. Follow the money."
 
+- Built by: Yuepheng Yang, Cole Pawlenty, Jacob Moreno, Nikhil Jangir
+- Funding: none. Free, no ads, open source under the MIT licence (`LICENSE`)
 - Live site: https://red-paper-trail.vercel.app/
 - Repository: https://github.com/Fintech-StThomas/Congressional-Trading-Map
 - Corrections: GitHub issues labelled `correction` (linked from every page)
@@ -21,11 +23,13 @@ public sources ──> pipeline/ (Python, runs daily on GitHub Actions at 07:41 
                      ▼
                Cloudflare R2 bucket  (public: https://pub-b6acb08f97e345d68ebc4629e915f8ab.r2.dev/data)
                      ▲
-web/ (Next.js on Vercel) reads the bucket: pages are built on first visit and refreshed every 15 minutes
+web/ (Next.js on Vercel) reads the bucket: pages are built on first visit and refreshed at most hourly
 ```
 
 - Deploys: merging to `main` deploys the site. Working branches (`claude/*`) do not deploy.
 - Vercel setting required: `DATA_BASE_URL` = the bucket URL above. Without it the build fails on purpose.
+- Visitor counts: Vercel Web Analytics (cookie-free), viewed in the Vercel dashboard under Analytics.
+- Node version: pinned to 24 in `web/package.json`.
 - Secrets (GitHub repository secrets, never in code or chat): `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_PUBLIC_URL`, `LDA_API_KEY`, `CONGRESS_API_KEY`, `FEC_API_KEY`.
 
 ## Where things are
@@ -97,19 +101,41 @@ web/ (Next.js on Vercel) reads the bucket: pages are built on first visit and re
 
 ## In progress
 
-- Removing generated data from git (it now lives in R2).
-- Security review and load test of the live site.
+- Nothing is mid-flight. The next item is the first under "Next, in order".
+
+## Security and capacity (reviewed 2026-11-15; full report in `docs/SECURITY-REVIEW.md`)
+
+- No high-severity findings. The live site served 100 concurrent users (277 requests a second) with no errors.
+- The limit is Vercel's free-plan monthly quotas, not speed: roughly 300 to 400 first-time visitors a day as configured. The fixes below should raise that to roughly 1,000 to 2,000. A day of news-level traffic needs the paid plan.
+- Open findings, in priority order: (1) junk member ids trigger bucket fetches and cached pages: validate ids before fetching; (2) no browser security headers (CSP and others); (3) portraits and map files are not cached by browsers; (4) bucket objects should allow an hour of edge caching; (5) the R2 upload keys should move into a GitHub Environment limited to `main`; (6) one record link skips the http(s)-only check.
+- Load test scripts teammates can re-run: `scripts/loadtest/` (test only your own deployment).
 
 ## Next, in order
 
+**Housekeeping**
 1. Rewrite git history to drop the old data (owner must confirm timing; teammates must re-clone).
-2. Lobbying: review attribution, finish the download, switch on.
-3. Senate holdings.
-4. Position timeline per asset (holdings snapshots joined with trades), and sector held versus sector overseen.
-5. FEC spending files: leadership PAC categories, payments to family, loans to own campaign.
-6. Votes, bills and hearings; then prediction-market odds.
-7. Federal contracts; earmarks; sponsored travel.
-8. Alerts, the conflict score, and returns measured from the disclosure date.
+2. Automated checks on every pull request (pipeline tests, site lint, type check, build on sample data, unit tests), including a check that `STATUS.md` was updated when code changed. Then protect `main` so it cannot be merged with failing checks.
+3. Fix the open security and capacity findings listed above.
+
+**Data and features: a fuller financial profile**
+4. Lobbying: review attribution, finish the download, switch on.
+5. Senate holdings.
+6. Position timeline per asset: join yearly holdings snapshots with the trades between them ("held since 2015, added 2019, sold 2023").
+7. Sector held versus sector overseen: share of a member's disclosed portfolio in industries their committees regulate (needs historical committee membership).
+8. FEC spending and summary files: loans a member made to their own campaign and their repayment; campaign payments to family members or member-owned firms; leadership PAC spending by category.
+9. Net worth change over tenure (first report against latest, as ranges) and leverage (mortgages, margin loans, credit lines) from the liabilities already held.
+10. Returns measured from the disclosure date: what copying each trade on the day it became public would have earned, against a benchmark.
+11. Outside income, positions and gifts (other schedules of the annual reports; needs our own parsing of the House PDFs).
+12. Votes, bills and hearings; then prediction-market odds on pending bills.
+13. Federal contracts; earmarks; sponsored travel; SEC insider filings.
+14. Alerts and the conflict score.
+
+**Optimisations**
+- A custom domain on the R2 bucket (the current r2.dev address is rate-limited by Cloudflare and meant for development).
+- Dated snapshots of the data, so any past figure can be cited and reproduced.
+- Split the largest files (the 7.5 MB trades file by year; the organisations index).
+- Automatic dependency updates and security alerts.
+- An uptime check on the site and on the daily job.
 
 ## Working rules
 

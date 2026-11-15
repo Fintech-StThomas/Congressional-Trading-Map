@@ -21,7 +21,7 @@ Live site: https://red-paper-trail.vercel.app/
 The generated data is not stored in git. A GitHub Actions workflow (`.github/workflows/data.yml`) rebuilds it daily
 from the sources, runs the validators, and publishes it to a Cloudflare R2 bucket:
 `https://pub-b6acb08f97e345d68ebc4629e915f8ab.r2.dev/data` (start with `meta.json`, which gives the build time and
-each source's revision). The site reads it from there and picks up a new build within about 15 minutes. Sources
+each source's revision). The site reads it from there and picks up a new build within about an hour. Sources
 and licences are listed in `pipeline/README.md`.
 
 ## Corrections

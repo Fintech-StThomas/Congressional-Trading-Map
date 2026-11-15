@@ -70,7 +70,7 @@ One server-side environment variable, `DATA_BASE_URL`, picks where the data come
 |---|---|---|
 | Server reads | `public/data` (or fixtures) with `fs`, at build time only | `fetch(DATA_BASE_URL/<file>)` with Next's fetch cache, `revalidate` 15 minutes (`REVALIDATE_SECONDS` in `lib/data/remote.ts`) |
 | Prebuilt at build | every page: 1,569 member pages, 1,569 full files, every state's board strings, every cases page and filter | home, `/wall`, `/cases` (page 1), `/orgs`, `/method`, `/org` shell, `/search-index`; nothing per member |
-| Everything else | (all prebuilt) | rendered on first request and cached (ISR), then regenerated at most every 15 minutes, so each daily data build reaches the site without a redeploy |
+| Everything else | (all prebuilt) | rendered on first request and cached (ISR), then regenerated at most every hour, so each daily data build reaches the site without a redeploy |
 | Browser data | `/data/...` static files from `public/data` | the same `/data/...` URLs, proxied to `DATA_BASE_URL/...` by a `beforeFiles` rewrite (no CORS) |
 | `public/data` | read and served | neither read nor served, even if present: `resolve-data` copies nothing and the rewrite runs before `public/` files |
 
