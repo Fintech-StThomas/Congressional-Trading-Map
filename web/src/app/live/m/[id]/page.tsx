@@ -5,6 +5,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { IS_REMOTE } from "@/lib/data/server";
+import { isMemberId } from "@/lib/data/ids";
 import MemberPage, { generateMetadata as memberMetadata } from "../../../m/[id]/page";
 
 type Props = { params: Promise<{ id: string }> };
@@ -16,10 +17,12 @@ export async function generateStaticParams() {
 }
 
 export async function generateMetadata(props: Props): Promise<Metadata> {
-  return IS_REMOTE ? memberMetadata(props as PageProps<"/m/[id]">) : {};
+  // A malformed id is a 404 before anything is fetched (next.config.ts only rewrites well-formed ids here).
+  if (!IS_REMOTE || !isMemberId((await props.params).id)) return {};
+  return memberMetadata(props as PageProps<"/m/[id]">);
 }
 
-export default function LiveMemberPage(props: Props) {
-  if (!IS_REMOTE) notFound();
+export default async function LiveMemberPage(props: Props) {
+  if (!IS_REMOTE || !isMemberId((await props.params).id)) notFound();
   return <MemberPage {...(props as PageProps<"/m/[id]">)} />;
 }

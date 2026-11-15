@@ -29,7 +29,8 @@ import duckdb
 from ..companies import load_overrides, same_issuer_possible
 from ..util import (BUILD, CACHE, EDGES_DIR, ORGS_DIR, OUT, SOURCES_DIR, clean_sec_name, normalise_name,
                     normalise_ticker, print_table, read_json, write_json, write_jsonl)
-from . import rules
+from . import positions, profile, rules
+from .ranges import band_sum, net_worth  # noqa: F401 - re-exported for validate and tests
 from .source import DATASET, SOURCE_ID, download, pinned_revision
 
 HOLD_DIR = OUT / "holdings"
@@ -64,6 +65,10 @@ NET_WORTH = {
 }
 ASSET_COLS = ["row", "asset", "ticker", "ticker_source", "org", "category", "owner", "low", "high",
               "income_type", "income_low", "income_high", "location", "doc"]
+# holdings-index.json columns added for the position timelines, the change since the first report and leverage.
+INDEX_EXTRA = ["nw_first_year", "nw_change_low", "nw_change_high", "nw_comparable", "pos_assets", "pos_consistent",
+               "pos_unexplained_appearance", "pos_unexplained_disappearance", "pos_band_change_no_trade",
+               "pos_share_with_trades", "margin_loan_years"]
 LIAB_COLS = ["row", "creditor", "type", "owner", "low", "high", "incurred", "residence_secured", "doc"]
 
 
@@ -172,33 +177,6 @@ def printed_ticker(asset: str, ticker: str | None) -> bool:
         return False
     want = normalise_ticker(ticker)
     return any(normalise_ticker(t) == want for t in re.findall(r"\(([A-Za-z0-9./\- ]{1,12})\)", asset or ""))
-
-
-# ---------------------------------------------------------------- sums
-def band_sum(items: list[tuple[int | None, int | None]]) -> dict[str, Any]:
-    """Assets: lows add (unvalued count 0 toward low); high null if any item is unvalued or open-ended."""
-    valued = [(lo, hi) for lo, hi in items if lo is not None]
-    open_ended = sum(1 for lo, hi in valued if hi is None)
-    unvalued = len(items) - len(valued)
-    low = sum(lo for lo, _ in valued)
-    high_valued = None if open_ended else sum(hi for _, hi in valued)
-    return {"n": len(items), "unvalued": unvalued, "open_ended": open_ended, "low": low,
-            "high": None if (open_ended or unvalued) else high_valued, "high_valued": high_valued}
-
-
-def net_worth(a: dict[str, Any], l: dict[str, Any]) -> dict[str, Any]:
-    low = None if l["high"] is None else a["low"] - l["high"]
-    high = None if a["high"] is None else a["high"] - l["low"]
-    high_valued = None if a["high_valued"] is None else a["high_valued"] - l["low"]
-    if a["open_ended"]:
-        label = "at least" if low is not None else "unbounded"
-    elif a["unvalued"]:
-        label = "valued items only"
-    else:
-        label = "range"
-    return {"low": low, "high": high, "high_valued": high_valued, "label": label,
-            "unvalued_assets": a["unvalued"], "open_ended_assets": a["open_ended"],
-            "open_ended_liabilities": l["open_ended"]}
 
 
 def fmt_band(lo: int | None, hi: int | None) -> str:
@@ -417,6 +395,8 @@ def run() -> None:
     if tmp_dir.exists():
         shutil.rmtree(tmp_dir)
     tmp_dir.mkdir(parents=True)
+    (tmp_dir / "positions").mkdir()
+    pos_stats: Counter = Counter()
     members = sorted({k[0] for k in by_key})
     index_rows, edges, org_label, sample_rows = [], [], defaultdict(Counter), []
     ov_stats = Counter()
@@ -523,11 +503,29 @@ def run() -> None:
             "overlaps": overlaps, "coverage": cov,
             "member_source": sorted({used[(mid, int(y))]["member_source"] for y in years}),
         }
+        # Position timelines: this build's published trade file (pass 2, holdings_publish), as for the overlaps.
+        tp = OUT / "trades" / f"{mid}.json"
+        pos = positions.build(years, read_json(tp) if tp.exists() else None, companies)
+        pos_docs = {years[y]["doc"]: doc_meta[years[y]["doc"]]["url"] for y in years}
+        write_json(tmp_dir / "positions" / f"{mid}.json", {
+            "member": mid, "source": SOURCE_ID, "coverage": cov, "docs": pos_docs, **pos})
+        ps = pos["summary"]
+        pos_stats.update({k: v for k, v in ps.items() if isinstance(v, int)})
+        pos_stats.update({f"transition_{k}": v for k, v in ps["transitions"].items()})
+        out["positions_summary"] = ps
+        out["tenure_change"] = tc = profile.tenure_change(years)
+        out["leverage"] = lev = profile.leverage(years)
+        pos_stats.update({f"liability_bucket_{k}": v for k, v in lev["bucket_rows"].items()})
+        pos_stats["margin_loan_rows"] += len(lev["margin_loans"]["rows"])
         write_json(tmp_dir / f"{mid}.json", out)
         nw = ly["net_worth"]
         index_rows.append([mid, sorted(int(y) for y in years), latest, nw["low"], nw["high"], nw["high_valued"], nw["label"],
                            ly["totals"]["assets"]["n"], ly["totals"]["liabilities"]["n"] + ly["totals"]["liabilities_residence_secured"]["n"],
-                           ly["totals"]["liabilities"]["low"], ly["totals"]["liabilities"]["high"], len(overlaps)])
+                           ly["totals"]["liabilities"]["low"], ly["totals"]["liabilities"]["high"], len(overlaps),
+                           tc["first_year"] if tc else None, tc["change"]["low"] if tc else None,
+                           tc["change"]["high"] if tc else None, tc["comparable"] if tc else None,
+                           ps["assets"], *(ps["transitions"][k] for k in positions.CLASSES[:4]), ps["share_with_trades"],
+                           len({r[0] for r in lev["margin_loans"]["rows"]})])
         # owns edges: one per member and org; amount and by_year = the latest report year that lists the org
         for org, by_y in held.items():
             ly2 = max(by_y)
@@ -566,7 +564,7 @@ def run() -> None:
     if old_dir.exists():
         shutil.rmtree(old_dir)
     write_json(INDEX, {"cols": ["id", "years", "latest", "nw_low", "nw_high", "nw_high_valued", "nw_label", "assets",
-                                "liabilities", "liab_low", "liab_high", "overlaps"],
+                                "liabilities", "liab_low", "liab_high", "overlaps", *INDEX_EXTRA],
                        "rows": sorted(index_rows), "net_worth_definition": NET_WORTH, "source": SOURCE_ID})
     write_jsonl(EDGE_FILE, edges)
     orgs = []
@@ -588,6 +586,7 @@ def run() -> None:
     unextracted = {f"{r[0]}:{r[1]}": r[2] for r in con.execute("""select report_year, extract_status, count(*) from f
         where chamber='house' and filing_type='annual' group by all order by 1, 2""").fetchall()}
     sizes = sorted(((p.stat().st_size, p.name) for p in HOLD_DIR.glob("*.json")), reverse=True)
+    pos_sizes = sorted(((p.stat().st_size, p.name) for p in (HOLD_DIR / "positions").glob("*.json")), reverse=True)
     rep = {
         "table_rows": info["counts"], "joins": info["joins"],
         "chambers": {"house": "Schedules A (assets) and D (liabilities) of annual reports, report years "
@@ -604,9 +603,12 @@ def run() -> None:
                                 "median": sorted(ratios)[len(ratios) // 2] if ratios else None},
         "tickers": {"resolution": dict(sorted(tick.stats.items())), "vetoed": tick.vetoed,
                     "unmatched_top": Counter(r["ticker"] for r in sample_rows if r["org"] and r["org"].startswith("tk:")).most_common(50)},
+        "positions": dict(sorted(pos_stats.items())),
         "redaction_examples": red_examples, "overlaps": dict(ov_stats), "owns_edges": len(edges), "orgs": len(orgs),
         "output": {"files": len(sizes) + 1, "bytes": sum(s for s, _ in sizes) + INDEX.stat().st_size,
-                   "largest": [[n, s] for s, n in sizes[:10]], "index_bytes": INDEX.stat().st_size},
+                   "largest": [[n, s] for s, n in sizes[:10]], "index_bytes": INDEX.stat().st_size,
+                   "positions_files": len(pos_sizes), "positions_bytes": sum(s for s, _ in pos_sizes),
+                   "positions_largest": [[n, s] for s, n in pos_sizes[:5]]},
         "instructions_verified": {
             "house": {"url": HOUSE_GUIDE, "title": "Instruction Guide, Financial Disclosure Reports and Periodic "
                       "Transaction Reports, Calendar Year 2025 (Committee on Ethics, 2026)",

@@ -1,6 +1,7 @@
 // One static JSON file per state with every current member's board strings,
 // cut from the member files at build time.
 import { IS_REMOTE, getBoard, memberBoard, type MemberBoard } from "@/lib/data/server";
+import { isStateCode } from "@/lib/data/ids";
 
 export const dynamic = "force-static";
 // Every path is prerendered from local data and other paths are 404s. With DATA_BASE_URL nothing is
@@ -19,6 +20,7 @@ export async function GET(_req: Request, ctx: RouteContext<"/board-data/[state]"
   const againstMore: Record<string, number> = {};
   const nodes: MemberBoard["nodes"] = {};
   const members: MemberBoard["members"] = {};
+  if (!isStateCode(state)) return new Response("Not found", { status: 404 });
   const board = await getBoard();
   if (IS_REMOTE && !board.states[state]) return new Response("Not found", { status: 404 });
   for (const id of board.states[state] ?? []) {

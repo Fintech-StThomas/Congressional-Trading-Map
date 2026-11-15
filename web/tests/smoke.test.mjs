@@ -61,11 +61,21 @@ after(async () => {
   }
 });
 
+// Every Content-Security-Policy violation seen by any page in this file (console reports and
+// securitypolicyviolation events); the last test asserts there were none.
+const cspViolations = [];
+
 async function page(width = 1440, height = 900) {
-  const p = await browser.newPage({ viewport: { width, height } });
+  const p = await browser.newPage({ viewport: { width, height }, acceptDownloads: true });
   p.on("pageerror", (e) => {
     throw e;
   });
+  p.on("console", (m) => {
+    if (/Content[- ]Security[- ]Policy|CSP violation/i.test(m.text())) cspViolations.push(`${p.url()}: ${m.text()}`);
+  });
+  await p.addInitScript(() =>
+    document.addEventListener("securitypolicyviolation", (e) => console.error(`CSP violation: ${e.violatedDirective} blocked ${e.blockedURI} at ${e.sourceFile}:${e.lineNumber}`)),
+  );
   return p;
 }
 
@@ -416,4 +426,64 @@ realTest("ledger rows say which way the money went", async () => {
   const dirs = await p.getByTestId("ledger").locator("tbody .ties__dir").allInnerTexts();
   assert.ok(dirs.length > 0 && dirs.every((d) => /^(from|to|with)$/.test(d.trim())), "every ledger row has a direction word");
   await p.close();
+});
+
+test("security headers are sent; the share image stays readable cross-origin", async () => {
+  const home = await fetch(base + "/");
+  for (const h of ["content-security-policy", "x-content-type-options", "x-frame-options", "referrer-policy", "permissions-policy", "cross-origin-opener-policy"])
+    assert.ok(home.headers.get(h), `${h} missing on /`);
+  assert.match(home.headers.get("content-security-policy"), /frame-ancestors 'none'/);
+  assert.equal(home.headers.get("cross-origin-resource-policy"), "same-origin");
+  const og = await fetch(base + "/opengraph-image");
+  assert.equal(og.status, 200);
+  assert.equal(og.headers.get("cross-origin-resource-policy"), "cross-origin");
+  const geo = await fetch(base + "/geo/us-states.json");
+  assert.match(geo.headers.get("cache-control") ?? "", /max-age=604800/);
+});
+
+test("junk ids are 404s, not errors", async () => {
+  for (const path of ["/m/zzjunk", "/m/" + "a".repeat(2000), "/m/%3Cscript%3E", "/m/Z999999", "/m/junk/records", "/board-member/junk", "/board-data/ZZ", "/cases/page/99999", "/cases/ties/junk", "/o/junk"]) {
+    const r = await fetch(base + path);
+    assert.equal(r.status, 404, `${path.slice(0, 40)} gave ${r.status}`);
+  }
+});
+
+// Runs last: the main journeys not covered above, then the check over every page this file opened.
+test("no Content-Security-Policy violations on any page", async () => {
+  const p = await page();
+  for (const url of ["/", "/wall", "/cases", "/orgs", "/method", "/about"]) {
+    await p.goto(base + url, { waitUntil: "networkidle" });
+  }
+  // A state on the board, then a string's evidence drawer.
+  await p.goto(base + "/");
+  await p.waitForSelector(".yarn", { timeout: 10000, state: "attached" });
+  await p.locator(".yarn").first().focus();
+  await p.keyboard.press("Enter");
+  await p.getByTestId("evidence-drawer").waitFor();
+  // The member's case file, printed (print stylesheet and the print-only case file).
+  await p.keyboard.press("Escape");
+  await p.locator(".stage__board .slip a", { hasText: "Open case file" }).click();
+  await p.getByTestId("member-page").waitFor();
+  await p.emulateMedia({ media: "print" });
+  await p.waitForLoadState("networkidle");
+  await p.emulateMedia({ media: "screen" });
+  // The full file and its CSV download.
+  const id = new URL(p.url()).pathname.split("/")[2];
+  await p.goto(`${base}/m/${id}/records`);
+  await p.getByTestId("records-ready").waitFor({ timeout: 60000 });
+  const csv = p.getByTestId("rec-ties-csv");
+  if (await csv.count()) await Promise.all([p.waitForEvent("download"), csv.click()]);
+  // The correction link opens GitHub in a new tab (a navigation, which the CSP does not govern).
+  const [tab] = await Promise.all([p.context().waitForEvent("page"), p.locator("footer.site-footer [data-testid=correction-link]").click()]);
+  await tab.close();
+  if (realData) {
+    // The wall's year control.
+    await p.goto(base + "/wall");
+    await p.waitForSelector("[data-testid=wall] .wall__print");
+    await p.goto(base + "/wall?y=2012");
+    await p.waitForSelector('[data-testid=wall][data-year="2012"]', { timeout: 15000 });
+    await p.goto(base + "/o/co%3A732717", { waitUntil: "networkidle" });
+  }
+  await p.close();
+  assert.deepEqual(cspViolations, []);
 });

@@ -27,9 +27,9 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 export default async function CasesPagePath({ params }: { params: Promise<{ slug: string[] }> }) {
   const q = parseCasesPath((await params).slug);
   if (!q) notFound();
-  if (q.page > 1) {
-    const [cases, members] = await Promise.all([getCases(), getMemberIndex()]);
-    if (q.page > pageOf(cases, members, q).pages) notFound();
-  }
+  // Only the generated combinations exist (allCasePaths): a filter with at least one case, a page within range.
+  const [cases, members] = await Promise.all([getCases(), getMemberIndex()]);
+  const p = pageOf(cases, members, q);
+  if (p.total === 0 || q.page > p.pages) notFound();
   return <CasesView q={q} />;
 }
