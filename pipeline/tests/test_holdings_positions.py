@@ -115,3 +115,11 @@ def test_redacted_property_keys_keep_location():
             arow("a2", "[street address redacted]", None, loc="Reno, NV", cat="other")]
     keys, _ = P.keys_for_rows(rows)
     assert keys[0] != keys[1]
+
+
+def test_resolved_trade_identity_cannot_fall_back_to_another_issuer():
+    keys, aliases = P.keys_for_rows([arow("a1", "Acme Corp (ACME)", "co:1")])
+    trade = {"org": "co:2", "asset": "Acme Corp (ACME)", "asset_class": "stock"}
+    assert P.trade_key(trade, set(keys), aliases) is None
+    # An unresolved ticker can still bridge the unique exact issuer name.
+    assert P.trade_key({**trade, "org": "tk:OLD"}, set(keys), aliases) == "co:1"

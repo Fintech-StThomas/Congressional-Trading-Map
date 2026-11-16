@@ -1,5 +1,6 @@
 // "Disclosed holdings" on the member page: House annual reports only. Server component.
 import Link from "next/link";
+import { FinancialProfile } from "./FinancialProfile";
 import { coverageWords, netWorthText, rowsOf, type HoldingsFile } from "@/lib/domain/holdings";
 import { signedShortMoney } from "@/lib/format";
 import { HOLDINGS_YEARS } from "@/lib/years";
@@ -95,6 +96,7 @@ export function HoldingsSection({ h, everHouse, memberId }: { h: HoldingsFile | 
         <strong>What the law leaves out:</strong> {h.net_worth_definition.excludes.join("; ")}.
       </p>
 
+      <FinancialProfile h={h} />
       <h3 className="hold__h">Portfolio, {h.portfolio.year}</h3>
       <div className="tablewrap">
         <table className="ties hold__table">

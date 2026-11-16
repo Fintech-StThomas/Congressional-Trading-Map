@@ -37,6 +37,7 @@ def check_member(c: Any, mid: str, m: dict[str, Any], pos: dict[str, Any], picks
     tp = OUT / "trades" / f"{mid}.json"
     tf = read_json(tp) if tp.exists() else {"cols": [], "rows": [], "filings": {}}
     tby = {t["id"]: t for t in rows_of(tf)}
+    c.check(pos["member"] == mid and pos["coverage"] == m["coverage"], "positions identity and coverage", mid)
     assets = rows_of(pos["assets"])
     c.check(len({a["key"] for a in assets}) == len(assets), "asset keys unique", mid)
     used = sorted(int(y) for y in m["years"])
@@ -55,13 +56,34 @@ def check_member(c: Any, mid: str, m: dict[str, Any], pos: dict[str, Any], picks
         c.check(s["owners"] == sorted({r[6] for r in lines}), "snapshot owners as filed", f"{mid} {s['year']}")
     keys, _ = P.keys_for_rows([r for y in used for r in m["years"][str(y)]["assets"]["rows"]])
     c.check(set(keys) == {a["key"] for a in assets}, "every asset row is in exactly one timeline", mid)
+    # Compare the complete row partition, not just totals: omissions or duplicate lines must fail.
+    actual_rows = Counter((s["year"], row) for s in rows_of(pos["snapshots"]) for row in s["rows"])
+    expected_rows = Counter((y, r[0]) for y in used for r in m["years"][str(y)]["assets"]["rows"])
+    c.check(actual_rows == expected_rows, "snapshots partition all annual asset rows", mid)
+    c.check(all(0 <= s["a"] < len(assets) for s in rows_of(pos["snapshots"])), "snapshot asset indices exist", mid)
+    c.check(len(snaps) == len(assets), "every asset has snapshots", mid)
+    c.check(len({(s["a"], s["year"]) for s in rows_of(pos["snapshots"])}) == len(pos["snapshots"]["rows"]),
+            "one snapshot per asset and year", mid)
     tr: dict[int, list[dict[str, Any]]] = {}
     for t in rows_of(pos["trades"]):
         tr.setdefault(t["a"], []).append(t)
         src = tby.get(t["id"])
         c.check(src is not None and src["date"] == t["date"] and src["action"] == t["action"] and src["low"] == t["low"]
-                and src["high"] == t["high"] and src["owner"] == t["owner"], "timeline trade equals the published trade", f"{mid} {t['id']}")
+                and src["high"] == t["high"] and src["owner"] == t["owner"] and src["doc"] == t["doc"], "timeline trade equals the published trade", f"{mid} {t['id']}")
+        if src and src.get("org", "") and src["org"].startswith("co:") and 0 <= t["a"] < len(assets):
+            c.check(assets[t["a"]]["org"] == src["org"], "resolved trade identity preserved", f"{mid} {t['id']}")
+        c.check(pos["filings"].get(t["doc"]) == tf["filings"].get(t["doc"]), "trade filing URL preserved", f"{mid} {t['id']}")
         c.check(bool(PTR_URL.match(pos["filings"].get(t["doc"]) or "")), "timeline trade cites a filing URL", f"{mid} {t['id']}")
+    c.check(len({t["id"] for t in rows_of(pos["trades"])}) == len(pos["trades"]["rows"]), "timeline trades unique", mid)
+    c.check(all(0 <= t["a"] < len(assets) for t in rows_of(pos["trades"])), "trade asset indices exist", mid)
+    expected_transitions = set()
+    for ai in range(len(assets)):
+        for ya, yb in zip(used, used[1:]):
+            if ya in snaps.get(ai, {}) or yb in snaps.get(ai, {}) or any(ya < int(t["date"][:4]) <= yb for t in tr.get(ai, [])):
+                expected_transitions.add((ai, ya, yb))
+    actual_transitions = [(x["a"], x["from"], x["to"]) for x in rows_of(pos["transitions"])]
+    c.check(set(actual_transitions) == expected_transitions and len(actual_transitions) == len(expected_transitions),
+            "transitions complete and unique", mid)
     counts = Counter()
     for x in rows_of(pos["transitions"]):
         sa, sb = snaps.get(x["a"], {}).get(x["from"]), snaps.get(x["a"], {}).get(x["to"])
@@ -74,6 +96,8 @@ def check_member(c: Any, mid: str, m: dict[str, Any], pos: dict[str, Any], picks
         c.check((x["change"], x["buys"], x["sells"], x["exchanges"], x["sold_last_listed_year"], x["class"]) ==
                 (change, n["buy"], n["sell"], n["exchange"], last, want), "transition re-classified by rule", f"{mid} {x['a']} {x['from']}")
         c.check(used.index(x["to"]) == used.index(x["from"]) + 1, "transition joins consecutive used reports", mid)
+        c.check(x["gap"] == x["to"] - x["from"] - 1 and x["owner_change"] == bool(sa and sb and sa["owners"] != sb["owners"]),
+                "transition gap and owner change", mid)
         counts[x["class"]] += 1
     s = pos["summary"]
     c.check(s == m.get("positions_summary"), "positions summary equals the holdings file's", mid)
@@ -88,6 +112,9 @@ def check_member(c: Any, mid: str, m: dict[str, Any], pos: dict[str, Any], picks
     if tc and tc["known"]:
         c.check(tc["change"]["low"] <= tc["change"]["high"], "change range ordered", mid)
     for a_i, a in enumerate(assets):
+        present = sorted(snaps.get(a_i, {}))
+        c.check(a["years"] == present and a["status"] == P.status(present, used) and a["trades"] == len(tr.get(a_i, [])),
+                "asset years status and trade count", mid)
         picks.append((mid, a_i, a))
     return counts
 

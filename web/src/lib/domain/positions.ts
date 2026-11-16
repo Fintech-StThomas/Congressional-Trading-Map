@@ -52,7 +52,7 @@ export function decodePositions(p: PositionsFile): Position[] {
 export function bandText(low: number | null, high: number | null, unvalued = 0): string {
   if (low === null) return "no value given";
   if (unvalued) return low > 0 ? `at least ${usd(low)} (a line has no value)` : "no value given";
-  if (high === null) return `over ${usd(Math.max(0, low - 1))}`;
+  if (high === null) return `at least ${usd(low)} (upper bound unknown)`;
   return `${usd(low)}–${usd(high)}`;
 }
 

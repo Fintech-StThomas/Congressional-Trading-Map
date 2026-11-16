@@ -1,5 +1,6 @@
 // Holdings and net worth (House annual reports): types and wording. Browser-safe,
 // no runtime imports. Contract: docs/data-dictionary.md, "Holdings and net worth".
+import type { Leverage, PositionsSummary, TenureChange } from "./positions.ts";
 import type { Cell, Col } from "./records.ts";
 import { signedShortMoney as usd } from "../format.ts";
 
@@ -22,6 +23,9 @@ export type HoldingsFile = {
   years: Record<string, HoldingsYear>;
   portfolio: Table & { year: number };
   coverage: { year: number; status: string }[];
+  positions_summary?: PositionsSummary;
+  tenure_change?: TenureChange | null;
+  leverage?: Leverage;
 };
 
 

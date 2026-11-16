@@ -1,0 +1,21 @@
+/* Annual asset timelines: keep year columns readable and let narrow screens scroll. */
+.positions__controls { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; margin: 1rem 0; }
+.positions__controls select { font: inherit; padding: .3rem; max-width: 100%; }
+.positions__table { min-width: 950px; }
+.positions__table th:first-child { min-width: 230px; max-width: 360px; }
+.positions__table td { min-width: 100px; vertical-align: top; }
+.positions__table summary { cursor: pointer; }
+.positions__table details { font-weight: normal; }
+.positions__table ul { padding-left: 1.2rem; }
+.positions .sub { display: block; font-size: .8rem; }
+
+/* Financial tables retain their columns inside a scroll area on phones. The general
+   ties stylesheet stacks relationship rows, which loses year/amount headers here. */
+@media (max-width: 719px) {
+  .hold .ties { display: table; width: 100%; }
+  .hold .ties:not(.positions__table) { min-width: 700px; }
+  .hold .ties thead { display: table-header-group; }
+  .hold .ties tbody { display: table-row-group; width: auto; }
+  .hold .ties tbody tr:not(.ties__group) { display: table-row; width: auto; padding: 0; overflow-wrap: normal; }
+  .hold .ties th, .hold .ties td { display: table-cell; width: auto; padding: 9px 12px; }
+}

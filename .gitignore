@@ -20,3 +20,6 @@ web/public/data.old/
 
 # Agent worktrees are local scratch checkouts
 .claude/worktrees/
+
+# Local verification logs, copied builds and screenshots.
+/work/

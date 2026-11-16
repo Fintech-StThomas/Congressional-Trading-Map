@@ -169,9 +169,9 @@ Without the first four the script prints "R2 upload skipped" and exits 0 (local 
 when `--verify` is asked for without `R2_PUBLIC_URL`. What it does:
 
 1. Hashes every file (path -> SHA-256) and reads the previous manifest `data/_manifest.json`
-   (`{build_time, prefix, files: {path: sha256}}`); when it is missing or unreadable, every file is uploaded.
+   (`{build_time, prefix, cache_control, files: {path: sha256}}`); when it is missing, unreadable, or has a different cache policy, every file is uploaded.
 2. Uploads only files whose hash changed (16 at a time, each retried on network errors, 429 and 5xx), as plain JSON
-   with `Content-Type: application/json` and `Cache-Control: public, max-age=300, stale-while-revalidate=86400` (the
+   with `Content-Type: application/json` and `Cache-Control: public, max-age=300, s-maxage=3600, stale-while-revalidate=86400` (the
    same URLs are overwritten daily). No gzip and no Content-Encoding: plain JSON objects (Cloudflare can compress
    responses on a custom domain; that is not relied on).
 3. Uploads `meta.json` after every other data file, then the new manifest. Readers can treat `meta.json`'s
@@ -270,3 +270,18 @@ contributions file (`indiv`), and publishes no individual contributor; the notic
   failed validation `web/public/data/` holds the failed build until the next run (the daily workflow never publishes
   it). There is no copy in git to restore from: fix and rerun, or run the site against the published data
   (`DATA_BASE_URL`, see `web/README.md`).
+
+## Financial history derived from annual reports
+
+`holdings/positions.py` joins annual asset rows to the published household trades;
+`profile.py` derives first/latest disclosed range change and debt history, using
+`ranges.py` for the same unknown/open-ended band rules. `holdings_publish` rebuilds
+these after assembly so the timelines use this run's trades. The extra public files
+are `holdings/positions/<id>.json`; summaries, change and leverage are in each
+`holdings/<id>.json` and selected summary columns in `holdings-index.json`.
+See the [contract](../docs/data-dictionary.md#position-timelines) before editing.
+`python -m pipeline.holdings.validate` invokes `validate_positions.py` to check the
+annual row partition, trade identity, complete transition set, citations, summaries
+and derived financial profile; run it in addition to `python -m pipeline.validate`.
+It writes `pipeline/build/timeline-sample.csv` for human review without overwriting
+an existing reviewed sample in `docs/validation/`.

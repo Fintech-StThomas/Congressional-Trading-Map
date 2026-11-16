@@ -6,6 +6,7 @@ import { getJSON } from "@/lib/data/fetch";
 import type { MemberFileWire } from "@/lib/types";
 import { caveats, DOC_COLS, documentRows, identifierLinks, TIE_COLS, tieRows, TRADE_COLS_ALL, tradeRows, type Col } from "@/lib/domain/records";
 import { USE_NOTICE, SENATE_NOTE } from "@/lib/copy";
+import { PositionsRecords } from "./PositionsRecords";
 import { DataTable, download } from "./DataTable";
 import { ASSET_COLS, coverageWords, holdingRows, LIABILITY_COLS, netWorthText, type HoldingsFile } from "@/lib/domain/holdings";
 
@@ -113,6 +114,7 @@ export function RecordsView({ id, hasTrades, hasHoldings, everHouse, names, sour
         <a href="#rec-ids">Identifiers</a>
         <a href="#rec-cov">Coverage and caveats</a>
         <a href="#rec-holdings">Holdings and net worth</a>
+        {holdings?.positions_summary && <a href="#rec-positions">Position transitions</a>}
       </nav>
 
       <section id="rec-ties" className="rec__sec" aria-labelledby="rec-ties-h">
@@ -168,6 +170,8 @@ export function RecordsView({ id, hasTrades, hasHoldings, everHouse, names, sour
         </ul>
         <DataTable id="coverage" title="Coverage by year" cols={COV_COLS} rows={coverage} file={`${m.id}-coverage`} />
       </section>
+
+      {holdings && <PositionsRecords id={id} available={!!holdings.positions_summary} />}
 
       {/* Holdings and net worth (House annual reports, holdings/<id>.json): a one-line note when absent. */}
       <section id="rec-holdings" className="rec__sec" aria-labelledby="rec-holdings-h">
