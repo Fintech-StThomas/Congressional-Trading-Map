@@ -1,4 +1,4 @@
-"""Immutable archive and compare-and-swap activation behavior against moto's local S3."""
+"""Content-addressed archive, no-change skip, verification trade-offs and compare-and-swap activation (moto S3)."""
 from __future__ import annotations
 
 import hashlib
@@ -12,6 +12,7 @@ from moto import mock_aws
 
 from pipeline import publish_release as pr
 from pipeline import publish_r2
+from pipeline.release_blobs import blob_key
 from pipeline.release_manifest import build_manifest, canonical_json, ReleaseManifestError
 
 BUCKET = "paper-trail"
@@ -66,6 +67,18 @@ class Client:
         return getattr(self.client, name)
 
 
+def sha(text):
+    return hashlib.sha256(text.encode() if isinstance(text, str) else text).hexdigest()
+
+
+A1 = blob_key(sha('{"a":1}'))
+A2 = blob_key(sha('{"a":2}'))
+
+
+def descriptor(release):
+    return f"releases/{release}/release.json"
+
+
 def publish(client, tree, activate=False):
     return pr.publish(client, BUCKET, tree, activate=activate, sleep=lambda _: None)
 
@@ -75,59 +88,58 @@ def test_stage_then_activate_and_repeat_preserves_exact_bytes_and_headers(s3, tr
     client = Client(s3)
     staged = publish(client, tree)
     release_id = staged["release_id"]
-    prefix = f"releases/{release_id}/"
+    assert (staged["files"], staged["blobs"], staged["new_blobs"], staged["reused_blobs"]) == (2, 2, 2, 0)
+    assert staged["new_bytes"] == len(b'{"a":1}') + (tree / "meta.json").stat().st_size
     assert pr.CURRENT not in keys(s3)
-    assert client.puts[-1]["Key"] == prefix + "release.json"
+    assert client.puts[-1]["Key"] == descriptor(release_id)
     assert all(p["IfNoneMatch"] == "*" for p in client.puts)
-    assert body(s3, prefix + "release.json") == canonical_json(build_manifest(tree))
-    for rel in build_manifest(tree)["files"]:
-        assert body(s3, prefix + rel) == (tree / rel).read_bytes()
-        head = s3.head_object(Bucket=BUCKET, Key=prefix + rel)
+    assert keys(s3) == {"data/legacy.json", descriptor(release_id), A1, blob_key(build_manifest(tree)["files"]["meta.json"]["sha256"])}
+    assert body(s3, descriptor(release_id)) == canonical_json(build_manifest(tree))
+    for rel, entry in build_manifest(tree)["files"].items():
+        assert body(s3, blob_key(entry["sha256"])) == (tree / rel).read_bytes()
+        head = s3.head_object(Bucket=BUCKET, Key=blob_key(entry["sha256"]))
         assert head["CacheControl"] == pr.IMMUTABLE_CACHE
-        assert head["ContentType"] == publish_r2.content_type(rel)
+        assert head["ContentType"] == "application/json"
     activated = publish(client, tree, True)
-    assert activated["uploaded"] == 0
+    assert activated["new_blobs"] == 0 and activated["reused_blobs"] == 2 and activated["activated"]
     pointer = body(s3, pr.CURRENT)
     assert json.loads(pointer) == {"schema_version": 1, "release_id": release_id,
-                                  "manifest_sha256": hashlib.sha256(body(s3, prefix + "release.json")).hexdigest()}
+                                  "manifest_sha256": hashlib.sha256(body(s3, descriptor(release_id))).hexdigest()}
     assert client.puts[-1]["CacheControl"] == pr.POINTER_CACHE
     client.puts.clear()
-    assert publish(client, tree, True)["uploaded"] == 0
-    assert [p["Key"] for p in client.puts] == [pr.CURRENT]
+    again = publish(client, tree, True)  # identical tree: a no-change day
+    assert again["unchanged"] and again["release_id"] == release_id and client.puts == []
     assert body(s3, pr.CURRENT) == pointer
     assert body(s3, "data/legacy.json") == b"legacy"
 
 
 @pytest.mark.parametrize("conflict", [False, True])
-def test_missing_first_get_then_concurrent_creation_uses_conditional_write(s3, tree, conflict):
-    manifest = build_manifest(tree)
-    target = f"releases/{manifest['release_id']}/members/A1.json"
-    raced_body = b"conflict" if conflict else (tree / "members" / "A1.json").read_bytes()
+def test_missing_first_head_then_concurrent_creation_uses_conditional_write(s3, tree, conflict):
+    raced_body = b"conflict" if conflict else b'{"a":1}'
 
     class RacingClient(Client):
         raced = False
 
-        def get_object(self, **kwargs):
-            if kwargs["Key"] == target and not self.raced:
+        def head_object(self, **kwargs):
+            if kwargs["Key"] == A1 and not self.raced:
                 self.raced = True
-                put(s3, target, raced_body)
-                raise ClientError({"Error": {"Code": "NoSuchKey"},
-                                   "ResponseMetadata": {"HTTPStatusCode": 404}}, "GetObject")
-            return self.client.get_object(**kwargs)
+                put(s3, A1, raced_body)
+                raise ClientError({"Error": {"Code": "404"}, "ResponseMetadata": {"HTTPStatusCode": 404}}, "HeadObject")
+            return self.client.head_object(**kwargs)
     client = RacingClient(s3)
     if conflict:
         with pytest.raises(pr.PublishError, match="conflicting"):
             publish(client, tree, True)
         assert pr.CURRENT not in keys(s3)
     else:
-        assert publish(client, tree, True)["uploaded"] == 1
-    assert body(s3, target) == raced_body
-    assert next(p for p in client.puts if p["Key"] == target)["IfNoneMatch"] == "*"
+        assert publish(client, tree, True)["new_blobs"] == 1  # only meta.json: the racing writer created A1
+    assert body(s3, A1) == raced_body
+    assert next(p for p in client.puts if p["Key"] == A1)["IfNoneMatch"] == "*"
 
 
 def test_new_release_retains_old_and_verified_rollback(s3, tree):
     first = publish(s3, tree, True)
-    old_keys = keys(s3) - {pr.CURRENT}
+    old_keys = keys(s3) - {pr.CURRENT, pr.INDEX}
     (tree / "members" / "A1.json").write_text('{"a":2}')
     second = publish(s3, tree, True)
     assert first["release_id"] != second["release_id"]
@@ -137,14 +149,13 @@ def test_new_release_retains_old_and_verified_rollback(s3, tree):
     assert json.loads(body(s3, pr.CURRENT))["release_id"] == first["release_id"]
 
 
-@pytest.mark.parametrize("phase", ["file", "descriptor", "pointer"])
+@pytest.mark.parametrize("phase", ["blob", "descriptor", "pointer"])
 def test_failure_in_each_phase_preserves_pointer_and_resumes(s3, tree, phase):
     publish(s3, tree, True)
     previous = body(s3, pr.CURRENT)
     (tree / "members" / "A1.json").write_text('{"a":2}')
     release = build_manifest(tree)["release_id"]
-    prefix = f"releases/{release}/"
-    target = {"file": prefix + "meta.json", "descriptor": prefix + "release.json", "pointer": pr.CURRENT}[phase]
+    target = {"blob": A2, "descriptor": descriptor(release), "pointer": pr.CURRENT}[phase]
 
     def fail(kwargs):
         if kwargs["Key"] == target:
@@ -153,29 +164,27 @@ def test_failure_in_each_phase_preserves_pointer_and_resumes(s3, tree, phase):
     with pytest.raises(pr.PublishError):
         publish(client, tree, True)
     assert body(s3, pr.CURRENT) == previous
-    if phase == "file":
-        assert prefix + "release.json" not in keys(s3)
+    if phase == "blob":
+        assert descriptor(release) not in keys(s3) and A2 not in keys(s3)
     retried = publish(s3, tree, True)
-    assert retried["uploaded"] < retried["files"]
+    assert retried["new_blobs"] == (1 if phase == "blob" else 0)
     assert json.loads(body(s3, pr.CURRENT))["release_id"] == release
 
 
-@pytest.mark.parametrize("conflict", ["bytes", "cache", "type", "descriptor"])
+@pytest.mark.parametrize("conflict", ["size", "cache", "descriptor"])
 def test_existing_conflict_is_never_overwritten(s3, tree, conflict):
-    publish(s3, tree, True)
-    pointer = body(s3, pr.CURRENT)
+    staged = publish(s3, tree)
     manifest = build_manifest(tree)
-    prefix = f"releases/{manifest['release_id']}/"
-    target = prefix + ("release.json" if conflict == "descriptor" else "meta.json")
+    meta_blob = blob_key(manifest["files"]["meta.json"]["sha256"])
+    target = descriptor(manifest["release_id"]) if conflict == "descriptor" else meta_blob
     payload = body(s3, target)
-    if conflict in ("bytes", "descriptor"):
+    if conflict in ("size", "descriptor"):
         payload += b"wrong"
-    put(s3, target, payload, cache="no-cache" if conflict == "cache" else pr.IMMUTABLE_CACHE,
-        ctype="text/plain" if conflict == "type" else "application/json")
+    put(s3, target, payload, cache="no-cache" if conflict == "cache" else pr.IMMUTABLE_CACHE)
     with pytest.raises(pr.PublishError, match="conflicting"):
-        publish(s3, tree, True)
+        publish(s3, tree)
     assert body(s3, target) == payload
-    assert body(s3, pr.CURRENT) == pointer
+    assert staged["release_id"] == manifest["release_id"] and pr.CURRENT not in keys(s3)
 
 
 @pytest.mark.parametrize("initial", [True, False])
@@ -193,14 +202,14 @@ def test_concurrent_pointer_creation_or_change_fails_closed(s3, tree, initial):
     assert body(s3, pr.CURRENT) == competitor
 
 
-@pytest.mark.parametrize("target", ["file", "descriptor", "pointer"])
+@pytest.mark.parametrize("target", ["blob", "descriptor", "pointer"])
 def test_lost_success_response_is_resolved_by_verified_readback(s3, tree, target):
     hit = False
 
     def timeout(kwargs):
         nonlocal hit
         match = (kwargs["Key"] == pr.CURRENT if target == "pointer" else
-                 kwargs["Key"].endswith("release.json" if target == "descriptor" else "A1.json"))
+                 kwargs["Key"].endswith("release.json") if target == "descriptor" else kwargs["Key"] == A1)
         if not hit and match:
             hit = True
             s3.put_object(**kwargs)
@@ -222,43 +231,81 @@ def test_ambiguous_pointer_failure_does_not_accept_different_readback(s3, tree):
     assert body(s3, pr.CURRENT) == old
 
 
-@pytest.mark.parametrize("mutation", ["before_read", "after_read", "new_file", "after_marker"])
+@pytest.mark.parametrize("mutation", ["before_read", "during_blob", "new_file", "after_marker"])
 def test_local_mutation_prevents_activation(s3, tree, mutation):
     publish(s3, tree, True)
     old = body(s3, pr.CURRENT)
     (tree / "members" / "A1.json").write_text('{"a":2}')
     release = build_manifest(tree)["release_id"]
 
-    def mutate(kwargs):
-        suffix = {"before_read": "A1.json", "after_read": "meta.json", "new_file": "meta.json",
-                  "after_marker": "release.json"}[mutation]
-        if kwargs["Key"].endswith(suffix):
-            if mutation == "new_file":
-                (tree / "new.json").write_text("{}")
-            else:
-                (tree / "meta.json").write_text(json.dumps({"build": {"time": "mutated"}}))
+    def mutate(key):
+        if mutation == "before_read":
+            (tree / "members" / "A1.json").write_text('{"a":9}')
+        elif mutation == "new_file":
+            (tree / "new.json").write_text("{}")
+        else:
+            (tree / "meta.json").write_text(json.dumps({"build": {"time": "mutated"}}))
+
+    class Mutating(Client):
+        def head_object(self, **kwargs):
+            if mutation == "before_read" and kwargs["Key"] == A2:
+                mutate(kwargs["Key"])
+            return self.client.head_object(**kwargs)
+
+    def hook(kwargs):
+        if mutation in ("during_blob", "new_file") and kwargs["Key"] == A2:
+            mutate(kwargs["Key"])
+        if mutation == "after_marker" and kwargs["Key"].endswith("release.json"):
+            mutate(kwargs["Key"])
     with pytest.raises(pr.PublishError, match="changed"):
-        publish(Client(s3, mutate), tree, True)
+        publish(Mutating(s3, hook), tree, True)
     assert body(s3, pr.CURRENT) == old
     if mutation != "after_marker":
-        assert f"releases/{release}/release.json" not in keys(s3)
+        assert descriptor(release) not in keys(s3)
 
 
-@pytest.mark.parametrize("corruption", ["file", "missing", "headers", "descriptor"])
-def test_rollback_fully_verifies_before_pointer_write(s3, tree, corruption):
+def two_releases(s3, tree):
     first = publish(s3, tree, True)["release_id"]
     (tree / "members" / "A1.json").write_text('{"a":2}')
     publish(s3, tree, True)
-    pointer = body(s3, pr.CURRENT)
-    target = f"releases/{first}/" + ("release.json" if corruption == "descriptor" else "members/A1.json")
+    return first, body(s3, pr.CURRENT)
+
+
+@pytest.mark.parametrize("corruption", ["size", "missing", "headers", "descriptor"])
+def test_rollback_verifies_every_blob_by_head_before_pointer_write(s3, tree, corruption):
+    first, pointer = two_releases(s3, tree)
+    target = descriptor(first) if corruption == "descriptor" else A1
     if corruption == "missing":
         s3.delete_object(Bucket=BUCKET, Key=target)
     else:
-        put(s3, target, body(s3, target) if corruption == "headers" else b"corrupt",
+        put(s3, target, body(s3, target) if corruption in ("headers", "descriptor") else b"corrupt!!",
             cache="no-cache" if corruption == "headers" else pr.IMMUTABLE_CACHE)
+        if corruption == "descriptor":
+            put(s3, target, body(s3, target) + b" ")
     with pytest.raises((pr.PublishError, ReleaseManifestError)):
         pr.activate_release(s3, BUCKET, first, sleep=lambda _: None)
     assert body(s3, pr.CURRENT) == pointer
+
+
+def test_same_size_corruption_of_a_reused_blob_needs_full_verify(s3, tree):
+    """The documented trade-off: reuse and rollback check size by HEAD; --full-verify re-hashes every blob."""
+    first, pointer = two_releases(s3, tree)
+    put(s3, A1, b'{"a":7}')  # same length as the original bytes, different content
+    with pytest.raises(pr.PublishError, match="conflicting bytes"):
+        pr.activate_release(s3, BUCKET, first, full=True, sleep=lambda _: None)
+    assert body(s3, pr.CURRENT) == pointer
+    assert pr.activate_release(s3, BUCKET, first, sleep=lambda _: None)["activated"]  # HEAD-level check passes
+    assert pr.activate_release(s3, BUCKET, first, full=False, sleep=lambda _: None)["full_verify"] is False
+
+
+def test_rollback_reads_only_meta_json_in_full(s3, tree):
+    first, _ = two_releases(s3, tree)
+    client = Client(s3)
+    gets = []
+    client.get_object = lambda **kw: (gets.append(kw["Key"]), s3.get_object(**kw))[1]
+    pr.activate_release(client, BUCKET, first, sleep=lambda _: None)
+    meta = blob_key(build_manifest(tree)["files"]["meta.json"]["sha256"])
+    assert [k for k in gets if k.startswith("releases/blobs/")] == [meta]
 
 
 @pytest.mark.parametrize("path", ["../outside", "/outside", "a//b", "a/./b", "a/../b", "a\\b",
@@ -305,7 +352,7 @@ def test_cli_sanitizes_client_initialization_failure(monkeypatch, tree, capsys):
 def test_rollback_rejects_noncanonical_descriptor_even_when_identity_is_valid(s3, tree):
     release = publish(s3, tree, True)["release_id"]
     pointer = body(s3, pr.CURRENT)
-    target = f"releases/{release}/release.json"
+    target = descriptor(release)
     put(s3, target, json.dumps(build_manifest(tree), indent=2).encode())
     with pytest.raises(pr.PublishError, match="canonically"):
         pr.activate_release(s3, BUCKET, release, sleep=lambda _: None)

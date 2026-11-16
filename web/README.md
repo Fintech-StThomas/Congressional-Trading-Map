@@ -234,3 +234,11 @@ uses the shared DataTable for every transition and filtered CSV download.
 Types, decoding and wording rules live in `lib/domain/positions.ts`; fixed caveats
 are in `lib/copy.ts`. Older bucket builds without `positions_summary` remain readable
 and show that timelines are unavailable until a new pipeline build is published.
+
+## Freshness, status and explainers
+
+- **Freshness.** `components/shared/FooterAsOf.tsx` renders the absolute data date on the server and adds "updated 6 hours ago" in the browser (`useNow.ts`, so no hydration mismatch). `StaleBanner.tsx` shows a neutral note under the header when the build time (`meta.build.time`) is more than 48 hours old, with a link to `/status`; it is never shown on the sample site. Rules and text builders: `lib/domain/freshness.ts`; wording: `FRESH` in `lib/copy.ts`.
+- **Newer data.** `NewerDataNote.tsx` (in the layout) checks at most every 30 minutes while the tab is visible, 12 times at most, never on `/r/...` permalinks: unpinned it compares `meta.json`'s build time, pinned it compares the release id in `/releases/current.json` (proxied, `no-cache`, by `releasePointerRewrite`). The rules are in `lib/data/latest.ts`. It never reloads the page.
+- **Permalink note.** `components/member/SnapshotNote.tsx` compares the member's files in the page's release with the latest release after first paint (the `/changes` loader and `compareMember`), shows what differs under the release banner and "X in this snapshot · Y in today's data" beside header counts that differ. Phrases: `lib/domain/snapshot.ts`; wording: `SNAPSHOT`.
+- **`/status`** (`app/status/page.tsx`): build time, pipeline commit, contract, current release, sources and coverage notes from `meta.json`, and the latest run of the daily workflow (`STATUS.workflow` on `CORRECTIONS.repo`'s main branch), fetched on the server only with a 5 s limit; any failure, and the sample site, show a plain "unavailable" line. `lib/domain/runstatus.ts` reads the response.
+- **Explainers.** `components/shared/Explain.tsx` (button + popover; Escape and outside click close it, print shows the term only) with definitions in `EXPLAIN` (`lib/copy.ts`): household, disclosed range, tie, statistical tie. One per term per view.

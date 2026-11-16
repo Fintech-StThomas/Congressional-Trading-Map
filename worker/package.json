@@ -1,0 +1,9 @@
+{
+  "name": "paper-trail-release-worker",
+  "private": true,
+  "type": "module",
+  "description": "Cloudflare Worker that serves the Paper Trail release archive and legacy data from R2. No dependencies, no build step.",
+  "scripts": {
+    "test": "node --test test"
+  }
+}

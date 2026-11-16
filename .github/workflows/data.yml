@@ -3,7 +3,8 @@ name: Daily data refresh
 # Rebuilds the site data from the public sources and publishes it to Cloudflare R2 under data/, which the
 # production site reads (DATA_BASE_URL). Nothing is committed: the generated tree is not stored in git.
 # Order: unit tests -> pipeline (all stages, then validation) -> holdings validation -> publish to R2 -> verify that
-# the public URL serves the new build time -> (opt-in, PT_PUBLISH_RELEASES=1) archive an immutable release. Any failure stops the job at that step (GitHub emails the owner).
+# the public URL serves the new build time -> warm the site cache (repository variable SITE_URL; never fails the job) ->
+# (opt-in, PT_PUBLISH_RELEASES=1) archive an immutable release. Any failure stops the job at that step (GitHub emails the owner).
 # See pipeline/README.md ("Daily workflow", "Publishing to R2").
 
 on:
@@ -97,10 +98,24 @@ jobs:
           R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
         run: python -m pipeline.publish_r2 --verify
 
+      # Requests the home page, /wall, /cases, /delays, /orgs, the trades feed and the 10 members with the most trades
+      # on the repository variable SITE_URL (https://host, no secret), one at a time with a short timeout, so the first
+      # real visitors find a warm cache. Skipped with a notice when SITE_URL is unset. It logs status codes and can
+      # never fail the job (the script always exits 0; continue-on-error is a second guard).
+      - name: Warm the site cache
+        if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && !github.event.repository.fork
+        continue-on-error: true
+        timeout-minutes: 10
+        env:
+          SITE_URL: ${{ vars.SITE_URL }}
+        run: python scripts/ops/warm_cache.py --site-url "$SITE_URL" --members web/public/data/members.json
+
       # Opt-in immutable archive (docs/RELEASE-OPERATIONS.md). Off unless the repository variable PT_PUBLISH_RELEASES
       # is exactly 1, and only on the default branch of the main repository. It runs after the legacy publish above,
-      # which stays the production path and is unchanged. It stages releases/<id>/, verifies every object, then moves
-      # releases/current.json and records releases/index.json. Nothing here deletes objects. The R2 secrets are
+      # which stays the production path and is unchanged. It stores each changed file once as releases/blobs/<sha256>,
+      # writes the descriptor releases/<id>/release.json after every blob is verified, then moves releases/current.json
+      # and records releases/index.json. A day whose files (other than meta.json) are unchanged creates no release and
+      # leaves the pointer alone. --measure prints the real storage growth. Nothing here deletes objects. The R2 secrets are
       # passed to this step only.
       - name: Archive immutable release
         if: >-
@@ -113,7 +128,7 @@ jobs:
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-        run: python -m pipeline.publish_release --dir web/public/data --activate
+        run: python -m pipeline.publish_release --dir web/public/data --activate --measure
 
       - name: Report failure
         if: failure()

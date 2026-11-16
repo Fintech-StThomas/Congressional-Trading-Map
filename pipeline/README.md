@@ -100,6 +100,8 @@ pipeline/
   assemble/           plugins (load, merge) cases budget orgs wall members publish, run (the orchestrator)
   validate.py         output checks; holdings/validate.py for holdings
   publish_r2.py       upload web/public/data to Cloudflare R2 (changed files only); run by the daily workflow
+  publish_release.py  opt-in content-addressed archive (release_blobs, release_refs, release_history, release_store,
+                      release_manifest, release_provider_check, withdraw_release); served by worker/
   crosswalk/org_overrides.csv   hand-reviewed org matches
   tests/              one test file per module: test_edges, test_trades, test_fec, test_assemble, test_holdings, ...
 ```
@@ -164,7 +166,8 @@ Actions are pinned to commit SHAs; each secret is given only to the step that ne
 between runs (`pipeline/.cache`), and each source refetches on its own schedule, so the cache never freezes data;
 the run needs no previous build.
 
-After the legacy publish step, an opt-in step "Archive immutable release" runs `python -m pipeline.publish_release
+After the legacy publish step, a step "Warm the site cache" (`scripts/ops/warm_cache.py`, repository variable `SITE_URL`;
+skipped when unset; never fails the job) requests the main pages and the 10 members with the most trades. Then an opt-in step "Archive immutable release" runs `python -m pipeline.publish_release
 --dir web/public/data --activate`. It runs only when the repository variable `PT_PUBLISH_RELEASES` is exactly `1`
 and only on the default branch of the main repository; the R2 secrets are passed to that step alone. It is off by
 default. If it fails, the legacy data is already published and unaffected. Activation order, rollback and
@@ -198,14 +201,21 @@ production cutover remain gated by the product plan.
 
 ### Optional immutable archive publisher
 
-After the full data/privacy validators pass, the separate publisher can stage immutable objects under
-`releases/<release_id>/`, outside the legacy uploader's cleanup scope:
+After the full data/privacy validators pass, the separate publisher stores each distinct file once as
+`releases/blobs/<sha256>` and writes the release descriptor `releases/<release_id>/release.json` after every blob is
+verified, outside the legacy uploader's cleanup scope. Only changed files are uploaded each day:
 
 ```bash
 python -m pipeline.publish_release --dir web/public/data
-python -m pipeline.publish_release --dir web/public/data --activate
-python -m pipeline.publish_release --release <existing-release-id> --activate
+python -m pipeline.publish_release --dir web/public/data --activate --measure
+python -m pipeline.publish_release --release <existing-release-id> --activate [--full-verify]
 ```
+
+`--measure` prints files, blobs new/reused, new bytes and total archive bytes (one listing of `releases/blobs/`), the
+real storage-growth figure. With `--activate`, a tree whose files other than `meta.json` equal the current release's
+creates no release and leaves the pointer alone ("no data change; release <id> stays current", exit 0). New blobs
+are read back and hashed; reused blobs and rollback targets are checked by HEAD (existence and size), plus a full read
+of `meta.json`; `--full-verify` hashes every blob. The Worker in `worker/` serves the archive to the site.
 
 The first command stages and verifies the release without changing `releases/current.json`. Activation updates
 that single pointer only after verification and only if its captured ETag still matches (or it is still absent).
@@ -223,22 +233,29 @@ Two more commands, both using the same `R2_*` variables:
 
 ```bash
 python -m pipeline.release_provider_check
-python -m pipeline.withdraw_release --release <id> --reason privacy|legal|other --confirm <id>
+python -m pipeline.withdraw_release --release <id> --reason privacy|legal|other --confirm <id> \
+    [--exposed-path <file in the release> ...] [--also-withdraw <id> ...]
 ```
 
 `release_provider_check` verifies, under a disposable `release-provider-check/<random id>/` prefix, that the
 provider rejects a second `If-None-Match: *` create and a stale `If-Match`, and round-trips `Content-Type`,
-`Cache-Control` and bytes; it deletes only the keys it created, prints PASS/FAIL per check, and exits 0 only when
+`Cache-Control` and bytes, and that HEAD and prefix listings report exact sizes and deleting a missing key succeeds; it deletes only the keys it created, prints PASS/FAIL per check, and exits 0 only when
 all pass (2 when configuration is missing). `withdraw_release` is for discovered privacy or legal exposure only: it
-refuses the current release, writes the tombstone `releases/withdrawn/<id>.json`, deletes every object under
-`releases/<id>/` and removes the index entry; re-running finishes an interrupted withdrawal; `publish_release`
-refuses withdrawn releases. It is the only command that deletes archive objects.
+refuses the current release, writes the tombstone `releases/withdrawn/<id>.json`, deletes the blobs no other live
+release references and the descriptor, and removes the index entry. Blobs are shared between releases: bytes that
+hold the exposed data and are shared make those releases exposed too, so the command lists them and refuses unless
+`--also-withdraw` names them all (`--exposed-path` narrows what counts as exposed). Re-running finishes an
+interrupted withdrawal; `publish_release` refuses withdrawn releases. It is the only command that deletes archive
+objects.
 
 The daily workflow's archive step is gated off by default, and its commands have been exercised against fake S3,
 not the production provider. Before enabling `PT_PUBLISH_RELEASES`, run the provider check and follow the
 activation checklist in `docs/RELEASE-OPERATIONS.md`; release-pinned readers must be deployed before the site
 reads the archive. Tests: `python -m pytest -q pipeline/tests/test_release_manifest.py pipeline/tests/test_publish_release.py
-pipeline/tests/test_release_history.py pipeline/tests/test_withdraw_release.py pipeline/tests/test_release_provider_check.py`.
+pipeline/tests/test_release_blobs.py pipeline/tests/test_release_history.py pipeline/tests/test_withdraw_release.py
+pipeline/tests/test_release_provider_check.py`; the Worker: `node --test worker/test`; the ops scripts:
+`python -m pytest -q scripts/ops` (cache warming after the legacy publish via the repository variable `SITE_URL`, and
+the 6-hourly freshness alert `.github/workflows/freshness.yml`).
 
 The bucket is where the data lives: the production site reads it (`DATA_BASE_URL`), and `web/public/data/` is not
 in git. Public base URL: `https://pub-b6acb08f97e345d68ebc4629e915f8ab.r2.dev/data`. `pipeline/publish_r2.py` uploads the tree to Cloudflare R2 through the S3-compatible API

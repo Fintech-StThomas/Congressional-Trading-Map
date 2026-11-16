@@ -42,6 +42,8 @@ import { ConnectLink } from "@/components/connect/ConnectLink";
 import { ViewSwitch } from "@/components/shared/ViewSwitch";
 import { ViewBar, ViewPrintLine } from "@/components/shared/ViewBar";
 import { ViewLink } from "@/components/shared/ViewLink";
+import { Explain } from "@/components/shared/Explain";
+import { SnapshotCount, SnapshotNote, SnapshotProvider } from "@/components/member/SnapshotNote";
 
 /** Page metadata for a member; a permalink is not indexed and names the latest page as canonical. */
 export async function memberMetadata(data: Data, id: string, pinned: boolean): Promise<Metadata> {
@@ -154,6 +156,7 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
     <article className="page dossier" data-testid="member-page">
       <ReleasePin release={data.release} />
       {release && <ReleaseBanner release={release} built={built} latestHref={memberHref(m.id)} />}
+      {release && <SnapshotNote />}
       <nav className="crumbs crumbs--page no-print" aria-label="Breadcrumb">
         <Link href="/">United States</Link> <span aria-hidden="true">/</span>{" "}
         {m.current ? <Link href={boardHref({ s: m.state })}>{stateName(m.state)}</Link> : <Link href="/wall?former=1">Former members</Link>}{" "}
@@ -171,9 +174,9 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
             {seat(m)} · {PARTY_NAMES[m.party]} · {m.current ? "Serving" : "Former member"}, {served(m.served)}
           </p>
           <dl className="dossier__counts">
-            <div><dt>Household trades reported</dt><dd className="mono"><AssumeCount kind="trades" total={m.counts.trades} /></dd></div>
-            <div><dt>Organisations tied</dt><dd className="mono">{count(m.counts.orgs)}</dd></div>
-            <div><dt>Members tied</dt><dd className="mono">{count(m.counts.members)}</dd></div>
+            <div><dt><Explain term="household">Household trades reported</Explain></dt><dd className="mono"><AssumeCount kind="trades" total={m.counts.trades} />{release && <SnapshotCount kind="trades" />}</dd></div>
+            <div><dt>Organisations tied</dt><dd className="mono">{count(m.counts.orgs)}{release && <SnapshotCount kind="orgs" />}</dd></div>
+            <div><dt>Members tied</dt><dd className="mono">{count(m.counts.members)}{release && <SnapshotCount kind="members" />}</dd></div>
             <div><dt>Cases</dt><dd className="mono"><AssumeCount kind="cases" total={m.counts.cases} /></dd></div>
             {nTrades > 0 && <div><dt>{TIMING.countLabel}</dt><dd className="mono">{count(lateCount)}</dd></div>}
           </dl>
@@ -245,7 +248,7 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
       <section className="section" aria-labelledby="ties-h">
         <h2 id="ties-h">Ties</h2>
         <p className="section__note">
-          Every tie with its records attached, grouped by kind. Open a row to read the filings.
+          Every <Explain term="tie">tie</Explain> with its records attached, grouped by kind. Open a row to read the filings.
           {sorted.length > shown.length ? ` The ${shown.length} largest of ${sorted.length} are listed first.` : ""}
         </p>
         <CoverageNote facts={facts} scopes={["money", "orgs"]} label="Coverage for ties and money" testId="coverage-ties" />
@@ -292,7 +295,7 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
               Of {count(nTrades)} trades, {count(ownTrades)} {ownTrades === 1 ? "is" : "are"} marked as the member&rsquo;s own or jointly owned; the rest belong to a spouse, a dependent child, or an owner the filing does not state.{" "}
             </>
           )}
-          Periodic transaction reports as filed. Amounts are the disclosed ranges. {TIMING.tradesNote}
+          Periodic transaction reports as filed. Amounts are the <Explain term="range">disclosed ranges</Explain>. {TIMING.tradesNote}
           Missing values say &ldquo;not disclosed&rdquo;; they are never filled in.
         </p>
         <CoverageNote facts={facts} scopes={["trades", "owner", "values"]} label="Coverage for trades" testId="coverage-trades" />
@@ -335,5 +338,13 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
     </AssumptionProvider>
   );
   // The layout's correction links name the latest build; on a permalink they name this release's.
-  return release ? <CorrectionProvider built={built}>{page}</CorrectionProvider> : page;
+  return release ? (
+    <CorrectionProvider built={built}>
+      <SnapshotProvider release={release} member={m.id} counts={{ trades: m.counts.trades, orgs: m.counts.orgs, members: m.counts.members }}>
+        {page}
+      </SnapshotProvider>
+    </CorrectionProvider>
+  ) : (
+    page
+  );
 }

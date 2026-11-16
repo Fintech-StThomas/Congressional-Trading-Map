@@ -1,0 +1,10 @@
+# Cloudflare Worker configuration for the Paper Trail release archive (see worker/README.md).
+# Fill in `bucket_name` with the R2 bucket the daily jobs write to (the R2_BUCKET secret's value), then run
+# `npx wrangler deploy` from this directory.
+name = "paper-trail-releases"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "REPLACE-WITH-YOUR-R2-BUCKET-NAME"

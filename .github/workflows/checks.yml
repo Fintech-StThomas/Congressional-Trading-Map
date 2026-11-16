@@ -53,6 +53,11 @@ jobs:
           cache-dependency-path: pipeline/requirements.txt
       - run: pip install -r pipeline/requirements.txt
       - run: python -m pytest -q pipeline/tests
+      - name: Operations scripts
+        run: python -m pytest -q scripts/ops
+      # The release Worker is plain JavaScript with no dependencies: the runner's own Node runs its tests.
+      - name: Release Worker
+        run: node --test worker/test
 
   web:
     name: Site checks

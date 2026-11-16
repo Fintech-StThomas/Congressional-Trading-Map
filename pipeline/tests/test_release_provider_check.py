@@ -39,7 +39,7 @@ def keys(client):
 def test_enforcing_provider_passes_and_cleans_up_only_its_keys(s3):
     before = keys(s3)
     results, cleaned = rpc.run_checks(s3, BUCKET, "run1")
-    assert cleaned and len(results) == 6 and all(ok for _, ok, _ in results)
+    assert cleaned and len(results) == 9 and all(ok for _, ok, _ in results)
     assert keys(s3) == before
 
 
@@ -64,7 +64,7 @@ def test_cli_exit_codes_and_no_secrets(monkeypatch, s3, capsys):
     monkeypatch.setattr(rpc, "client_from_env", lambda require: (s3, BUCKET))
     assert rpc.main([]) == 0
     out = capsys.readouterr().out
-    assert out.count("PASS") >= 7 and "FAIL" not in out
+    assert out.count("PASS") >= 10 and "FAIL" not in out
     monkeypatch.setattr(rpc, "client_from_env", lambda require: (Lax(s3), BUCKET))
     assert rpc.main([]) == 1
     assert "FAIL  second-create-rejected" in capsys.readouterr().out

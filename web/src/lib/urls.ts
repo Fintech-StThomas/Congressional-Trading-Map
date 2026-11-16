@@ -1,7 +1,7 @@
 // Every link the site builds: its own routes, the data files, official record pages,
 // and the guard for links that come from the data. Pure; tests/urls.test.mjs loads it directly.
 
-import { CORRECTIONS, SITE } from "./copy.ts";
+import { CORRECTIONS, SITE, STATUS } from "./copy.ts";
 import { clientRelease } from "./data/pin.ts";
 
 /** Where the browser fetches data files from: /data (real build) or /sample-data (fixtures), set by next.config.ts. */
@@ -44,6 +44,17 @@ export function correctionIssueUrl(p: { page: string; built: string | null; what
 /** Every issue labelled correction: the public corrections log. */
 export function correctionsLogUrl(): string {
   return `${CORRECTIONS.repo}/issues?q=${encodeURIComponent(`label:${CORRECTIONS.label}`)}`;
+}
+
+/** The data status page. */
+export function statusHref(): string {
+  return "/status";
+}
+
+/** GitHub's API address for the newest run of the daily-update workflow on main (server-side fetch on /status only). */
+export function dailyRunApiUrl(): string {
+  const slug = CORRECTIONS.repo.replace(/^https:\/\/github\.com\//, "");
+  return `https://api.github.com/repos/${slug}/actions/workflows/${STATUS.workflow}/runs?branch=main&per_page=1`;
 }
 
 export function memberHref(id: string): string {

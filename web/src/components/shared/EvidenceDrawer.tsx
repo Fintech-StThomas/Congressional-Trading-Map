@@ -18,6 +18,7 @@ import { ExternalIcon } from "./ExternalIcon";
 import { TieCite } from "./TieCite";
 import { TieSave } from "@/components/saved/Savers";
 import { CoverageNote } from "./CoverageNote";
+import { Explain } from "./Explain";
 import { edgeFacts } from "@/lib/domain/coverage";
 
 type Props = {
@@ -134,7 +135,7 @@ export function EvidenceDrawer({ edge, book, sources, range, onClose, loading, s
         <ul className="marks" aria-label="How this string is drawn">
           <li>
             <LineSample style={style} />
-            {edge.basis === "derived" ? "Derived by a statistical rule" : "Filed record names both ends"}
+            {edge.basis === "derived" ? <Explain term="statistical">Derived by a statistical rule</Explain> : "Filed record names both ends"}
           </li>
           {edge.weak && <li>Thin or incomplete evidence</li>}
           <li>{FAMILY_LABEL[edge.family]}</li>
@@ -142,7 +143,7 @@ export function EvidenceDrawer({ edge, book, sources, range, onClose, loading, s
 
         <dl className="facts">
           <div>
-            <dt>Amount</dt>
+            <dt><Explain term="range">Amount</Explain></dt>
             <dd className="mono">{amountText(totals) ?? <span className="nd">{NOT_DISCLOSED}</span>}</dd>
           </div>
           <div>

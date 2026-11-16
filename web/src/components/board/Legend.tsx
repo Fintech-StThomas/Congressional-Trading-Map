@@ -1,6 +1,7 @@
 // The board's key: every visual encoding (yarn, fraying, thickness, Case tag, AGAINST zone) in plain words.
 import { CASE_TAG_TEXT } from "@/lib/copy";
 import { LineSample } from "@/components/shared/LineSample";
+import { Explain } from "@/components/shared/Explain";
 
 /** Every encoding on the board, in plain words. */
 export function Legend() {
@@ -13,13 +14,13 @@ export function Legend() {
         <li>
           <LineSample style="filed" width={30} scale={1.6} />
           <span>
-            <b>Solid yarn</b>: a filed record names both ends
+            <b>Solid yarn</b>: a filed record names both ends of a <Explain term="tie">tie</Explain>
           </span>
         </li>
         <li>
           <LineSample style="weak" width={30} scale={1.6} />
           <span>
-            <b>Frayed yarn</b>: weaker; the card says why, <span className="tag tag--weak">STATISTICAL</span> or <span className="tag tag--weak">INCOMPLETE</span>
+            <b>Frayed yarn</b>: weaker; the card says why, <span className="tag tag--weak">STATISTICAL</span> (a <Explain term="statistical">statistical tie</Explain>) or <span className="tag tag--weak">INCOMPLETE</span>
           </span>
         </li>
         <li>

@@ -1,0 +1,167 @@
+/* Notices and small explainers shared by every page: the stale-data banner, the newer-data note, the permalink
+   "since this snapshot" note and counts, the plain-language explainer popover, and the /status page. Neutral on
+   purpose: red means a tie and nothing else, so none of these use the accent. */
+
+.stale-banner,
+.newer-note {
+  margin: 0;
+  padding: 9px var(--gutter);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--rule);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.45;
+}
+.stale-banner p,
+.newer-note p {
+  margin: 0;
+  max-width: 78ch;
+}
+.stale-banner a,
+.newer-note a {
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  white-space: nowrap;
+}
+.newer-slot:empty,
+.snapshot-slot:empty {
+  display: none;
+}
+.newer-note {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.newer-note__x {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.newer-note__x:hover {
+  color: var(--text);
+  border-color: var(--text-3);
+}
+.newer-note__x:focus-visible,
+.explain__term:focus-visible,
+.explain__close:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* ---- permalink: what changed since this snapshot */
+.snapshot-note {
+  margin: -8px 0 16px;
+  padding: 9px 14px;
+  border: 1px solid var(--paper-edge);
+  border-left: 4px solid var(--ink-3);
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.45;
+}
+.snapshot-note a {
+  color: var(--ink);
+  text-decoration: underline;
+}
+.snapshot-count {
+  display: block;
+  margin-top: 2px;
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-3);
+}
+
+/* ---- explainer: a term as a button with a popover; in print only the term is printed */
+.explain {
+  position: relative;
+  display: inline;
+}
+.explain__term {
+  display: inline;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-bottom: 1px dotted currentColor;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: inherit;
+  cursor: help;
+}
+.explain__term:hover {
+  border-bottom-style: solid;
+}
+.explain__pop {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 6px);
+  left: 0;
+  display: block;
+  box-sizing: border-box;
+  width: min(20rem, calc(100vw - 32px));
+  padding: 10px 12px 8px;
+  border: 1px solid var(--paper-edge);
+  border-radius: var(--r);
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: var(--shadow-card);
+  font: 400 13px/1.45 var(--sans);
+  letter-spacing: normal;
+  text-align: left;
+  text-transform: none;
+  white-space: normal;
+}
+.explain__pop[hidden] {
+  display: none;
+}
+.explain__h {
+  display: block;
+  margin-bottom: 2px;
+  font-weight: 600;
+}
+.explain__close {
+  display: block;
+  margin: 8px 0 0;
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  color: var(--ink-2);
+  font: 500 12px var(--sans);
+  text-decoration: underline;
+  cursor: pointer;
+}
+@media print {
+  .explain__term {
+    border-bottom: 0;
+  }
+  .explain__pop {
+    display: none !important;
+  }
+}
+
+/* ---- /status */
+.status__kv {
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+}
+.status__kv dd {
+  overflow-wrap: anywhere;
+}
+.status__list {
+  margin: 12px 0 0;
+  padding-left: 1.2em;
+  display: grid;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--text-2);
+}

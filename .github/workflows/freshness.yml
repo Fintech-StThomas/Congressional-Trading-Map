@@ -1,0 +1,39 @@
+name: Data freshness alert
+
+# Read-only watchdog. Every 6 hours it fetches <public data URL>/data/meta.json and fails the job (GitHub then emails
+# the owner) when build.time is older than 48 hours or the file cannot be fetched. It never writes anything.
+# Public URL: repository variable DATA_PUBLIC_URL (preferred, e.g. the Worker URL), else the secret R2_PUBLIC_URL, used
+# only as a URL and never printed. Logic and tests: scripts/ops/check_freshness.py.
+
+on:
+  schedule:
+    - cron: "23 */6 * * *"   # 00:23, 06:23, 12:23, 18:23 UTC, off the hour
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: data-freshness
+  cancel-in-progress: true
+
+jobs:
+  check:
+    if: ${{ !github.event.repository.fork }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Actions pinned to the commit of the tag in use (tag in the comment), as in data.yml.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (node24)
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0 (node24)
+        with:
+          python-version: "3.13"
+
+      - name: Check the age of the published data
+        env:
+          DATA_PUBLIC_URL: ${{ vars.DATA_PUBLIC_URL }}
+          R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
+        run: python scripts/ops/check_freshness.py --max-hours 48

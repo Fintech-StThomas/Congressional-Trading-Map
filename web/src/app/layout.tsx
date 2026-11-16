@@ -3,19 +3,23 @@ import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import { Public_Sans, JetBrains_Mono, Courier_Prime } from "next/font/google";
 import { FEED, SITE } from "@/lib/copy";
-import { IS_SAMPLE, getMetaForLayout, metaBuilt } from "@/lib/data/server";
+import { IS_SAMPLE, getMetaForLayout, latestData, metaBuilt } from "@/lib/data/server";
 import { date } from "@/lib/format";
+import { statusHref } from "@/lib/urls";
 import { SearchBox } from "@/components/shared/SearchBox";
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 import { Wordmark } from "@/components/shared/Wordmark";
 import { CorrectionLink, CorrectionProvider } from "@/components/shared/CorrectionLink";
 import { FooterAsOf } from "@/components/shared/FooterAsOf";
+import { StaleBanner } from "@/components/shared/StaleBanner";
+import { NewerDataNote } from "@/components/shared/NewerDataNote";
 import { NavLinks } from "@/components/shared/NavLinks";
 import { Analytics } from "@vercel/analytics/next";
 import "@/styles/tokens.css";
 import "@/styles/globals.css";
 import "@/styles/board.css";
 import "@/styles/pages.css";
+import "@/styles/notices.css";
 
 const sans = Public_Sans({ subsets: ["latin"], variable: "--font-sans", display: "swap", weight: ["400", "500", "600", "700"] });
 const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono", display: "swap", weight: ["400", "500", "600"] });
@@ -41,6 +45,8 @@ export const viewport: Viewport = {
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const built = metaBuilt(await getMetaForLayout());
+  // The release this page is rendered from (pinned mode only), so an open tab can tell when the pointer has moved.
+  const release = (await latestData().catch(() => null))?.release ?? null;
   return (
     <html lang="en" className={`${sans.variable} ${mono.variable} ${type.variable}`}>
       <body className={IS_SAMPLE ? "is-sample" : undefined}>
@@ -71,6 +77,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             </p>
           )}
         </header>
+        <StaleBanner built={built} sample={IS_SAMPLE} />
+        <NewerDataNote built={built} release={release} />
         <main id="main" tabIndex={-1}>
           {children}
         </main>
@@ -80,8 +88,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               <span className="mono">{SITE.name}</span> maps ties named in filed public records. {SITE.disclaimer}
             </p>
             <p className="site-footer__meta">
-              <FooterAsOf asOf={built ? date(built) : "unknown"} sample={IS_SAMPLE} />
+              <FooterAsOf asOf={built ? date(built) : "unknown"} built={built} sample={IS_SAMPLE} />
               <Link href="/method">Sources and method</Link>
+              <Link href={statusHref()}>Data status</Link>
               <Link href="/about">About</Link>
               <span>Not investment advice</span>
               <span>No commercial use or solicitation (5 U.S.C. 13107(c))</span>

@@ -578,6 +578,88 @@ test("embeds can be framed, feeds are RSS, and ordinary pages still refuse frami
   assert.match(feed.headers.get("content-type") ?? "", /application\/rss\+xml/);
 });
 
+// The build time this site was made from, read from the same meta.json the pages use.
+async function builtTime() {
+  const meta = await fetch(base + (realData ? "/data/meta.json" : "/sample-data/meta.json")).then((r) => r.json());
+  return meta.build?.time ?? meta.built ?? meta.build_time;
+}
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const shortDate = (iso) => `${Number(iso.slice(8, 10))} ${MONTHS[Number(iso.slice(5, 7)) - 1]} ${iso.slice(0, 4)}`;
+
+test("/status renders the data date, sources, run state and plain explanations; the footer links to it", async () => {
+  const p = await page();
+  await p.goto(base + "/status");
+  assert.equal((await p.locator("h1").innerText()).trim(), "Data status");
+  const built = await builtTime();
+  assert.match(await p.getByTestId("status-built").innerText(), new RegExp(shortDate(built)));
+  assert.ok((await p.getByTestId("status-sources").locator("li").count()) >= 1);
+  // The run is fetched on the server; whatever happened, the page says something plain and never fails.
+  const runText = await p.locator("[data-testid=status-run], [data-testid=status-run-unavailable]").first().innerText();
+  assert.ok(runText.length > 0);
+  if (!realData) assert.match(runText, /not shown on the sample site/);
+  const body = await p.locator("main").innerText();
+  assert.match(body, /keeps showing the previous data/);
+  assert.match(body, /more than 48 hours old/);
+  // The relative age is added after hydration.
+  await p.getByTestId("relative-age").waitFor();
+  assert.match(await p.getByTestId("relative-age").innerText(), /updated (just now|\d+ (minutes?|hours?|days?) ago)/);
+  assert.equal(await p.locator("footer.site-footer").getByRole("link", { name: "Data status" }).getAttribute("href"), "/status");
+  assert.match(await p.getByTestId("footer-age").innerText(), /updated/);
+  await p.close();
+});
+
+test("the stale banner follows the 48-hour rule from the browser's clock, and never shows on the sample site", async () => {
+  const built = Date.parse(await builtTime());
+  const at = async (ms) => {
+    const p = await page();
+    await p.clock.setFixedTime(new Date(built + ms));
+    await p.goto(base + "/about");
+    await p.getByTestId("footer-age").waitFor(); // hydrated
+    return p;
+  };
+  const fresh = await at(3 * 3600_000);
+  assert.equal(await fresh.getByTestId("stale-banner").count(), 0, "fresh data: no banner");
+  assert.match(await fresh.getByTestId("footer-age").innerText(), /updated 3 hours ago/);
+  await fresh.close();
+  const old = await at(5 * 24 * 3600_000);
+  if (realData) {
+    const banner = old.getByTestId("stale-banner");
+    const text = await banner.innerText();
+    assert.match(text, /This data was last updated .* \(5 days ago\)\. The daily update may have failed; figures may be out of date\./);
+    assert.equal(await banner.getByRole("link", { name: "Data status" }).getAttribute("href"), "/status");
+  } else {
+    assert.equal(await old.getByTestId("stale-banner").count(), 0, "the sample site never shows it (its data is invented)");
+  }
+  await old.close();
+});
+
+test("an explainer opens on click, closes on Escape and outside click, and stays on screen at phone width", async () => {
+  const id = realData ? "P000197" : "X000001";
+  const p = await page(390, 844);
+  await p.goto(`${base}/m/${id}`, { waitUntil: "networkidle" });
+  const term = p.getByTestId("explain-household");
+  const text = p.getByTestId("explain-household-text");
+  assert.equal(await term.getAttribute("aria-expanded"), "false");
+  assert.equal(await text.isVisible(), false);
+  await term.click();
+  assert.equal(await term.getAttribute("aria-expanded"), "true");
+  assert.match(await text.innerText(), /Trades are the household.s unless the filing says the member owns the asset/);
+  assert.equal(await term.getAttribute("aria-controls"), await text.getAttribute("id"));
+  const box = await text.boundingBox();
+  assert.ok(box.x >= 0 && box.x + box.width <= 390, `popover is inside the viewport: ${JSON.stringify(box)}`);
+  await p.keyboard.press("Escape");
+  assert.equal(await term.getAttribute("aria-expanded"), "false");
+  assert.equal(await p.evaluate(() => document.activeElement?.getAttribute("data-testid")), "explain-household", "focus returns to the term");
+  await p.keyboard.press("Enter");
+  assert.equal(await term.getAttribute("aria-expanded"), "true");
+  await p.mouse.click(200, 5);
+  assert.equal(await term.getAttribute("aria-expanded"), "false");
+  // One explainer per term in a view: the household term appears once on the page.
+  assert.equal(await p.getByTestId("explain-household").count(), 1);
+  assert.ok((await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)) <= 0);
+  await p.close();
+});
+
 test("no Content-Security-Policy violations on any page", async () => {
   const p = await page();
   for (const url of ["/", "/wall", "/cases", "/orgs", "/method", "/about"]) {
