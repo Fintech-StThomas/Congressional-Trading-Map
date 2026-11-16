@@ -112,7 +112,8 @@ BASE_URL=http://localhost:3100 npm test
 node --test tests/logic.test.mjs    # one unit file, no server
 ```
 
-Tests use the pre-installed `playwright` package (`require('playwright')`), not `@playwright/test`.
+Tests use the lockfile-pinned `playwright` package, not `@playwright/test`. Install its Chromium browser with
+`npx playwright install chromium` (CI also uses `--with-deps`). `npm run test:unit` excludes browser suites.
 
 What the tests run against: the unit tests need no data (they use inline data and `fixtures/`). The smoke tests run against whatever the build used and check, at start, whether the site serves a real `/data/meta.json`. In a clean checkout (no `public/data`, no `DATA_BASE_URL`) the build is the sample site: the smoke tests that work on the fixtures run, and the 14 that need real members and files (K000389's full file, the wall, organisations, cases pages) are skipped with "needs real data". To run them all without the pipeline, build and start with `DATA_BASE_URL` (way 2 above). `tests/wallyears.test.mjs`'s real-data check reads `DATA_BASE_URL` when set, else `public/data`, else is skipped with the same message.
 

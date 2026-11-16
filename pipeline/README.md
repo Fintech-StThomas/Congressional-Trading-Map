@@ -152,6 +152,46 @@ pipeline). Use it to re-sync the bucket by hand (Actions tab -> "Daily data refr
 
 ## Publishing to R2
 
+The next release architecture and acceptance gates are in [`docs/PRODUCT-PLAN.md`](../docs/PRODUCT-PLAN.md).
+The current uploader below still uses mutable URLs; publishing `meta.json` last is a completion marker, not
+atomic multi-file isolation. Clients can observe mixed versions during an upload or through independent caches.
+
+For the offline release descriptor foundation, after validating a generated data tree:
+
+```bash
+python -m pipeline.release_manifest --dir web/public/data --output /tmp/paper-trail-release.json
+python -m pytest -q pipeline/tests/test_release_manifest.py
+```
+
+This command hashes the tree without modifying it and writes a deterministic descriptor outside it. It needs no
+credentials and performs no uploads. It does not validate source accuracy, sign data, archive a build, or provide
+permanent citation URLs. The exact format and reserved paths are in the data dictionary. Keep the input tree
+unchanged while generating a descriptor. Archive publication is opt-in below; release-pinned readers and
+production cutover remain gated by the product plan.
+
+### Optional immutable archive publisher
+
+After the full data/privacy validators pass, the separate publisher can stage immutable objects under
+`releases/<release_id>/`, outside the legacy uploader's cleanup scope:
+
+```bash
+python -m pipeline.publish_release --dir web/public/data
+python -m pipeline.publish_release --dir web/public/data --activate
+python -m pipeline.publish_release --release <existing-release-id> --activate
+```
+
+The first command stages and verifies the release without changing `releases/current.json`. Activation updates
+that single pointer only after verification and only if its captured ETag still matches (or it is still absent).
+The third command verifies an existing release before promoting it or rolling back to it. All commands require
+the same four R2 credentials as the legacy publisher; there is no silent credential skip. No command deletes
+archives or overwrites a conflicting immutable object. Interrupted uploads can be rerun; matching objects are
+read and reused without retransmitting their bodies. The descriptor is the final immutable object written.
+
+The daily workflow still calls the legacy publisher. These commands have been exercised against fake S3, not
+the production provider. Before enabling them in production, complete PR checks, verify R2 conditional writes
+on a staging prefix/bucket, define privacy withdrawal and retention, and deploy compatible release-pinned
+readers. Tests: `python -m pytest -q pipeline/tests/test_release_manifest.py pipeline/tests/test_publish_release.py`.
+
 The bucket is where the data lives: the production site reads it (`DATA_BASE_URL`), and `web/public/data/` is not
 in git. Public base URL: `https://pub-b6acb08f97e345d68ebc4629e915f8ab.r2.dev/data`. `pipeline/publish_r2.py` uploads the tree to Cloudflare R2 through the S3-compatible API
 (boto3, region `auto`, endpoint `https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com`) under the key prefix `data/`, so
@@ -174,8 +214,8 @@ when `--verify` is asked for without `R2_PUBLIC_URL`. What it does:
    with `Content-Type: application/json` and `Cache-Control: public, max-age=300, s-maxage=3600, stale-while-revalidate=86400` (the
    same URLs are overwritten daily). No gzip and no Content-Encoding: plain JSON objects (Cloudflare can compress
    responses on a custom domain; that is not relied on).
-3. Uploads `meta.json` after every other data file, then the new manifest. Readers can treat `meta.json`'s
-   `build.time` as the switch: when it changes, every file of that build is in place.
+3. Uploads `meta.json` after every other data file, then the new manifest. Its `build.time` marks completed
+   data-file uploads; it does not isolate readers from partial uploads or independently cached versions.
 4. Only after all of that succeeded, deletes objects under `data/` that are not in the build (refusing to delete more
    than half the bucket in one run unless `--allow-mass-delete`).
 5. With `--verify`, fetches `<R2_PUBLIC_URL>/data/meta.json` (cache-busting query) and compares the build time.

@@ -39,13 +39,64 @@ Matching is exact on a normalised name, plus a hand-reviewed override file (`pip
   `https://pub-b6acb08f97e345d68ebc4629e915f8ab.r2.dev/data`, so `web/public/data/members/A000001.json` is served at
   `<base>/members/A000001.json`. The production site reads this base (`DATA_BASE_URL`, `web/README.md`).
 - **Headers**: every object is plain JSON (no Content-Encoding) with `Content-Type: application/json` and
-  `Cache-Control: public, max-age=300, stale-while-revalidate=86400` (the same URLs are overwritten each build).
-- **Manifest**: `<base>/_manifest.json` is `{build_time, prefix, files: {<path>: <sha256>}}` for the build in the
+  `Cache-Control: public, max-age=300, s-maxage=3600, stale-while-revalidate=86400` (the same URLs are overwritten each build).
+- **Manifest**: `<base>/_manifest.json` is `{build_time, prefix, cache_control, files: {<path>: <sha256>}}` for the build in the
   bucket. It is not a data file: the publisher compares against it to upload only changed files, and uploads it
   after every data file.
-- **`meta.json` is the switch**: it is uploaded after every other data file of a build, so when its `build.time`
-  changes every file of that build is in place. Objects no longer in the build are deleted only after that.
-  A failed upload leaves the previous `meta.json` and manifest in place.
+- **`meta.json` is a completion marker**: it is uploaded after every other data file of a build. This is not an
+  atomic switch: mutable objects can change before metadata does, and caches can retain different versions.
+  Objects no longer in the build are deleted only after metadata and manifest publication. A failed data-file
+  upload leaves previous metadata and manifest in place, but already-uploaded files are not rolled back.
+
+## Offline release manifest (preparation; not published yet)
+
+`python -m pipeline.release_manifest --dir <validated-data-tree> --output <outside-tree>/release.json`
+creates a deterministic descriptor for a future immutable release. It does not validate the data's meaning,
+upload files, sign the release, or change the current publisher. Run the data validators first.
+
+The descriptor is `{schema_version: 1, release_id: <sha256>, files: {<relative POSIX path>: {sha256, bytes}}}`.
+It includes every regular file in the tree, including `meta.json`; metadata time changes therefore change the
+release ID. `meta.json` must be a JSON object with a non-empty `build.time` string. Symbolic links and special
+files are rejected. `_manifest.json` and `release.json` are reserved and must not occur at the root.
+The output must be outside the input tree, including after resolving symbolic links.
+
+The release ID is SHA-256 of the UTF-8 encoding of the object `{schema_version: 1, files: ...}`, serialized
+with sorted keys, `ensure_ascii=True`, separators `(',', ':')`, and no trailing newline. Each file hash covers
+its original bytes. Relative paths and file sizes are part of the identity; filesystem timestamps are not.
+There is no self-hash cycle: `release_id` is added after computing the digest. A checksum proves byte identity,
+not source accuracy or authorship. Future publishing must preserve the exact files described here.
+
+## Immutable archive publication (opt-in; production cutover pending)
+
+The archive publisher uses a separate fixed `releases/` prefix, outside the legacy publisher's `data/` cleanup:
+
+- `releases/<release_id>/<relative path>` contains the exact original file bytes.
+- `releases/<release_id>/release.json` contains the descriptor above, encoded as sorted-key compact JSON
+  (`ensure_ascii=True`, no trailing newline). This completion marker is created only after every file has been
+  read back and verified against its recorded hash and size.
+- Optional `releases/current.json` is `{schema_version: 1, release_id: <sha256>, manifest_sha256: <sha256>}`.
+  Its manifest hash covers the exact descriptor bytes, including `release_id`. It contains no user-supplied URLs.
+
+Data objects and descriptors use `Cache-Control: public, max-age=31536000, immutable`. The pointer uses
+`Cache-Control: no-cache, max-age=0, must-revalidate`. Object creation is conditional (`If-None-Match: *`);
+existing keys must match expected bytes and cache/content-type headers, otherwise publishing fails without
+overwriting them. Re-running an interrupted upload reuses matching objects and completes missing ones.
+No archive command deletes objects. A source tree must remain unchanged during publication; each uploaded
+body is checked against the initial descriptor, and the tree is checked again before completing the release.
+
+Activation captures the current pointer and ETag before work and changes the pointer only after verification,
+using `If-Match` on that ETag (or `If-None-Match: *` when absent). Malformed existing pointers and concurrent
+changes fail closed. An ambiguous write result is accepted only when a read-back matches the exact desired
+pointer. Rollback activates an existing release only after descriptor validation, full file verification, and
+the same pointer precondition. An explicit release never silently resolves to latest.
+
+Descriptor validation includes its schema, release ID, canonical identity, file hash/size types, required
+`meta.json`, and safe relative POSIX paths (no empty/dot/traversal segments, backslashes, colons, control
+characters, reserved root filenames, or absolute paths). This protects remote verification from fetching keys
+outside the specified release.
+Build identity and completeness do not prove filing accuracy, redaction, or source authenticity. Callers must
+run the pipeline's data/privacy validators before archiving. Production activation also requires PR checks,
+provider conditional-write verification, release-pinned readers, and the withdrawal process in the product plan.
 
 ## Files in `web/public/data/`
 

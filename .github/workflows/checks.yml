@@ -32,7 +32,6 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: python scripts/ci/check_status.py "$BASE_SHA" "$HEAD_SHA"
-
       - name: Require STATUS.md for working-branch code changes
         if: github.event_name == 'push'
         env:
@@ -58,12 +57,13 @@ jobs:
   web:
     name: Site checks
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: web
     env:
       PT_DATA: fixtures
+      NEXT_TELEMETRY_DISABLED: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (node24)
         with:
@@ -74,6 +74,10 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci
+      - name: Install browser and OS dependencies
+        run: npx playwright install --with-deps chromium
       - run: npm run test:unit
       - run: npm run build
       - run: npm run typecheck
+      - name: Browser tests (includes CSP assertions)
+        run: npm test

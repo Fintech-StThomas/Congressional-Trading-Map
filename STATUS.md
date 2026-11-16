@@ -101,13 +101,18 @@ web/ (Next.js on Vercel) reads the bucket: pages are built on first visit and re
 
 ## In progress
 
-- The continuation on `claude/vigilant-edison-wovcu2` completes the financial-history views and security/CI verification begun in PR #6. House member pages now include on-demand asset timelines, change since the first disclosed report, and debt history; full files include transition CSV. Older bucket builds show timelines as unavailable until refreshed. Local verification is complete; ready for pull-request review.
-- Automated checks now run on `claude/**` pushes and every PR: pipeline tests, site unit tests, sample build/lint, type check, and a tested check requiring `STATUS.md` when code or crosswalk data changes. Branch checks have passed all three GitHub jobs; security/CI evidence is recorded in `docs/SECURITY-REVIEW.md`. The full cache-only data workflow also passed, with production publishing correctly skipped on the branch.
-- Verified before PR: 87 Python tests; 12,127,362 main checks and 3,473,065 holdings/positions checks with zero failures; all 25 sampled asset names/bands matched PDF text; local real-data build/lint/type check and 75 site tests passed with no skips. Local/sample and isolated real-bucket browser runs reported zero CSP violations; desktop/mobile screenshots reviewed. Transition sanity counts are in `docs/validation/README.md`.
-- The latest main-branch daily data job failed at its test step (run 43761542434). The step-local publish requirement fix is already on `main` through PR #6, but a successful hosted refresh and newer bucket build still need confirmation after the continuation merges.
+- Product implementation is sequenced in [`docs/PRODUCT-PLAN.md`](docs/PRODUCT-PLAN.md): release reliability → immutable citations and coverage → disclosure/change analysis → investigation views and saved boards → distribution and source expansion. This supersedes the feature ordering below; that list remains the broader backlog.
+- Pull request #8 adds deterministic release manifests and an opt-in immutable archive publisher. It is not wired into the daily job and production remains unchanged. Release-pinned readers, citation UI, contextual coverage, provider staging checks and a withdrawal policy remain required before activation.
+- The financial-history and security/CI continuation is now on `main`: House member pages include asset timelines, change since the first disclosed report and debt history; full files include transition CSV. Automated checks run on every PR, and this branch extends the site job to run Chromium/CSP tests.
+- The latest daily job inspected in this session succeeded (run 43784027285 on 2026-11-15 Central time). Branch protection could not be inspected with the available GitHub token.
 - Branch protection and moving R2 upload secrets into a `production` GitHub Environment remain owner setup; instructions are in `docs/SECURITY-REVIEW.md`.
 
 ## Security and capacity (reviewed 2026-11-15; full report in `docs/SECURITY-REVIEW.md`)
+
+The findings below describe that review's baseline. Local code now implements identifier checks, headers,
+asset caching, edge-cache policy invalidation, and source-link validation; deployment/browser verification and
+platform configuration remain separate gates in `docs/PRODUCT-PLAN.md`. Capacity figures are from the earlier
+report, not measurements repeated in this session.
 
 - No high-severity findings. The live site served 100 concurrent users (277 requests a second) with no errors.
 - The limit is Vercel's free-plan monthly quotas, not speed: roughly 300 to 400 first-time visitors a day as configured. The fixes below should raise that to roughly 1,000 to 2,000. A day of news-level traffic needs the paid plan.
@@ -132,11 +137,11 @@ web/ (Next.js on Vercel) reads the bucket: pages are built on first visit and re
 9. Outside income, positions and gifts (other schedules of the annual reports; needs our own parsing of the House PDFs).
 10. Votes, bills and hearings; then prediction-market odds on pending bills.
 11. Federal contracts; earmarks; sponsored travel; SEC insider filings.
-12. Alerts and the conflict score.
+12. Alerts and explainable overlap indicators (individual measures and methods, without a composite conflict score).
 
-**Release checklist for this continuation**
-1. Confirm the PR merge on GitHub, then check the live site and the new member/records views.
-2. Dispatch **Daily data refresh** on `main`; confirm the job succeeds, `data/meta.json` advances, timelines are available, and bucket/proxied data headers allow an hour of edge caching. The successful branch run deliberately did not publish.
+**Release checklist**
+1. Before enabling immutable publishing, verify R2 conditional writes on a staging prefix or bucket and deploy compatible release-pinned readers. Keep the current daily publisher in place until the reader migration is verified.
+2. After merges that affect generated data, dispatch **Daily data refresh** on `main`; confirm the job succeeds, `data/meta.json` advances, timelines are available, and bucket/proxied data headers allow an hour of edge caching.
 3. Move the R2 secrets into a `production` GitHub Environment restricted to `main`, and enable the workflow environment as coordinated in `docs/SECURITY-REVIEW.md`. Confirm other branches cannot publish or access those environment credentials.
 4. Rewrite history to remove `web/public/data` from every commit. The owner approved this on 2026-11-15, but first coordinate a time with no open PRs and nobody mid-work. Use `git filter-repo --path web/public/data --invert-paths`, force-push `main` once, and have all four teammates delete their copies and re-clone. Prepare an owner message to GitHub Support requesting cached views and unreachable commits be purged, including closed PRs #1–#6. Do not rewrite while this PR is open.
 5. Continue with lobbying attribution review/downloads, then the remaining feature list. Human review of the new 20-timeline sample remains open; automated checks are not human sign-off. Complete the existing trade sample/McCaul recheck and the 205 company override approvals.
