@@ -233,6 +233,9 @@ export const RELEASE = {
     title: "This data release is not available",
     body: "Either this release was never published or it has been withdrawn, or it holds no page at this address. It is not replaced by the latest data, so nothing below is a substitute for what you were looking for.",
     latestLink: "Go to the latest data",
+    /** This deployment does not read archived releases (RELEASE_BASE_URL unset), so no release can be shown here. */
+    offTitle: "Permanent data releases are not switched on for this site yet",
+    offBody: "This address points to a fixed copy of the data, which this version of the site cannot open yet. The release may well exist; it is not replaced by the latest data, so nothing here is a substitute for what you were looking for.",
   },
 } as const;
 

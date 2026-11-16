@@ -352,6 +352,17 @@ realTest("wall and organisation pages do not scroll sideways at phone width", as
   await p.close();
 });
 
+test("a permanent release link on a site without archived releases says so, and shows no latest data", async () => {
+  const p = await page();
+  const res = await p.goto(base + "/r/" + "f".repeat(64) + "/m/X000001");
+  assert.equal(res.status(), 404);
+  const box = p.getByTestId("release-not-found");
+  assert.equal(await box.getAttribute("data-pinned"), "0");
+  assert.match(await box.innerText(), /not switched on for this site yet/);
+  assert.doesNotMatch(await box.innerText(), /withdrawn/);
+  await p.close();
+});
+
 test("member case file and full file do not scroll sideways at phone width", async () => {
   // The year timeline's hidden labels once escaped its scroll box and let phones pan the whole page.
   const id = realData ? "P000197" : "X000001";
