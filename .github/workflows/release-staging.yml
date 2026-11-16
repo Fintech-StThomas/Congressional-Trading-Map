@@ -1,0 +1,77 @@
+name: Release staging and rollback
+
+# Manual, default-branch-only operations on the immutable release archive (docs/RELEASE-OPERATIONS.md):
+#   provider-check: verifies that the bucket honours conditional writes and headers, under a disposable prefix.
+#   rollback: verifies an archived release in full, then moves releases/current.json to it.
+# No schedule. Inputs reach the shell only through environment variables.
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "What to run"
+        type: choice
+        required: true
+        options:
+          - provider-check
+          - rollback
+      release_id:
+        description: "rollback only: the 64-character release ID to activate"
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-staging-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  run:
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && !github.event.repository.fork
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # environment: production   # enable together with the same line in data.yml (docs/SECURITY-REVIEW.md, S6)
+    steps:
+      # Actions pinned to the commit of the tag in use (tag in the comment), as in data.yml.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (node24)
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0 (node24)
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r pipeline/requirements.txt
+
+      - name: Run the requested action
+        env:
+          ACTION: ${{ inputs.action }}
+          RELEASE_ID: ${{ inputs.release_id }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          set -eu
+          case "$ACTION" in
+            provider-check)
+              python -m pipeline.release_provider_check
+              ;;
+            rollback)
+              if ! printf '%s' "$RELEASE_ID" | grep -Eqx '[0-9a-f]{64}'; then
+                echo "::error::rollback needs release_id: 64 lowercase hexadecimal characters"
+                exit 2
+              fi
+              python -m pipeline.publish_release --release "$RELEASE_ID" --activate
+              ;;
+            *)
+              echo "::error::unknown action"
+              exit 2
+              ;;
+          esac

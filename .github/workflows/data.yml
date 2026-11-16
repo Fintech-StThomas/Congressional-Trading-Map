@@ -3,7 +3,7 @@ name: Daily data refresh
 # Rebuilds the site data from the public sources and publishes it to Cloudflare R2 under data/, which the
 # production site reads (DATA_BASE_URL). Nothing is committed: the generated tree is not stored in git.
 # Order: unit tests -> pipeline (all stages, then validation) -> holdings validation -> publish to R2 -> verify that
-# the public URL serves the new build time. Any failure stops the job at that step (GitHub emails the owner).
+# the public URL serves the new build time -> (opt-in, PT_PUBLISH_RELEASES=1) archive an immutable release. Any failure stops the job at that step (GitHub emails the owner).
 # See pipeline/README.md ("Daily workflow", "Publishing to R2").
 
 on:
@@ -97,9 +97,27 @@ jobs:
           R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
         run: python -m pipeline.publish_r2 --verify
 
+      # Opt-in immutable archive (docs/RELEASE-OPERATIONS.md). Off unless the repository variable PT_PUBLISH_RELEASES
+      # is exactly 1, and only on the default branch of the main repository. It runs after the legacy publish above,
+      # which stays the production path and is unchanged. It stages releases/<id>/, verifies every object, then moves
+      # releases/current.json and records releases/index.json. Nothing here deletes objects. The R2 secrets are
+      # passed to this step only.
+      - name: Archive immutable release
+        if: >-
+          vars.PT_PUBLISH_RELEASES == '1'
+          && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+          && !github.event.repository.fork
+        timeout-minutes: 30
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: python -m pipeline.publish_release --dir web/public/data --activate
+
       - name: Report failure
         if: failure()
         run: |
-          msg="Daily data refresh failed at the step marked failed above. A failure before the publish step uploads nothing; a failed upload there leaves meta.json (the switch) on the previous build."
+          msg="Daily data refresh failed at the step marked failed above. A failure before the publish step uploads nothing; a failed upload there leaves meta.json (the switch) on the previous build. If the failed step is 'Archive immutable release', the legacy data/ publish already succeeded and the site is unaffected; read the step log: it says whether releases/current.json was moved, and re-running the step is safe."
           echo "::error::$msg"
           echo "### $msg" >> "$GITHUB_STEP_SUMMARY"
