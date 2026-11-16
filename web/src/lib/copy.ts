@@ -207,7 +207,7 @@ export const POSITION_CLASSES: Record<string, { label: string; note: string }> =
   },
   traded_same_band: { label: "Traded, same band", note: "A trade can be too small to move an asset out of its band." },
   unchanged: { label: "Same band, no trade", note: "Listed in both reports in the same band, with no trade filed between them." },
-  not_comparable: { label: "Bands not comparable", note: "At least one line carries no value, so the two bands cannot be compared." },
+  not_comparable: { label: "Bands not comparable", note: "At least one line carries no value, or the summed bands cross, so their direction cannot be compared." },
   traded_while_unlisted: {
     label: "Traded between reports, listed in neither",
     note: "Bought and sold between two reports, or held below the reporting threshold at both year ends.",

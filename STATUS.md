@@ -3,7 +3,7 @@
 **Read this first.** It is the single shared picture of the project for every teammate and every AI assistant (Claude, ChatGPT or any other), in any session.
 **Rule:** whoever changes what is live, what is in progress, or what is planned updates this file in the same pull request. If this file and the code disagree, the code is right and this file must be fixed.
 
-Last updated: 2026-11-16
+Last updated: 2026-11-15 (America/Chicago)
 
 ## What this is
 
@@ -101,14 +101,17 @@ web/ (Next.js on Vercel) reads the bucket: pages are built on first visit and re
 
 ## In progress
 
-- Two unfinished tasks sit on the branch `claude/vigilant-edison-wovcu2`: security and capacity fixes with pull-request checks, and the position timeline with net worth change and leverage. **`HANDOFF.md` says exactly what is done and what is not.**
-- The daily data job on `main` is failing at its test step; the fix is on that branch. The site serves the build of 2026-11-15 until it is merged.
+- Completing the security/capacity and financial-history work on `claude/vigilant-edison-wovcu2`. PR #6 already merged the checkpoints into `main`; the continuation adds PR checks, timeline/member/records views, and completed validation. Full pipeline and browser verification are in progress before a new PR.
+- The latest daily data job failed at its test step (run 43761542434). The step-local publish requirement fix is already on `main` through PR #6, but a successful hosted refresh and newer bucket build still need confirmation after the continuation merges.
+- Branch protection and moving R2 upload secrets into a `production` GitHub Environment remain owner setup; instructions are in `docs/SECURITY-REVIEW.md`.
 
 ## Security and capacity (reviewed 2026-11-15; full report in `docs/SECURITY-REVIEW.md`)
 
 - No high-severity findings. The live site served 100 concurrent users (277 requests a second) with no errors.
 - The limit is Vercel's free-plan monthly quotas, not speed: roughly 300 to 400 first-time visitors a day as configured. The fixes below should raise that to roughly 1,000 to 2,000. A day of news-level traffic needs the paid plan.
-- Open findings, in priority order: (1) junk member ids trigger bucket fetches and cached pages: validate ids before fetching; (2) no browser security headers (CSP and others); (3) portraits and map files are not cached by browsers; (4) bucket objects should allow an hour of edge caching; (5) the R2 upload keys should move into a GitHub Environment limited to `main`; (6) one record link skips the http(s)-only check.
+- Fixed in code: malformed/unknown member ids are rejected before per-member reads; CSP and other browser headers; safe source links; browser caching for portraits/map files and lazy off-screen portraits; hourly data revalidation, per-process fetch single-flight, and bucket cache-policy invalidation.
+- Partly fixed: cost amplification from cold requests (single-flight does not span serverless instances, and query-string variants/rate limiting remain open). Hourly bucket caching needs a successful publish and public-header confirmation.
+- Open owner configuration: restrict R2 upload secrets to `main` with a GitHub Environment; protect `main` once the new checks have run. See the finding-by-finding table and setup instructions in `docs/SECURITY-REVIEW.md`.
 - Load test scripts teammates can re-run: `scripts/loadtest/` (test only your own deployment).
 
 ## Next, in order

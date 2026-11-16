@@ -162,3 +162,15 @@ Create a project with **Root Directory `web`**, framework Next.js, default build
 It is read at build time: the rewrites, the data year, which routes prebuild and the URL the server functions fetch from are all fixed by the build (`next.config.ts` inlines it for the server code), so changing it needs a redeploy, and Preview builds need it as much as Production. Nothing else is needed: no CORS rules (the browser only talks to the site), no secrets (the bucket is public). In remote mode nothing reads `public/data` (it is not in the repository anyway), so the build only prerenders the handful of routes listed above.
 
 If `DATA_BASE_URL` is missing on Vercel, the build fails with "refusing to build the SAMPLE site" instead of publishing the fixtures (set `PT_DATA=fixtures` to build the sample site on purpose, e.g. for a demo). If it is set but unreachable or malformed at build time, the build fails with the URL in the error. If storage is down at request time, pages already generated keep being served (stale) and first-time pages show the error page until it is back. Geometry: `public/geo/us-states.json` (us-atlas states-10m); if it is missing in development, `resolve-data` caches a copy in `.cache/`.
+
+## Positions and financial history
+
+The member's holdings section uses `member/FinancialProfile.tsx` for first/latest
+disclosed range change and liabilities by year, with official annual-report links.
+`member/PositionsPanel.tsx` loads `holdings/positions/<id>.json` only when the reader
+asks, then offers asset filters, sorting, annual bands, gaps and expandable filed
+trades and transitions. The table scrolls on narrow screens. `records/PositionsRecords.tsx`
+uses the shared DataTable for every transition and filtered CSV download.
+Types, decoding and wording rules live in `lib/domain/positions.ts`; fixed caveats
+are in `lib/copy.ts`. Older bucket builds without `positions_summary` remain readable
+and show that timelines are unavailable until a new pipeline build is published.

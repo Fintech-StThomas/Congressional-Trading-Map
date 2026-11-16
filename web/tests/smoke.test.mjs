@@ -48,6 +48,9 @@ before(async () => {
     .then((r) => (r.ok ? r.json() : null))
     .then((m) => Boolean(m && m.publication_budget))
     .catch(() => false);
+  if (process.env.EXPECT_REAL_DATA === "1") {
+    assert.ok(realData, "Expected real data, but /data/meta.json is missing, failed, or lacks publication_budget");
+  }
   if (!realData) console.log(`# smoke: ${NEEDS_REAL}`);
   browser = await chromium.launch();
 });
@@ -346,6 +349,8 @@ realTest("spending against sits in its own unconnected zone; frayed strings carr
   await p.goto(base + "/?s=CA&m=K000389");
   const zone = p.getByTestId("against-zone");
   await zone.waitFor({ timeout: 15000 });
+  // The against zone can arrive before the independently loaded board cards.
+  await p.waitForSelector(".bcard", { timeout: 15000 });
   assert.match(await zone.innerText(), /Spent against this member[\s\S]*Not a relationship[\s\S]*AGAINST/);
   const cardIds = await p.locator(".bcard").evaluateAll((els) => els.map((e) => e.getAttribute("data-node")));
   const zoneText = await zone.innerText();
@@ -448,6 +453,40 @@ test("junk ids are 404s, not errors", async () => {
   }
 });
 
+// The published bucket may predate the positions contract; local fresh pipeline builds exercise this flow.
+realTest("annual positions, financial history and transition CSV agree with the data", async (t) => {
+  const indexResponse = await fetch(base + "/data/holdings-index.json");
+  if (!indexResponse.ok) return t.skip("holdings index unavailable");
+  const index = await indexResponse.json();
+  const column = (key) => index.cols.indexOf(key);
+  if (column("pos_assets") < 0) return t.skip("published build predates position timelines");
+  const row = index.rows.find((r) => r[column("pos_assets")] > 0 && r[column("nw_first_year")] && r[column("margin_loan_years")] > 0);
+  assert.ok(row, "a multi-year profile with assets and margin loans exists");
+  const id = row[column("id")];
+  const wire = await fetch(`${base}/data/holdings/positions/${id}.json`).then((r) => r.json());
+  const p = await page();
+  await p.goto(`${base}/m/${id}`);
+  await p.getByTestId("tenure-change").waitFor();
+  await p.getByTestId("leverage").waitFor();
+  await p.getByRole("button", { name: "Load position timelines" }).click();
+  await p.locator(".positions__table").waitFor();
+  assert.equal(await p.locator(".positions__table tbody tr").count(), Math.min(20, wire.assets.rows.length));
+  await p.locator(".positions__table summary").first().click();
+  assert.ok(await p.locator('.positions__table a[href*="financial-pdfs"]').count() > 0);
+  await p.setViewportSize({ width: 390, height: 844 });
+  assert.ok(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), "timeline scroll stays inside mobile page");
+  await p.goto(`${base}/m/${id}/records`);
+  await p.getByTestId("records-ready").waitFor({ timeout: 60000 });
+  await p.getByRole("button", { name: "Load every position transition" }).click();
+  await p.getByTestId("rec-positions").waitFor();
+  const [download] = await Promise.all([p.waitForEvent("download"), p.getByTestId("rec-positions-csv").click()]);
+  const { readFile } = await import("node:fs/promises");
+  const { decodePositions, transitionRows, TRANSITION_COLS } = await import("../src/lib/domain/positions.ts");
+  const { toCSV } = await import("../src/lib/domain/records.ts");
+  assert.equal(await readFile(await download.path(), "utf8"), toCSV(TRANSITION_COLS, transitionRows(wire, decodePositions(wire))));
+  await p.close();
+});
+
 // Runs last: the main journeys not covered above, then the check over every page this file opened.
 test("no Content-Security-Policy violations on any page", async () => {
   const p = await page();
@@ -476,13 +515,14 @@ test("no Content-Security-Policy violations on any page", async () => {
   // The correction link opens GitHub in a new tab (a navigation, which the CSP does not govern).
   const [tab] = await Promise.all([p.context().waitForEvent("page"), p.locator("footer.site-footer [data-testid=correction-link]").click()]);
   await tab.close();
+  // The organisation shell also renders in sample mode (using an invented company).
+  await p.goto(base + (realData ? "/o/co%3A732717" : "/o/co%3A9000001"), { waitUntil: "networkidle" });
   if (realData) {
     // The wall's year control.
     await p.goto(base + "/wall");
     await p.waitForSelector("[data-testid=wall] .wall__print");
     await p.goto(base + "/wall?y=2012");
     await p.waitForSelector('[data-testid=wall][data-year="2012"]', { timeout: 15000 });
-    await p.goto(base + "/o/co%3A732717", { waitUntil: "networkidle" });
   }
   await p.close();
   assert.deepEqual(cspViolations, []);

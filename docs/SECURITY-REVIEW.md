@@ -13,6 +13,67 @@ entry, and once the Pro plan ends that can use up the Hobby limits and get the p
 100 concurrent users (277 req/s) with no errors. The limit to plan for is Vercel Hobby's monthly quotas, not
 throughput.
 
+## Implementation follow-up (15 November 2026)
+
+The original measurements below describe the deployment before these changes; they are retained as a baseline.
+Code changes are verified locally before the pull request. Deployment-only changes remain open until checked on
+Vercel/GitHub after merge.
+
+| Finding | State on this branch | Evidence / remaining work |
+|---|---|---|
+| S1 browser headers | Implemented; browser verification recorded below | `lib/security-headers.ts`, `next.config.ts`, security unit tests and the smoke suite's CSP event/console checks. CSP permits Next's inline RSC scripts and same-origin analytics; preview toolbar allowances apply only to previews. |
+| S2 / S3 junk ids, cold fetches | Partly fixed | Shape validation in rewrites and readers; remote member ids must exist in the index before per-member bucket fetches. Single-flight shares concurrent reads within one process. This does not collapse renders across separate serverless instances or stop query-string cache amplification; dashboard rate limits remain open. |
+| S5 record source URL | Fixed in code | `RecordsView` checks source links with `safeHttpUrl`; security unit tests exercise unsafe schemes. |
+| S6 upload credentials | Partly fixed; owner configuration remains | Publish step explicitly runs only on the default branch in the main repository, so ordinary branch dispatches cannot upload. A collaborator could still edit the workflow; restrict secrets through the environment below. |
+| S9 reproducible install | Fixed in code | `web/vercel.json` specifies `npm ci`; PR checks use the lockfile. Existing dev-dependency advisories remain as originally reported. |
+| L2 revalidation | Fixed in code | Data fetch cache and on-demand pages revalidate hourly (`REVALIDATE_SECONDS=3600`). |
+| L3 portraits / geo | Fixed in code | Week-long browser caching; shared off-screen portraits use `loading="lazy"`. Case-file hero remains eager. Smoke checks inspect actual asset response headers. |
+| L4 bucket / data caching | Fixed in code; publish confirmation pending | `s-maxage=3600` on objects and `/data/*`. Manifest records the cache policy, forcing one full re-upload when the policy changes. Moto tests verify unchanged content is re-uploaded on policy changes and old manifests. Confirm public headers after the next successful publish. |
+| PR checks / daily test isolation | Implemented; hosted execution pending | `checks.yml`: project status, pipeline tests, sample build with lint, type check and unit tests. Daily publish requirement is step-local, with an explicit default-branch upload gate. Actions use verified pinned Node 24 releases. |
+
+### Verification evidence
+
+- Node 24 `npm ci` and the production sample build (including ESLint) pass. Sample `npm test`: 55 passed,
+  16 real-data-only skips. A targeted rerun also visits the sample organisation shell: zero CSP violations.
+- `python -m unittest scripts.ci.test_check_status`: 3 passed; R2 uploader tests: 9 passed, including changed
+  header policy, legacy manifests, upload ordering and test isolation from `PT_R2_REQUIRED`.
+- Runtime probes confirm `/portraits/K000389.webp` sends `max-age=604800`, and `/m/Z999999` is 404.
+  `isKnownMember` rejects malformed ids before I/O, then checks the remote member index before reading any
+  per-member file; route twins also reject malformed ids. The existing bucket and proxied shard currently still
+  send `max-age=300` without `s-maxage`: the uploader change takes effect after the next successful publish,
+  with its manifest policy check forcing unchanged objects to receive the new header.
+- The status-check CLI also rejects a real code-only commit and accepts code plus STATUS.md over a merge-base
+  range in a temporary git repository. Actionlint 1.7.12 passes both workflows. Both YAML documents parse. The pinned checkout, setup-python, cache and setup-node commits match
+  their upstream release tags and each action declares the `node24` runtime.
+- Latest real-bucket `npm test`: 73 passed, 0 failed, 2 skips (optional local PDF/holdings override and the new
+  positions flow, because the published bucket predates it). The CSP test reports zero violations across home,
+  a board state and evidence, member, records/CSV, print, wall/year, cases, organisations, method and about.
+  The against-zone test now waits for independently loaded board cards before inspecting their tags.
+- Remote-mode production build and lint pass against the real R2 bucket from an isolated `web/` copy with no
+  `public/data`. This environment requires its outbound HTTP proxy: Node fetch uses `NODE_USE_ENV_PROXY=1`,
+  and the verification server's custom HTTP agents receive `proxyEnv` via a scratch preload. This only adapts
+  the verification environment's networking; application code, bucket URL and data are unchanged.
+
+### Owner setup: branch protection and R2 environment
+
+1. After the checks workflow has run on GitHub, open repository **Settings → Rules → Rulesets** (or Branches →
+   branch protection). Target `main`, require a pull request, and require the checks **Project status**,
+   **Pipeline tests**, and **Site checks**. Require the branch to be up to date, disallow force pushes and deletion,
+   and apply the rule to administrators where appropriate. Do not enable checks that have never run: GitHub must
+   first know their names. Confirm a failing check prevents merging a test pull request.
+2. In **Settings → Environments**, create `production`. Set deployment branches to **Selected branches and tags**
+   and allow only the branch `main` (no tag pattern). Optionally require an owner review.
+3. Add `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_PUBLIC_URL` as environment
+   secrets, then remove their repository-secret copies. Keep `LDA_API_KEY` and `SEC_USER_AGENT` where the data build
+   can use them. Confirm the Cloudflare token is Object Read & Write for this one bucket; rotate if broader.
+4. Uncomment `environment: production` under `jobs.refresh` in `data.yml` in a reviewed pull request. Coordinate
+   steps 3–4 so no scheduled refresh runs between moving the secrets and merging that line. The environment is
+   intentionally not enabled before the owner creates it; silently auto-creating an unrestricted environment
+   would provide no isolation.
+5. Dispatch **Daily data refresh** on `main`; verify all steps pass, the bucket's `data/meta.json` build time advances,
+   and `/data/orgs/00.json` receives an hour of edge caching. Confirm a dispatch on another branch cannot access
+   the environment. Branch protection and environment settings cannot be proved by local tests.
+
 ## Fix list in priority order
 
 | # | Fix | Why | Effort |
@@ -52,45 +113,18 @@ Severity is rated for this site: public data, no accounts, nothing stored from u
 | S13 | Info | **Repository hygiene: clean.** Regex sweep of the tree and all 87 commits (AWS/GitHub/Slack/Google key shapes, private keys, `KEY=…` assignments) and `git log -S` on `R2_SECRET_ACCESS_KEY`, `FEC_API_KEY`, `CONGRESS_API_KEY`, `LDA_API_KEY` found only names (docs, workflow, code), never values. 40-character hex strings in history are dataset commit ids in `meta.json`. `.env*` is git-ignored and no env file was ever committed. Source maps are not served (`.js.map` gives 403). `web/public` holds only `geo/` and `portraits/` in git (generated data has since been removed from git; production is remote mode only). `meta.json` has no emails or file paths. `/.env`, `/.git/config` and `/next.config.ts` all give 404. Known and out of scope: old data with minors' names remains in git history (STATUS.md "Next" #1). | Commands run. | Keep the planned history rewrite. Turn on GitHub secret scanning and push protection (free for public repos). | — |
 | S14 | Info | Legal notices: the 5 U.S.C. 13107(c) notice and the "not investment advice" wording are present in site copy (not re-audited). | — | — | — |
 
-### 1.1 Proposed security headers (`web/next.config.ts`)
+### 1.1 Implemented security headers (`web/next.config.ts`)
 
-Why `'unsafe-inline'` for scripts: Next streams the RSC payload in inline `<script>self.__next_f.push(...)</script>`
-tags (10 on the home page). A nonce-based CSP forces every page to render dynamically, which removes ISR and
-static caching, the property this architecture depends on. Hashes do not work because the inline scripts differ
-per page. The risk is acceptable here: no user input is reflected and React escapes all data. The CSP still blocks
-third-party scripts, plugins, framing, `<base>` hijack and exfiltration to other hosts (`connect-src 'self'`).
+The source of truth is `web/src/lib/security-headers.ts`, imported by `next.config.ts`. Production uses
+`default-src 'self'`, allows inline scripts for Next's streamed RSC payload, and allows inline styles for
+React style attributes and self-hosted fonts. A nonce would force dynamic rendering and remove the static/ISR
+caching this site depends on. The policy blocks third-party scripts, plugins, framing, base-URL hijacking and
+connections to other hosts. React escapes all record text; no reader content is reflected as HTML.
 
-```ts
-// Add near the top of next.config.ts
-const isDev = process.env.NODE_ENV !== "production";
-const csp = [
-  "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`, // RSC inline payload; eval only for dev HMR
-  "style-src 'self' 'unsafe-inline'",        // style={} attributes and next/font's injected @font-face
-  "img-src 'self' data: blob:",              // portraits, og image; data: for inline SVG/icons
-  "font-src 'self'",                         // next/font self-hosts Google fonts
-  `connect-src 'self'${isDev ? " ws:" : ""}`, // all data goes through same-origin /data, /board-data, /search-index
-  "worker-src 'self' blob:",
-  "object-src 'none'",
-  "base-uri 'self'",
-  "form-action 'self'",
-  "frame-ancestors 'none'",
-  "upgrade-insecure-requests",
-].join("; ");
-
-const securityHeaders = [
-  { key: "Content-Security-Policy", value: csp },
-  { key: "X-Content-Type-Options", value: "nosniff" },
-  { key: "X-Frame-Options", value: "DENY" },              // older browsers; CSP frame-ancestors for the rest
-  { key: "Referrer-Policy", value: "same-origin" },       // no referrer to any other site
-  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=(), usb=(), browsing-topics=()" },
-  { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
-  { key: "Cross-Origin-Resource-Policy", value: "same-site" },
-];
-
-// In headers(), add as the first entry:
-//   { source: "/:path*", headers: securityHeaders },
-```
+Development alone allows eval, WebSockets and the analytics debug host. Preview deployments alone allow the
+Vercel toolbar host. HTTPS upgrade is enabled only on Vercel so local HTTP verification works. The response
+also sends nosniff, frame denial, a strict-origin-when-cross-origin referrer policy, disabled sensitive browser
+features, COOP same-origin and CORP same-origin. The share image overrides CORP to cross-origin.
 
 What this would break, and what to check on a preview deployment:
 
@@ -99,7 +133,7 @@ What this would break, and what to check on a preview deployment:
   (`process.env.VERCEL_ENV === "preview"`).
 - **Embedding the site in an iframe** (e.g. a newsroom embedding a board) stops working (`frame-ancestors 'none'`).
   If embedding is wanted, use `frame-ancestors 'self' https://*.example-news.org` or drop it for an `/embed` route.
-- **Hotlinking portraits or the og image from another site** in a browser is blocked by `CORP: same-site`. Social
+- **Hotlinking portraits or the og image from another site** in a browser is blocked by `CORP: same-origin`. Social
   crawlers fetch server-side and are not affected. Use `cross-origin` on `/portraits/*` if hotlinking is welcome.
 - **CSV/JSON downloads** use `blob:` object URLs with `<a download>`. These are navigations, so CSP does not block
   them. Check once anyway.

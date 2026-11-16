@@ -22,6 +22,8 @@ import { CaseFile, caseNumber } from "@/components/member/CaseFile";
 import { pickAgainst, pickBoard } from "@/lib/domain/pick";
 import { ownTradeCount } from "@/lib/domain/assume";
 import "@/styles/casefile.css";
+import "@/styles/positions.css";
+import { PositionsPanel } from "@/components/member/PositionsPanel";
 import { HoldingsSection } from "@/components/member/HoldingsSection";
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 import { CorrectionLink } from "@/components/shared/CorrectionLink";
@@ -242,6 +244,7 @@ export default async function MemberPage({ params }: PageProps<"/m/[id]">) {
       </section>
 
       <HoldingsSection h={holdings} everHouse={m.terms.some((t) => t.chamber === "rep")} memberId={m.id} />
+      {holdings && <PositionsPanel memberId={m.id} available={!!holdings.positions_summary} />}
 
       <section className="section" aria-labelledby="trades-h">
         <h2 id="trades-h">Trades reported by this member&rsquo;s household</h2>

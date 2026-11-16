@@ -106,7 +106,13 @@ def trade_key(t: dict[str, Any], keys: set[str], alias: dict[str, str]) -> str |
     opt = option_suffix(t["asset_class"] == "option")
     cands = []
     if t["org"]:
-        cands.append(t["org"] + opt)
+        direct = t["org"] + opt
+        if direct in keys:
+            return direct
+        # A resolved registry identity must never be replaced by a different same-name issuer.
+        if t["org"].startswith("co:"):
+            return None
+        cands.append(direct)
     nk = name_key(t["asset"]) + opt
     cands += [alias.get(nk, ""), "name:" + nk]
     return next((k for k in cands if k in keys), None)
