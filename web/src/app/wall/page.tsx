@@ -1,8 +1,9 @@
 // /wall: renders the current members from wall.json; WallView loads former members and years on demand.
 import type { Metadata } from "next";
-import { readData } from "@/lib/data/server";
+import { latestData } from "@/lib/data/server";
 import { decodeWall } from "@/lib/domain/party";
 import { WallView } from "@/components/wall/WallView";
+import { ReleasePin } from "@/components/shared/ReleasePin";
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 import { count } from "@/lib/format";
 
@@ -14,10 +15,12 @@ export const metadata: Metadata = {
 // Built once from wall.json: the current members are rendered into the page;
 // former members are fetched from the same file only when asked for.
 export default async function WallPage() {
-  const rows = decodeWall(await readData<{ cols: string[]; rows: unknown[][] } | null>("wall.json", null));
+  const data = await latestData();
+  const rows = decodeWall(await data.readData<{ cols: string[]; rows: unknown[][] } | null>("wall.json", null));
   const current = rows.filter((r) => r.current);
   return (
     <div className="page wallpage">
+      <ReleasePin release={data.release} />
       <h1>The wall</h1>
       <p className="lede">
         {current.length

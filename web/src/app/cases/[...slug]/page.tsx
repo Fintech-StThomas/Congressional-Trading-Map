@@ -2,7 +2,7 @@
 // page per filter and page number (lib/domain/casepages.ts), so each stays small and cacheable.
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { IS_REMOTE, getCases, getMemberIndex } from "@/lib/data/server";
+import { IS_REMOTE, latestData } from "@/lib/data/server";
 import { allCasePaths, casesSlug, parseCasesPath, pageOf } from "@/lib/domain/casepages";
 import { CasesView } from "@/components/cases/CasesView";
 
@@ -12,7 +12,8 @@ export const dynamicParams = false;
 
 export async function generateStaticParams() {
   if (IS_REMOTE) return [];
-  const [cases, members] = await Promise.all([getCases(), getMemberIndex()]);
+  const data = await latestData();
+  const [cases, members] = await Promise.all([data.getCases(), data.getMemberIndex()]);
   return allCasePaths(cases, members)
     .map(casesSlug)
     .filter((slug) => slug.length > 0)
@@ -28,7 +29,8 @@ export default async function CasesPagePath({ params }: { params: Promise<{ slug
   const q = parseCasesPath((await params).slug);
   if (!q) notFound();
   // Only the generated combinations exist (allCasePaths): a filter with at least one case, a page within range.
-  const [cases, members] = await Promise.all([getCases(), getMemberIndex()]);
+  const data = await latestData();
+  const [cases, members] = await Promise.all([data.getCases(), data.getMemberIndex()]);
   const p = pageOf(cases, members, q);
   if (p.total === 0 || q.page > p.pages) notFound();
   return <CasesView q={q} />;

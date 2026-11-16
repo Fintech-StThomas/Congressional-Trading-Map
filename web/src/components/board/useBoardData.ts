@@ -6,7 +6,7 @@
 // Results are kept in state so going back is instant; a stale response (fast navigation) is dropped.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Edge, OrgFileWire, OrgSummary } from "@/lib/types";
-import { dataUrl } from "@/lib/urls";
+import { dataUrl, routeDataUrl } from "@/lib/urls";
 import { getJSON, loadSearchIndex } from "@/lib/data/fetch";
 import type { BoardMember, NameBook } from "@/lib/domain/names";
 import { decodeOrgTies, orgTieTotal, type TieEdge } from "@/lib/data/decode";
@@ -48,7 +48,7 @@ export function useBoardData(sel: Sel, initialChunks: Record<string, StateChunk>
           const st = memberBook[sel.m]?.state;
           if (st && current.has(sel.m) && !chunks[st]?.strings[sel.m]) {
             setLoading(true);
-            const chunk = await getJSON<StateChunk>(`/board-data/${st}`);
+            const chunk = await getJSON<StateChunk>(routeDataUrl(`board-data/${st}`));
             if (!live) return;
             setChunks((c) => ({
               ...c,
@@ -66,7 +66,7 @@ export function useBoardData(sel: Sel, initialChunks: Record<string, StateChunk>
             // Former members are not on board.json: their strings are cut from
             // the case file at build time.
             setLoading(true);
-            const body = await getJSON<{ edges: Edge[]; nodes: Record<string, OrgSummary>; members: Record<string, BoardMember>; more: number; againstMore?: number }>(`/board-member/${sel.m}`);
+            const body = await getJSON<{ edges: Edge[]; nodes: Record<string, OrgSummary>; members: Record<string, BoardMember>; more: number; againstMore?: number }>(routeDataUrl(`board-member/${sel.m}`));
             if (!live) return;
             setOrgBook((b) => ({ ...b, ...body.nodes }));
             setMemberBook((b) => ({ ...body.members, ...b }));

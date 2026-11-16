@@ -1,6 +1,7 @@
 // /method: sources and revisions from meta.json, the rule for each kind of tie, coverage and limits.
 import type { Metadata } from "next";
-import { IS_SAMPLE, getMeta, metaBuilt } from "@/lib/data/server";
+import { ReleasePin } from "@/components/shared/ReleasePin";
+import { IS_SAMPLE, latestData, metaBuilt } from "@/lib/data/server";
 import { metaSources } from "@/lib/data/meta";
 import { correctionsLogUrl, safeHttpUrl } from "@/lib/urls";
 import { FAMILY_LABEL, TYPE_LABEL, TYPE_RULE } from "@/lib/domain/edges";
@@ -53,7 +54,8 @@ function FlatCounts({ obj }: { obj: Record<string, unknown> }) {
 }
 
 export default async function MethodPage() {
-  const meta = await getMeta();
+  const data = await latestData();
+  const meta = await data.getMeta();
   const built = metaBuilt(meta);
   const sources = metaSources(meta);
   const exclusions = meta.exclusions;
@@ -62,6 +64,7 @@ export default async function MethodPage() {
 
   return (
     <div className="page page--read method">
+      <ReleasePin release={data.release} />
       <h1>Method and sources</h1>
       <p className="lede">
         {SITE.name} draws a string between a member of Congress and an organisation or another member only when a filed public record names both, or when a published

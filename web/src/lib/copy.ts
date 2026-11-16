@@ -216,3 +216,22 @@ export const POSITION_CLASSES: Record<string, { label: string; note: string }> =
 
 export const POSITION_STATUS_NOTE =
   "A year with no report available is shown as a gap, never as a sale. Assets are matched across years by their resolved company, or else by the exact asset name as filed; names are never matched by similarity.";
+
+// ---------------------------------------------------------------- data releases (permalinks)
+// A permalink /r/<release>/... shows one immutable data release; the latest routes show whatever is current.
+export const RELEASE = {
+  /** Banner sentence 1; `short` is releaseShort(id), `built` a formatted date or null. */
+  banner: (short: string, built: string | null) => `Pinned to data release ${short} (${built ? `built ${built}` : "build date unknown"}).`,
+  bannerBody:
+    "The figures on this page do not change when newer data is published. Links from this page lead to the latest data, except between this member’s case file and full file.",
+  latestLink: "View the latest data",
+  /** Provenance line on a pinned page; `release` is the full id. */
+  provenance: (release: string) => `Data release ${release}. A release is a fixed copy of the published data; a newer release may differ.`,
+  footerLatest: "Latest data as of",
+  footerAsOf: "Data as of",
+  notFound: {
+    title: "This data release is not available",
+    body: "Either this release was never published or it has been withdrawn, or it holds no page at this address. It is not replaced by the latest data, so nothing below is a substitute for what you were looking for.",
+    latestLink: "Go to the latest data",
+  },
+} as const;

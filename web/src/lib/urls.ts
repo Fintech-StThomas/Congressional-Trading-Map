@@ -2,12 +2,31 @@
 // and the guard for links that come from the data. Pure; tests/urls.test.mjs loads it directly.
 
 import { CORRECTIONS } from "./copy.ts";
+import { clientRelease } from "./data/pin.ts";
 
 /** Where the browser fetches data files from: /data (real build) or /sample-data (fixtures), set by next.config.ts. */
 export const DATA_BASE = process.env.NEXT_PUBLIC_DATA_BASE ?? "/data";
 
+/** A data file of one release, as the browser fetches it (pinned mode; next.config.ts proxies it to the bucket). */
+export function releaseDataUrl(release: string, rel: string): string {
+  return `/releases/${release}/${rel}`;
+}
+
+/** A generated JSON endpoint of one release: releaseRouteUrl(id, "board-data/CA") -> /r/<id>/board-data/CA. */
+export function releaseRouteUrl(release: string, path: string): string {
+  return `/r/${release}/${path}`;
+}
+
+/** A data file as the browser fetches it: from the release the page is pinned to (lib/data/pin.ts), else /data. */
 export function dataUrl(rel: string): string {
-  return `${DATA_BASE}/${rel}`;
+  const release = clientRelease();
+  return release ? releaseDataUrl(release, rel) : `${DATA_BASE}/${rel}`;
+}
+
+/** A generated JSON endpoint (/board-data/<state>, /board-member/<id>, /search-index) for the pinned release, else the latest one. */
+export function routeDataUrl(path: string): string {
+  const release = clientRelease();
+  return release ? releaseRouteUrl(release, path) : `/${path}`;
 }
 
 /**
@@ -33,6 +52,16 @@ export function memberHref(id: string): string {
 
 export function recordsHref(id: string): string {
   return `/m/${id}/records`;
+}
+
+/** The permalink of a member's case file in one data release (never replaced by the latest data). */
+export function releaseMemberHref(release: string, id: string): string {
+  return `/r/${release}/m/${id}`;
+}
+
+/** The permalink of a member's full file in one data release. */
+export function releaseRecordsHref(release: string, id: string): string {
+  return `/r/${release}/m/${id}/records`;
 }
 
 export function orgHref(id: string): string {

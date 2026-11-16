@@ -9,6 +9,7 @@ import { SearchBox } from "@/components/shared/SearchBox";
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 import { Wordmark } from "@/components/shared/Wordmark";
 import { CorrectionLink, CorrectionProvider } from "@/components/shared/CorrectionLink";
+import { FooterAsOf } from "@/components/shared/FooterAsOf";
 import { NavLinks } from "@/components/shared/NavLinks";
 import { Analytics } from "@vercel/analytics/next";
 import "@/styles/tokens.css";
@@ -77,10 +78,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               <span className="mono">{SITE.name}</span> maps ties named in filed public records. {SITE.disclaimer}
             </p>
             <p className="site-footer__meta">
-              <span>
-                Data as of <span className="mono">{built ? date(built) : "unknown"}</span>
-                {IS_SAMPLE ? " (sample)" : ""}
-              </span>
+              <FooterAsOf asOf={built ? date(built) : "unknown"} sample={IS_SAMPLE} />
               <Link href="/method">Sources and method</Link>
               <Link href="/about">About</Link>
               <span>Not investment advice</span>

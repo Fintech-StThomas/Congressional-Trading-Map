@@ -1114,3 +1114,35 @@
   color: var(--text);
   padding: 0 6px;
 }
+
+/* ---------- data release permalinks (/r/<release>/...) ---------- */
+
+.release-banner {
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  border: 1px solid var(--paper-edge);
+  border-left: 4px solid var(--red-ink);
+  background: var(--paper-2);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.45;
+}
+.release-banner p {
+  margin: 0;
+}
+.release-banner p + p {
+  margin-top: 4px;
+}
+.release-banner a {
+  color: var(--ink);
+  text-decoration: underline;
+}
+@media print {
+  .release-banner {
+    border: 1px solid #111;
+    border-left-width: 4px;
+    background: #fff;
+    color: #111;
+    break-inside: avoid;
+  }
+}

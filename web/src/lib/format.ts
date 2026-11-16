@@ -94,6 +94,11 @@ export function date(iso: string | null | undefined): string {
   return d ? `${d} ${MONTHS[m - 1]} ${y}` : `${MONTHS[m - 1]} ${y}`;
 }
 
+/** A data release id for people: its first 12 hex digits (the full id stays in links and the provenance line). */
+export function releaseShort(release: string): string {
+  return release.slice(0, 12);
+}
+
 /** "2014–2016" from two ISO dates, one year when they match. */
 export function yearSpan(first: string | null, last: string | null): string {
   const a = first?.slice(0, 4);
