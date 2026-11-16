@@ -20,7 +20,7 @@ from typing import Any
 import duckdb
 
 from ..util import BUILD, CACHE, ROOT, SOURCES_DIR, fetch, read_json, read_jsonl, write_json
-from . import rules
+from . import rules, validate_positions
 from .run import ASSET_COLS, EDGE_FILE, HOLD_DIR, INDEX, LIAB_COLS, band_sum, net_worth
 
 SEED = 20261113
@@ -185,12 +185,15 @@ def main(argv: list[str] | None = None) -> int:
     c.check(n_assets == rep["asset_rows_published"], "published asset rows equal the report count")
     n_edges = check_edges(c, set(src["sources"]), files)
     c.check(n_edges == rep["owns_edges"], "edge count equals report")
+    pos_counts = validate_positions.run_checks(c)
     stats = sample(c, "--no-pdf" not in argv)
     print(f"checks: {sum(c.n.values())} in {len(c.n)} kinds; failures: {len(c.fail)}; sample: {stats}")
+    print("position transitions:", pos_counts)
     for f in c.fail[:30]:
         print("  FAIL", f)
     result = {"checks": sum(c.n.values()), "kinds": dict(c.n), "failures": len(c.fail), "first_failures": c.fail[:30],
-              "sample": stats, "sample_file": str(SAMPLE.relative_to(ROOT)), "seed": SEED}
+              "sample": stats, "position_transitions": pos_counts,
+              "timeline_sample_file": str(validate_positions.SAMPLE.relative_to(ROOT)), "sample_file": str(SAMPLE.relative_to(ROOT)), "seed": SEED}
     src["report"]["validation"] = result
 
     write_json(SOURCES_DIR / "holdings.json", src, pretty=True)

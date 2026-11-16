@@ -4,6 +4,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { isRealDataBuild, sampleFallbackError } from "./src/lib/data/source";
 import { remoteDataBase, remoteFileUrl, remoteRewrite } from "./src/lib/data/remote";
+import { MEMBER_ID_PATTERN, ORG_PATTERN, STATE_PATTERN } from "./src/lib/data/ids";
+import { securityHeaders } from "./src/lib/security-headers";
 
 // Two data modes (README "Data modes"):
 //   DATA_BASE_URL unset (local): the dataset in public/data (or the fixtures copied to public/sample-data),
@@ -61,18 +63,46 @@ export default async function config(phase: string): Promise<NextConfig> {
     // Organisation pages are rendered in the browser from the org shard, so
     // every /o/<id> is served by one static page instead of tens of thousands.
     async rewrites() {
-      const org = { source: "/o/:id", destination: "/org" };
+      // Only well-formed ids are rewritten (lib/data/ids.ts). Anything else falls through to a route with
+      // dynamicParams = false (or to no route at all), which answers 404 without rendering or reading data.
+      const org = { source: `/o/:id(${ORG_PATTERN})`, destination: "/org" };
       if (!remote) return [org];
       // Remote mode: the data proxy, and the per-member, per-state and paged routes served by their
       // on-demand twins under app/live (route segment config is literal, so the twins carry dynamicParams).
-      const live = ["/m/:id", "/m/:id/records", "/board-data/:state", "/board-member/:id", "/cases/:slug+"].map((source) => ({ source, destination: `/live${source}` }));
+      const m = `:id(${MEMBER_ID_PATTERN})`;
+      const live = [
+        [`/m/${m}`, "/live/m/:id"],
+        [`/m/${m}/records`, "/live/m/:id/records"],
+        [`/board-data/:state(${STATE_PATTERN})`, "/live/board-data/:state"],
+        [`/board-member/${m}`, "/live/board-member/:id"],
+        ["/cases/:slug+", "/live/cases/:slug+"],
+      ].map(([source, destination]) => ({ source, destination }));
       return { beforeFiles: [remoteRewrite(remote), ...live], afterFiles: [org], fallback: [] };
     },
+    // Later entries override earlier ones for the same header key (Next docs, "Header Overriding Behavior").
     async headers() {
       return [
+        // CSP, nosniff, frame, referrer, permissions, COOP and CORP on every response (lib/security-headers.ts).
+        { source: "/:path*", headers: securityHeaders(process.env) },
+        // The share card is fetched by other sites (social previews, chat unfurls): readable cross-origin.
+        { source: "/:og(opengraph-image.*)", headers: [{ key: "Cross-Origin-Resource-Policy", value: "cross-origin" }] },
         {
-          source: "/(data|sample-data|board-data)/:path*",
+          source: "/(board-data|sample-data)/:path*",
           headers: [{ key: "Cache-Control", value: "public, max-age=600, stale-while-revalidate=86400" }],
+        },
+        // Proxied data (remote) or the local build's static files. The same policy publish_r2.py sets on the
+        // objects, stated here so the browser gets it whichever header wins: browsers recheck after 5 minutes,
+        // the edge keeps a copy for an hour (Vercel removes s-maxage before the response reaches the browser).
+        {
+          source: "/data/:path*",
+          headers: [{ key: "Cache-Control", value: "public, max-age=300, s-maxage=3600, stale-while-revalidate=86400" }],
+        },
+        // Content-stable static files: a week in the browser, then served stale for up to 30 days while it
+        // rechecks. A changed portrait keeps its URL, so it reaches returning browsers within a week (rename the
+        // file, e.g. <id>-2.webp, to force it at once; the edge itself is purged on every deploy).
+        {
+          source: "/(portraits|geo)/:path*",
+          headers: [{ key: "Cache-Control", value: "public, max-age=604800, stale-while-revalidate=2592000" }],
         },
       ];
     },

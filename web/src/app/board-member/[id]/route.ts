@@ -1,5 +1,5 @@
 // Board strings for members not in board.json's states (former members).
-import { IS_REMOTE, getBoard, getMemberIndex, getMembers, memberBoard } from "@/lib/data/server";
+import { IS_REMOTE, getBoard, getMembers, isKnownMember, memberBoard } from "@/lib/data/server";
 
 export const dynamic = "force-static";
 // Every path is prerendered from local data and other paths are 404s. With DATA_BASE_URL nothing is
@@ -14,6 +14,6 @@ export async function generateStaticParams() {
 
 export async function GET(_req: Request, ctx: RouteContext<"/board-member/[id]">) {
   const { id } = await ctx.params;
-  if (IS_REMOTE && !(await getMemberIndex()).has(id)) return new Response("Not found", { status: 404 });
+  if (!(await isKnownMember(id))) return new Response("Not found", { status: 404 });
   return Response.json(await memberBoard(id));
 }

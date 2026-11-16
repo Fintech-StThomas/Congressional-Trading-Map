@@ -1,7 +1,7 @@
 "use client";
 // The full file (/m/<id>/records): loads the member, trade and holdings files and shows every record in DataTables, with CSV and JSON downloads.
 import { useEffect, useMemo, useState } from "react";
-import { dataUrl } from "@/lib/urls";
+import { dataUrl, safeHttpUrl } from "@/lib/urls";
 import { getJSON } from "@/lib/data/fetch";
 import type { MemberFileWire } from "@/lib/types";
 import { caveats, DOC_COLS, documentRows, identifierLinks, TIE_COLS, tieRows, TRADE_COLS_ALL, tradeRows, type Col } from "@/lib/domain/records";
@@ -144,17 +144,20 @@ export function RecordsView({ id, hasTrades, hasHoldings, everHouse, names, sour
       <section id="rec-ids" className="rec__sec" aria-labelledby="rec-ids-h">
         <h2 id="rec-ids-h">Identifiers and official pages</h2>
         <dl className="rec__ids">
-          {identifierLinks(m).map((x, i) => (
-            <div key={i}>
-              <dt>{x.label}</dt>
-              <dd>
-                <span className="mono">{x.value}</span>
-                {x.url && (
-                  <> · <a href={x.url} target="_blank" rel="noreferrer">{x.url.replace(/^https:\/\//, "")}</a></>
-                )}
-              </dd>
-            </div>
-          ))}
+          {identifierLinks(m).map((x, i) => {
+            const url = safeHttpUrl(x.url);
+            return (
+              <div key={i}>
+                <dt>{x.label}</dt>
+                <dd>
+                  <span className="mono">{x.value}</span>
+                  {url && (
+                    <> · <a href={url} target="_blank" rel="noreferrer">{url.replace(/^https:\/\//, "")}</a></>
+                  )}
+                </dd>
+              </div>
+            );
+          })}
         </dl>
       </section>
 

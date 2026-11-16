@@ -14,6 +14,8 @@ import { pickBoardSplit } from "../domain/pick.ts";
 import { metaBuilt as builtFrom } from "./meta.ts";
 import { isRealDataBuild } from "./source.ts";
 import { REVALIDATE_SECONDS, remoteDataBase, remoteFileUrl } from "./remote.ts";
+import { isMemberId } from "./ids.ts";
+import { singleFlight } from "./flight.ts";
 
 const ROOT = process.cwd();
 const REAL_DIR = join(ROOT, "public", "data");
@@ -64,7 +66,7 @@ async function fetchRemote(rel: string): Promise<Response | undefined> {
 
 /**
  * The data build's identity, from meta.json's ETag (or Last-Modified). Fetching it on every read also
- * gives every route that reads data the 15-minute revalidation, whether or not the file below comes
+ * gives every route that reads data the revalidation period, whether or not the file below comes
  * from the in-memory cache.
  */
 async function remoteStamp(): Promise<{ stamp: string; res: Response }> {
@@ -86,16 +88,18 @@ async function readRemote<T>(rel: string, fallback?: T): Promise<T> {
   }
   const key = `remote:${rel}`;
   if (!uncached(rel) && cache.has(key)) return cache.get(key) as T;
-  const res = rel === "meta.json" ? metaRes : await fetchRemote(rel);
-  if (!res) {
+  const value = await singleFlight(`${stamp}|${rel}`, async (): Promise<T | undefined> => {
+    const res = rel === "meta.json" ? metaRes : await fetchRemote(rel);
+    if (!res) return undefined;
+    try {
+      return (await res.clone().json()) as T;
+    } catch (err) {
+      throw new Error(`[data] ${rel} from DATA_BASE_URL is not JSON: ${(err as Error).message}`);
+    }
+  });
+  if (value === undefined) {
     if (fallback !== undefined) return fallback;
     throw new Error(`Missing data file: ${remoteFileUrl(REMOTE_BASE as string, rel)}`);
-  }
-  let value: T;
-  try {
-    value = (await res.clone().json()) as T;
-  } catch (err) {
-    throw new Error(`[data] ${rel} from DATA_BASE_URL is not JSON: ${(err as Error).message}`);
   }
   if (!uncached(rel)) cache.set(key, value);
   return value;
@@ -123,8 +127,18 @@ export async function getMemberIndex(): Promise<Map<string, MemberSummary>> {
   return memberIndex;
 }
 
+/**
+ * Is this a member of the dataset? The id's shape is checked first (no I/O); in remote mode it must then be in
+ * members.json, which is fetched once per data build and held in memory. Per-member files are fetched only
+ * for ids that pass, so junk ids never reach the bucket.
+ */
+export async function isKnownMember(id: string): Promise<boolean> {
+  if (!isMemberId(id)) return false;
+  return !IS_REMOTE || (await getMemberIndex()).has(id);
+}
+
 export async function getMemberFile(id: string): Promise<MemberFileWire | null> {
-  if (!/^[A-Za-z0-9_-]+$/.test(id)) return null;
+  if (!(await isKnownMember(id))) return null;
   if (!IS_REMOTE) {
     try {
       return readLocal<MemberFileWire>(`members/${id}.json`);
@@ -136,7 +150,7 @@ export async function getMemberFile(id: string): Promise<MemberFileWire | null> 
 }
 
 export async function getTradeFile(id: string): Promise<TradeFile | null> {
-  if (!/^[A-Za-z0-9_-]+$/.test(id)) return null;
+  if (!(await isKnownMember(id))) return null;
   if (IS_REMOTE) return readOptional<TradeFile>(`trades/${id}.json`);
   const p = join(DATA_DIR, "trades", `${id}.json`);
   if (!existsSync(/*turbopackIgnore: true*/ p)) return null;
@@ -272,7 +286,7 @@ export async function memberBoard(id: string): Promise<MemberBoard> {
  * at another folder of holdings/<id>.json files (testing against unmerged data).
  */
 export async function getHoldings(id: string): Promise<HoldingsFile | null> {
-  if (!/^[A-Za-z0-9_-]+$/.test(id)) return null;
+  if (!(await isKnownMember(id))) return null;
   if (IS_REMOTE) return readOptional<HoldingsFile>(`holdings/${id}.json`);
   const dir = process.env.PT_HOLDINGS_DIR || join(DATA_DIR, "holdings");
   const p = join(dir, `${id}.json`);

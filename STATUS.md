@@ -3,7 +3,7 @@
 **Read this first.** It is the single shared picture of the project for every teammate and every AI assistant (Claude, ChatGPT or any other), in any session.
 **Rule:** whoever changes what is live, what is in progress, or what is planned updates this file in the same pull request. If this file and the code disagree, the code is right and this file must be fixed.
 
-Last updated: 2026-11-15
+Last updated: 2026-11-16
 
 ## What this is
 
@@ -101,7 +101,8 @@ web/ (Next.js on Vercel) reads the bucket: pages are built on first visit and re
 
 ## In progress
 
-- Nothing is mid-flight. The next item is the first under "Next, in order".
+- Two unfinished tasks sit on the branch `claude/vigilant-edison-wovcu2`: security and capacity fixes with pull-request checks, and the position timeline with net worth change and leverage. **`HANDOFF.md` says exactly what is done and what is not.**
+- The daily data job on `main` is failing at its test step; the fix is on that branch. The site serves the build of 2026-11-15 until it is merged.
 
 ## Security and capacity (reviewed 2026-11-15; full report in `docs/SECURITY-REVIEW.md`)
 

@@ -167,3 +167,52 @@ export function caseHoldingWords(c: Pick<Case, "types" | "trades">): string {
   if (owns) return "held the stock (annual report)";
   return "held a position";
 }
+
+// ---------------------------------------------------------------- holdings over time (House annual reports)
+// What each holdings panel does not show, and the wording of the position-timeline classes. Rules:
+// docs/data-dictionary.md, "Holdings and net worth". Facts about two filings and the trades between them, never a finding.
+
+export const HOLDINGS_NOT_SHOWN = {
+  positions:
+    "Value bands are wide; an asset can change band without any trade. A missing purchase report is not proof of a missing filing: several kinds of acquisition need none.",
+  change:
+    "A change in the disclosed range is not a change in wealth: the bands are wide, and the reports leave out homes, federal retirement accounts and more.",
+  liabilities:
+    "Shows debts as filed, not their terms, rates or purpose. Debts of $10,000 or less, and most debts owed to relatives, are not reported.",
+} as const;
+
+export const POSITIONS_INTRO =
+  "Each row is one asset as the annual reports list it, joined with the household trades filed between reports. A trade dated in a year sits before that year’s report, which values assets at the end of the year.";
+
+export const POSITION_CLASSES: Record<string, { label: string; note: string }> = {
+  consistent: {
+    label: "Matches a filed trade",
+    note: "A purchase or exchange is filed and the asset appears or its band rises, or a sale or exchange is filed and it disappears or its band falls.",
+  },
+  unexplained_appearance: {
+    label: "Listed, no purchase report found",
+    note: "Common reasons that need no purchase report: the asset was below the reporting threshold before; it was inherited or given; it moved between owners or accounts; it came from an exchange, merger or spin-off; it was bought before trade reports existed or before the member took office; it sits in an excepted fund; or it is real estate or another asset that trade reports do not cover.",
+  },
+  unexplained_disappearance: {
+    label: "No longer listed, no sale report found",
+    note: "Common reasons that need no sale report: the asset fell to or below the reporting threshold; it was given away or moved to another owner; it was exchanged, merged, matured or redeemed; it was sold inside an excepted fund; or it is real estate or another asset that trade reports do not cover.",
+  },
+  band_change_no_trade: {
+    label: "Band changed, no trade filed",
+    note: "Price movement alone can move an asset across value bands.",
+  },
+  contrary: {
+    label: "Band moved against the filed trades",
+    note: "For example the band rose although only sales were filed: price movement can outweigh a trade.",
+  },
+  traded_same_band: { label: "Traded, same band", note: "A trade can be too small to move an asset out of its band." },
+  unchanged: { label: "Same band, no trade", note: "Listed in both reports in the same band, with no trade filed between them." },
+  not_comparable: { label: "Bands not comparable", note: "At least one line carries no value, so the two bands cannot be compared." },
+  traded_while_unlisted: {
+    label: "Traded between reports, listed in neither",
+    note: "Bought and sold between two reports, or held below the reporting threshold at both year ends.",
+  },
+};
+
+export const POSITION_STATUS_NOTE =
+  "A year with no report available is shown as a gap, never as a sale. Assets are matched across years by their resolved company, or else by the exact asset name as filed; names are never matched by similarity.";

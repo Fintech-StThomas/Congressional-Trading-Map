@@ -38,6 +38,17 @@ class Recorder:
         return getattr(self.client, name)
 
 
+# Every variable main() reads. CI sets some of them (data.yml sets PT_R2_REQUIRED=1 on the publish step of main),
+# so each test starts from none of them and sets what it needs itself.
+AMBIENT = (*pr.REQUIRED_ENV, "R2_PUBLIC_URL", "PT_R2_REQUIRED")
+
+
+@pytest.fixture(autouse=True)
+def clean_env(monkeypatch):
+    for k in AMBIENT:
+        monkeypatch.delenv(k, raising=False)
+
+
 @pytest.fixture
 def s3():
     with mock_aws():
@@ -108,8 +119,6 @@ def test_transient_failures_are_retried(s3, tmp_path) -> None:
 
 
 def test_missing_env_skips_and_refuses_incomplete_build(monkeypatch, tmp_path, capsys) -> None:
-    for k in pr.REQUIRED_ENV:
-        monkeypatch.delenv(k, raising=False)
     assert pr.main(["--dir", str(tmp_path)]) == 0
     assert "R2 upload skipped" in capsys.readouterr().out
     with pytest.raises(pr.PublishError):
@@ -117,8 +126,6 @@ def test_missing_env_skips_and_refuses_incomplete_build(monkeypatch, tmp_path, c
 
 
 def test_require_turns_missing_env_into_a_failure(monkeypatch, tmp_path, capsys) -> None:
-    for k in (*pr.REQUIRED_ENV, "R2_PUBLIC_URL", "PT_R2_REQUIRED"):
-        monkeypatch.delenv(k, raising=False)
     assert pr.main(["--dir", str(tmp_path), "--require"]) == 2
     err = capsys.readouterr().err
     assert "R2 publish FAILED" in err and "R2_BUCKET" in err
@@ -128,3 +135,42 @@ def test_require_turns_missing_env_into_a_failure(monkeypatch, tmp_path, capsys)
         monkeypatch.setenv(k, "x")
     assert pr.main(["--dir", str(tmp_path), "--verify"]) == 2
     assert "R2_PUBLIC_URL" in capsys.readouterr().err
+
+
+def test_changed_cache_policy_reuploads_every_file_once(s3, tmp_path, monkeypatch) -> None:
+    build(tmp_path, {"a.json": "1", "b.json": "1"}, "t1")
+    pr.publish(s3, BUCKET, tmp_path, sleep=lambda s: None)
+    assert manifest(s3)["cache_control"] == pr.CACHE_CONTROL
+    monkeypatch.setattr(pr, "CACHE_CONTROL", "public, max-age=60")
+    rec = Recorder(s3)
+    pr.publish(rec, BUCKET, tmp_path, sleep=lambda s: None, workers=1)        # same content, new header policy
+    assert set(rec.puts) == {"data/a.json", "data/b.json", "data/meta.json", "data/_manifest.json"}
+    assert s3.head_object(Bucket=BUCKET, Key="data/a.json")["CacheControl"] == "public, max-age=60"
+    rec = Recorder(s3)
+    pr.publish(rec, BUCKET, tmp_path, sleep=lambda s: None, workers=1)        # and only once
+    assert rec.puts == ["data/_manifest.json"]
+
+
+def test_manifest_without_cache_policy_counts_as_changed(s3, tmp_path) -> None:
+    build(tmp_path, {"a.json": "1"}, "t1")
+    pr.publish(s3, BUCKET, tmp_path, sleep=lambda s: None)
+    old = manifest(s3)
+    del old["cache_control"]                                                # a manifest from before the field existed
+    s3.put_object(Bucket=BUCKET, Key="data/_manifest.json", Body=json.dumps(old).encode())
+    rec = Recorder(s3)
+    pr.publish(rec, BUCKET, tmp_path, sleep=lambda s: None, workers=1)
+    assert "data/a.json" in rec.puts
+
+
+def test_required_with_every_variable_set_publishes(monkeypatch, tmp_path) -> None:
+    """PT_R2_REQUIRED=1 with all secrets present runs the upload (client and verify faked) and exits 0."""
+    build(tmp_path, {"a.json": "1"}, "t1")
+    monkeypatch.setenv("PT_R2_REQUIRED", "1")
+    for k in (*pr.REQUIRED_ENV, "R2_PUBLIC_URL"):
+        monkeypatch.setenv(k, "x")
+    calls = []
+    monkeypatch.setattr(pr, "client_from_env", lambda require: (calls.append(require), ("client", "bucket"))[1])
+    monkeypatch.setattr(pr, "publish", lambda client, bucket, root, **kw: {"build_time": "t1"})
+    monkeypatch.setattr(pr, "verify", lambda url, bt: calls.append((url, bt)))
+    assert pr.main(["--dir", str(tmp_path), "--verify"]) == 0
+    assert calls == [True, ("x", "t1")]
