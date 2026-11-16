@@ -4,7 +4,7 @@ import { readdirSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 
 const files = readdirSync("tests")
-  .filter((f) => f.endsWith(".test.mjs") && f !== "smoke.test.mjs")
+  .filter((f) => f.endsWith(".test.mjs") && !f.endsWith("smoke.test.mjs"))
   .sort()
   .map((f) => `tests/${f}`);
 const r = spawnSync(process.execPath, ["--test", ...files], { stdio: "inherit" });

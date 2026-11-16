@@ -101,10 +101,17 @@ web/ (Next.js on Vercel) reads the bucket: pages are built on first visit and re
 
 ## In progress
 
-- Two unfinished tasks sit on the branch `claude/vigilant-edison-wovcu2`: security and capacity fixes with pull-request checks, and the position timeline with net worth change and leverage. **`HANDOFF.md` says exactly what is done and what is not.**
-- The daily data job on `main` is failing at its test step; the fix is on that branch. The site serves the build of 2026-11-15 until it is merged.
+- Product implementation is sequenced in [`docs/PRODUCT-PLAN.md`](docs/PRODUCT-PLAN.md): release reliability → immutable citations and coverage → disclosure/change analysis → investigation views and saved boards → distribution and source expansion. This supersedes the feature ordering below; that list remains the broader backlog.
+- Local branch `codex/investigation-plan`: the implementation plan, pull-request checks, deterministic release manifests, and opt-in immutable archive publisher are complete locally. The archive publisher is not wired into the daily job and production remains unchanged. Release-pinned readers, citation UI, and contextual coverage are the next unfinished slice.
+- `HANDOFF.md` records earlier security/capacity and position-timeline work. Local code already contains several of its pending fixes (including cache-policy invalidation and asset cache headers); its branch, daily-job and deployment claims need remote re-verification. PR checks are still absent. Do not treat that handoff as a current deployment report.
+- The latest daily job inspected in this session succeeded (run 43784027285 on 2026-11-15 Central time). Branch protection could not be inspected with the available GitHub token.
 
 ## Security and capacity (reviewed 2026-11-15; full report in `docs/SECURITY-REVIEW.md`)
+
+The findings below describe that review's baseline. Local code now implements identifier checks, headers,
+asset caching, edge-cache policy invalidation, and source-link validation; deployment/browser verification and
+platform configuration remain separate gates in `docs/PRODUCT-PLAN.md`. Capacity figures are from the earlier
+report, not measurements repeated in this session.
 
 - No high-severity findings. The live site served 100 concurrent users (277 requests a second) with no errors.
 - The limit is Vercel's free-plan monthly quotas, not speed: roughly 300 to 400 first-time visitors a day as configured. The fixes below should raise that to roughly 1,000 to 2,000. A day of news-level traffic needs the paid plan.
@@ -129,7 +136,7 @@ web/ (Next.js on Vercel) reads the bucket: pages are built on first visit and re
 11. Outside income, positions and gifts (other schedules of the annual reports; needs our own parsing of the House PDFs).
 12. Votes, bills and hearings; then prediction-market odds on pending bills.
 13. Federal contracts; earmarks; sponsored travel; SEC insider filings.
-14. Alerts and the conflict score.
+14. Alerts and explainable overlap indicators (individual measures and methods, without a composite conflict score).
 
 **Optimisations**
 - A custom domain on the R2 bucket (the current r2.dev address is rate-limited by Cloudflare and meant for development).
