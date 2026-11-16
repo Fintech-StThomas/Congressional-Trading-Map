@@ -194,10 +194,10 @@ def test_index_failure_after_pointer_moved_is_loud_and_repairable(s3, tree):
     with pytest.raises(s3.exceptions.NoSuchKey):
         s3.get_object(Bucket=BUCKET, Key=IDX)
     repaired = pr.publish(s3, BUCKET, tree, activate=True, sleep=lambda _: None)
-    assert repaired["uploaded"] == 0 and index(s3)["releases"][0]["release_id"] == release
+    assert repaired["new_blobs"] == 0 and index(s3)["releases"][0]["release_id"] == release
     again = Client(s3)
     pr.publish(again, BUCKET, tree, activate=True, sleep=lambda _: None)
-    assert [p["Key"] for p in again.puts] == [pr.CURRENT]
+    assert again.puts == []  # a repeat is a no-change day: nothing is written
 
 
 def test_cli_reports_index_failure_nonzero(monkeypatch, s3, tree, capsys):

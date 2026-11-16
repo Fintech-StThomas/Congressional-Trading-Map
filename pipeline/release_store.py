@@ -1,4 +1,8 @@
-"""Shared constants and object-store helpers for the release archive tools (publish, history index, withdrawal)."""
+"""Shared constants and object-store helpers for the release archive tools (publish, history index, withdrawal).
+
+Layout: releases/blobs/<sha256> (content-addressed bytes), releases/<id>/release.json (descriptor), releases/current.json,
+releases/index.json, releases/withdrawn/<id>.json.
+"""
 from __future__ import annotations
 
 import re
@@ -13,6 +17,7 @@ PREFIX = "releases/"
 CURRENT = PREFIX + "current.json"
 INDEX = PREFIX + "index.json"
 WITHDRAWN_PREFIX = PREFIX + "withdrawn/"
+BLOB_PREFIX = PREFIX + "blobs/"
 IMMUTABLE_CACHE = "public, max-age=31536000, immutable"
 POINTER_CACHE = "no-cache, max-age=0, must-revalidate"
 CAS_ATTEMPTS = 5
@@ -44,6 +49,38 @@ def get_object(client: Any, bucket: str, key: str, sleep: Callable) -> tuple[byt
         finally:
             stream.close()
     return retry(read, "read archive object", sleep)
+
+
+def head_object(client: Any, bucket: str, key: str, sleep: Callable) -> dict | None:
+    """Return the HEAD response (size and headers, no body) or None when the key does not exist."""
+    def read():
+        try:
+            return client.head_object(Bucket=bucket, Key=key)
+        except Exception as exc:
+            if status(exc, (404,), ("404", "NoSuchKey", "NotFound")):
+                return None
+            raise
+    return retry(read, "check archive object", sleep)
+
+
+def list_keys(client: Any, bucket: str, prefix: str, sleep: Callable) -> list[dict]:
+    """Every object ({Key, Size}) under an exact prefix, following continuation tokens."""
+    items: list[dict] = []
+    token = None
+    while True:
+        args = {"Bucket": bucket, "Prefix": prefix}
+        if token:
+            args["ContinuationToken"] = token
+        page = retry(lambda: client.list_objects_v2(**args), "list archive objects", sleep)
+        for item in page.get("Contents", []):
+            if not item["Key"].startswith(prefix):
+                raise PublishError("listing returned a key outside the requested prefix; aborting")
+            items.append(item)
+        if not page.get("IsTruncated"):
+            return items
+        token = page.get("NextContinuationToken")
+        if not token:
+            raise PublishError("truncated listing without a continuation token; aborting")
 
 
 def utc_timestamp(moment: datetime) -> str:

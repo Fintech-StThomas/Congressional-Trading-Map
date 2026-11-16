@@ -8,6 +8,7 @@ import { isMemberId } from "./ids.ts";
 import { isReleaseId, RELEASE_INDEX_PATH } from "./release.ts";
 import { releaseDataUrl } from "../urls.ts";
 import { validateReleaseIndex, type MemberSide, type ReleaseIndexEntry } from "../domain/compare.ts";
+import { readCounts, type HeaderCounts } from "../domain/snapshot.ts";
 
 type Fetch = (url: string) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
 
@@ -25,7 +26,7 @@ export async function loadReleaseIndex(fetchFn: Fetch = (u) => fetch(u)): Promis
   return json === null ? [] : validateReleaseIndex(json);
 }
 
-export type SideResult = { status: "unavailable" } | { status: "ok"; side: MemberSide; memberName: string; built: string | null };
+export type SideResult = { status: "unavailable" } | { status: "ok"; side: MemberSide; memberName: string; built: string | null; counts: HeaderCounts | null };
 
 function builtOf(meta: unknown): string | null {
   const m = meta as { build?: { time?: unknown }; built?: unknown; build_time?: unknown } | null;
@@ -47,6 +48,7 @@ export async function loadMemberSide(release: string, member: string, buildTime:
     status: "ok",
     built,
     memberName: file.member?.name ?? member,
+    counts: readCounts(file.member),
     side: {
       buildTime: built,
       edges: Array.isArray(file.edges) ? file.edges : [],

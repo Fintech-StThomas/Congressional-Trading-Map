@@ -66,15 +66,15 @@ def record_activation(client: Any, bucket: str, release_id: str, build_time: str
         raise PublishError(f"release index is malformed ({exc}); not modified") from None
 
 
-def remove_release(client: Any, bucket: str, release_id: str, *, sleep: Callable = time.sleep) -> bool:
-    """Drop a release from the index. A missing index is left missing. Returns True when written."""
-    validate_release_id(release_id)
+def remove_releases(client: Any, bucket: str, release_ids: list[str], *, sleep: Callable = time.sleep) -> bool:
+    """Drop releases from the index in one conditional write. A missing index is left missing. True when written."""
+    gone = {validate_release_id(release_id) for release_id in release_ids}
 
     def compute(existing: bytes | None) -> bytes | None:
         if existing is None:
             return None
         index = _load(existing)
-        kept = [item for item in index["releases"] if item["release_id"] != release_id]
+        kept = [item for item in index["releases"] if item["release_id"] not in gone]
         if len(kept) == len(index["releases"]):
             return None
         return canonical_json({"schema_version": 1, "releases": kept})
@@ -82,3 +82,8 @@ def remove_release(client: Any, bucket: str, release_id: str, *, sleep: Callable
         return cas_write(client, bucket, INDEX, compute, "release index", sleep)
     except ReleaseManifestError as exc:
         raise PublishError(f"release index is malformed ({exc}); not modified") from None
+
+
+def remove_release(client: Any, bucket: str, release_id: str, *, sleep: Callable = time.sleep) -> bool:
+    """Drop one release from the index."""
+    return remove_releases(client, bucket, [release_id], sleep=sleep)

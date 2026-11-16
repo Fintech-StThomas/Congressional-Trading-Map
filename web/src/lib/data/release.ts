@@ -56,6 +56,14 @@ export function releaseRewrite(base: string): { source: string; destination: str
   return { source: `/releases/:id(${RELEASE_ID_PATTERN})/:path*`, destination: `${base}/:id/:path*` };
 }
 
+/** The pointer to the active release as the browser fetches it: same origin (the bucket's releases/current.json, proxied). */
+export const RELEASE_POINTER_PATH = "/releases/current.json";
+
+/** The next.config rewrite for the pointer: exactly /releases/current.json, proxied to the bucket's current.json. */
+export function releasePointerRewrite(base: string): { source: string; destination: string } {
+  return { source: RELEASE_POINTER_PATH, destination: releasePointerUrl(base) };
+}
+
 /** The mutable, advisory release list (data dictionary, "Release history index"), as the browser fetches it: same origin. */
 export const RELEASE_INDEX_PATH = "/releases/index.json";
 

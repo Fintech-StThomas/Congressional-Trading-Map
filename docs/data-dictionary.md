@@ -48,7 +48,7 @@ Matching is exact on a normalised name, plus a hand-reviewed override file (`pip
   Objects no longer in the build are deleted only after metadata and manifest publication. A failed data-file
   upload leaves previous metadata and manifest in place, but already-uploaded files are not rolled back.
 
-## Offline release manifest (preparation; not published yet)
+## Offline release manifest (basis of the archive; production cutover pending)
 
 `python -m pipeline.release_manifest --dir <validated-data-tree> --output <outside-tree>/release.json`
 creates a deterministic descriptor for a future immutable release. It does not validate the data's meaning,
@@ -68,28 +68,39 @@ not source accuracy or authorship. Future publishing must preserve the exact fil
 
 ## Immutable archive publication (opt-in; production cutover pending)
 
-The archive publisher uses a separate fixed `releases/` prefix, outside the legacy publisher's `data/` cleanup:
+The archive publisher uses a separate fixed `releases/` prefix, outside the legacy publisher's `data/` cleanup.
+Content is addressed by hash, so a file that did not change is stored once however many releases contain it:
 
-- `releases/<release_id>/<relative path>` contains the exact original file bytes.
-- `releases/<release_id>/release.json` contains the descriptor above, encoded as sorted-key compact JSON
-  (`ensure_ascii=True`, no trailing newline). This completion marker is created only after every file has been
-  read back and verified against its recorded hash and size.
+- `releases/blobs/<sha256>` contains the exact original bytes of one distinct file (`<sha256>` is the file hash
+  recorded in descriptors, 64 lowercase hex). Blobs are immutable and never overwritten. Each is stored with
+  `Content-Type` chosen by the extension of the first path that uploaded it (`application/json` for `.json`); if two
+  paths of different types share bytes, the first type stays and the Worker sets the type from the requested path.
+- `releases/<release_id>/release.json` is the release: the descriptor above, encoded as sorted-key compact JSON
+  (`ensure_ascii=True`, no trailing newline). It is created only after every blob it names exists and was verified
+  (a newly uploaded blob is read back and hashed; an existing one is checked by HEAD for size and headers). A
+  release has no other objects.
 - Optional `releases/current.json` is `{schema_version: 1, release_id: <sha256>, manifest_sha256: <sha256>}`.
   Its manifest hash covers the exact descriptor bytes, including `release_id`. It contains no user-supplied URLs.
+- **Reader contract (unchanged):** `<base>/current.json`, `<base>/index.json` and `<base>/<release_id>/<path>`, where
+  `<base>` is `<worker>/releases`. The Cloudflare Worker (`worker/`) resolves `<path>` through the descriptor to
+  `releases/blobs/<sha256>`, serves it with the type of the requested path, and answers 404 for a withdrawn or
+  unknown release, an unknown path or an invalid id. A descriptor that names a missing blob is corruption (502).
+  Readers never address blobs.
 
-Data objects and descriptors use `Cache-Control: public, max-age=31536000, immutable`. The pointer uses
-`Cache-Control: no-cache, max-age=0, must-revalidate`. Object creation is conditional (`If-None-Match: *`);
-existing keys must match expected bytes and cache/content-type headers, otherwise publishing fails without
-overwriting them. Re-running an interrupted upload reuses matching objects and completes missing ones.
-Publishing and activation never delete objects; only the withdrawal command below does, and only under one
-release's exact prefix. A source tree must remain unchanged during publication; each uploaded
-body is checked against the initial descriptor, and the tree is checked again before completing the release.
+Blobs and descriptors use `Cache-Control: public, max-age=31536000, immutable` in the bucket (the Worker sends its own
+headers). The pointer uses `Cache-Control: no-cache, max-age=0, must-revalidate`. Object creation is conditional
+(`If-None-Match: *`); existing keys must match expected size and cache headers (descriptors also bytes), otherwise
+publishing fails without overwriting them. Re-running an interrupted upload reuses matching blobs and completes
+missing ones. A tree whose files other than `meta.json` equal the current release's creates no release and leaves the
+pointer alone. Publishing and activation never delete objects; only the withdrawal command below does, and only
+exact blob and descriptor keys. A source tree must remain unchanged during publication; each uploaded body is
+checked against the initial descriptor, and the tree is checked again before completing the release.
 
 Activation captures the current pointer and ETag before work and changes the pointer only after verification,
 using `If-Match` on that ETag (or `If-None-Match: *` when absent). Malformed existing pointers and concurrent
 changes fail closed. An ambiguous write result is accepted only when a read-back matches the exact desired
-pointer. Rollback activates an existing release only after descriptor validation, full file verification, and
-the same pointer precondition. An explicit release never silently resolves to latest.
+pointer. Rollback activates an existing release only after descriptor validation, a HEAD (existence and size) of
+every blob, a full read of `meta.json`, and the same pointer precondition (`--full-verify` hashes every blob). An explicit release never silently resolves to latest.
 
 ### Release history index (mutable)
 
@@ -110,8 +121,11 @@ activation. Readers must not use it to decide what is current.
 For discovered privacy or legal exposure only, `python -m pipeline.withdraw_release` writes
 `releases/withdrawn/<release_id>.json` = `{schema_version: 1, release_id, withdrawn_at, reason}` first, where
 `reason` is one of `privacy`, `legal`, `other` (no free text) and `withdrawn_at` is a UTC timestamp. It is
-written with `If-None-Match: *` and the pointer's no-cache headers. It then deletes every object under
-`releases/<release_id>/` and removes the entry from the index. The current release cannot be withdrawn. Publishing
+written with `If-None-Match: *` and the pointer's no-cache headers. It then deletes exactly the
+`releases/blobs/<sha256>` keys that no other live (non-withdrawn) release references, then the descriptor, and removes
+the entry from the index. Blobs shared with other live releases are kept; if those bytes hold the exposed data
+(`--exposed-path`, default: any file of the release) the other releases are exposed too, and the command refuses
+unless `--also-withdraw` names all of them. The current release cannot be withdrawn. Publishing
 or activating a release that has a tombstone is refused. Normal corrections publish a new release; old bytes are
 never rewritten.
 

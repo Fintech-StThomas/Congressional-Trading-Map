@@ -787,3 +787,99 @@ export const VIEW = {
   leftOut: (n: number) => `${n.toLocaleString("en-US")} ${n === 1 ? "trade is" : "trades are"} left out by the assumptions.`,
 } as const;
 
+
+// ---------------------------------------------------------------- data freshness (footer, stale banner, newer-data note)
+// How old the published data is, said plainly. Staleness is a statement about the daily update, never about any filing.
+export const FRESH = {
+  /** Footer: "updated 6 hours ago", after the date. */
+  updated: "updated",
+  justNow: "updated just now",
+  /** Banner text; `when` is a formatted date and `days` like "3 days". */
+  stale: (when: string, days: string) => `This data was last updated ${when} (${days} ago). The daily update may have failed; figures may be out of date.`,
+  staleLink: "Data status",
+  newer: "Newer data has been published. Reload to see it.",
+  newerDismiss: "Dismiss",
+} as const;
+
+// ---------------------------------------------------------------- a permalink compared with later releases
+// The snapshot's own figures are never altered; later differences are described, not judged (see COMPARE).
+export const SNAPSHOT = {
+  /** `list` is a comma-joined list of what differs. */
+  since: (list: string) => `Since this snapshot: ${list}.`,
+  seeChanges: "see what changed",
+  unchanged: "No records for this member have changed in later data releases.",
+  error: "Could not check whether this member’s records changed in later data releases. The figures on this page are unaffected.",
+  /** Header counts that differ from the latest data. */
+  count: (snapshot: string, latest: string) => `${snapshot} in this snapshot · ${latest} in today’s data`,
+  parts: {
+    amended: "with a newer filing version",
+    changedSource: "changed in the source data or our extraction",
+    added: "added to the data",
+    removed: "no longer in the data",
+    tiesChanged: "changed",
+    holdings: "holdings or net worth years changed",
+  },
+} as const;
+
+// ---------------------------------------------------------------- /status
+export const STATUS = {
+  title: "Data status",
+  description: "When the published data was last updated, which sources it was built from, and how the last daily update ran.",
+  lede: "How fresh the data on this site is, and what happened the last time it was refreshed.",
+  /** The workflow file whose latest run on main is the daily update. The repository is CORRECTIONS.repo. */
+  workflow: "data.yml",
+  updatedHeading: "Last data update",
+  updatedAt: "Built",
+  pipelineCommit: "Pipeline commit",
+  contract: "Data contract",
+  release: "Data release",
+  releaseNote: "The release this site currently serves as the latest.",
+  sourcesHeading: "Sources in this build",
+  sourcesNote: "As of, revision and row counts are what each source reported when it was read. A source with nothing listed gave nothing; it is not zero.",
+  noSources: "This build lists no sources.",
+  retrieved: "Retrieved",
+  revision: "Revision",
+  rows: "Rows",
+  coverageHeading: "Coverage notes",
+  runHeading: "Last daily update run",
+  runStatus: "Status",
+  runConclusion: "Result",
+  runWhen: "Started",
+  runLink: "Open the run on GitHub",
+  /** GitHub's run conclusions in plain words; anything else is shown as GitHub wrote it. */
+  conclusions: { success: "succeeded", failure: "failed", cancelled: "cancelled", skipped: "skipped", timed_out: "timed out" } as Record<string, string>,
+  runUnavailable: "Run history unavailable right now",
+  runSample: "Run history is not shown on the sample site.",
+  explainHeading: "What this means",
+  explain: [
+    "Once a day an automated job reads the public sources again, rebuilds every figure and publishes the result. That is the “daily update”.",
+    "If an update fails, the site keeps showing the previous data. Nothing is blanked or filled in, so the date above is the date the figures describe.",
+    "A banner appears on every page when the data is more than 48 hours old.",
+  ],
+  methodLink: "Sources and method",
+  correctionsLink: "Corrections log",
+} as const;
+
+// ---------------------------------------------------------------- plain-language explainers (components/shared/Explain.tsx)
+// One short definition per term, reusing the settled wording above. A tie is never a finding of wrongdoing.
+export const EXPLAIN = {
+  household: {
+    label: "household",
+    body: "Trades are the household’s unless the filing says the member owns the asset. A jointly owned asset counts as the member’s own.",
+  },
+  range: {
+    label: "disclosed range",
+    body: "Amounts are filed as ranges, such as $1,001–$15,000. The site shows the range as filed and never invents a single figure. An open-ended range (“over” a figure) stays open.",
+  },
+  tie: {
+    label: "tie",
+    body: "A tie is drawn only when a filed public record names both ends, or when a published statistical rule is met. A tie is not a finding. This shows what the filings say, not why.",
+  },
+  statistical: {
+    label: "statistical tie",
+    body: "A statistical tie is not a filed record: it meets a published statistical rule against a shuffled baseline. It is marked STATISTICAL wherever it appears.",
+  },
+  /** The button's accessible hint, read after the term. */
+  hint: "explanation",
+  close: "Close explanation",
+} as const;

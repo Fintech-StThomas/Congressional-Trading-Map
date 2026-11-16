@@ -5,7 +5,9 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Edge, OrgFileWire } from "@/lib/types";
 import { decodeOrgTies, orgTieTotal, type TieEdge } from "@/lib/data/decode";
-import { recordUrlFor, boardHref, dataUrl, memberHref } from "@/lib/urls";
+import { recordUrlFor, boardHref, dataUrl, memberHref, orgFeedHref } from "@/lib/urls";
+import { ORG_FEED } from "@/lib/copy-discovery";
+import { FollowButton } from "@/components/shared/FollowButton";
 import { FAMILY_LABEL, TYPE_LABEL } from "@/lib/domain/edges";
 import { amountText, count, seat, yearSpan } from "@/lib/format";
 import { getJSON, IS_SAMPLE_CLIENT, loadSearchIndex, resolveTie } from "@/lib/data/fetch";
@@ -17,6 +19,18 @@ import { PartyTag } from "@/components/shared/Print";
 import { LineSample } from "@/components/shared/LineSample";
 import { OrgReach, OrgSplit } from "./OrgReach";
 import { ConnectLink } from "@/components/connect/ConnectLink";
+
+/** Feed discovery for readers: <link rel="alternate"> to this organisation's feed (the page is one static shell, so it is added once the id is known). */
+function addFeedAlternate(id: string, name: string) {
+  document.head.querySelectorAll("link[data-org-feed]").forEach((n) => n.remove());
+  const l = document.createElement("link");
+  l.rel = "alternate";
+  l.type = "application/rss+xml";
+  l.title = ORG_FEED.alternateTitle(name);
+  l.href = orgFeedHref(id);
+  l.setAttribute("data-org-feed", "1");
+  document.head.appendChild(l);
+}
 
 type Key = "member" | "type" | "amount" | "count" | "last";
 
@@ -49,12 +63,14 @@ export function OrgView({ sources }: { sources: Record<string, string> }) {
         if (idx) setMembers(Object.fromEntries(idx.members.map((m) => [m.id, m])));
         setStatus("ok");
         document.title = `${f.org.name} · ties`;
+        addFeedAlternate(f.org.id, f.org.name);
       } catch {
         if (live) setStatus("error");
       }
     })();
     return () => {
       live = false;
+      document.head.querySelectorAll("link[data-org-feed]").forEach((n) => n.remove());
     };
   }, []);
 
@@ -150,6 +166,8 @@ export function OrgView({ sources }: { sources: Record<string, string> }) {
         <div className="dossier__actions">
           <Link className="btn btn--paper" href={boardHref({ o: o.id })}>Open on the board</Link>
           <ConnectLink a={o.id} />
+          <FollowButton kind="org" id={o.id} name={o.name} />
+          <Link className="btn btn--small" href={orgFeedHref(o.id)} prefetch={false} title={ORG_FEED.subscribeTitle} data-testid="org-feed-link">{ORG_FEED.subscribe}</Link>
           {record && (
             <a className="btn" href={record} target="_blank" rel="noopener noreferrer">
               {record.includes("fec.gov") ? "FEC committee page" : "SEC filings"} <ExternalIcon />

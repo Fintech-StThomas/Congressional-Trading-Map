@@ -12,7 +12,7 @@ import sys
 from typing import Any, Callable
 
 from .publish_r2 import MissingConfig, _code, client_from_env
-from .release_store import IMMUTABLE_CACHE, POINTER_CACHE, precondition_failed
+from .release_store import IMMUTABLE_CACHE, POINTER_CACHE, precondition_failed, status
 
 ROOT = "release-provider-check/"
 CTYPE = "application/json"
@@ -79,6 +79,29 @@ def run_checks(client: Any, bucket: str, run_id: str | None = None) -> tuple[lis
         assert body == first and response.get("ContentLength") == len(first), "body or length mismatch"
         return "body and length read back exactly"
 
+    def head_metadata():
+        head = client.head_object(Bucket=bucket, Key=run.prefix + "create.json")
+        assert head.get("ContentLength") == len(first), "HEAD did not report the exact size"
+        assert head.get("ContentType") == CTYPE and head.get("CacheControl") == IMMUTABLE_CACHE, "HEAD headers differ"
+        return "HEAD reports exact size, Content-Type and Cache-Control (used for blob reuse checks)"
+
+    def listing_sizes():
+        page = client.list_objects_v2(Bucket=bucket, Prefix=run.prefix)
+        sizes = {item["Key"]: item["Size"] for item in page.get("Contents", [])}
+        assert sizes.get(run.prefix + "create.json") == len(first), "listing did not report the exact size"
+        return "prefix listing reports object sizes (used for --measure and withdrawal)"
+
+    def delete_idempotent():
+        run.put("gone.json", first, IfNoneMatch="*")
+        client.delete_object(Bucket=bucket, Key=run.prefix + "gone.json")
+        client.delete_object(Bucket=bucket, Key=run.prefix + "gone.json")
+        try:
+            client.head_object(Bucket=bucket, Key=run.prefix + "gone.json")
+        except Exception as exc:  # noqa: BLE001
+            assert status(exc, (404,), ("404", "NoSuchKey", "NotFound")), f"HEAD failed with {_code(exc)}, not 404"
+            return "deleting a missing key succeeds; HEAD then reports 404"
+        raise AssertionError("object still exists after delete")
+
     state: dict[str, str] = {}
 
     def match_current():
@@ -99,6 +122,8 @@ def run_checks(client: Any, bucket: str, run_id: str | None = None) -> tuple[lis
     try:
         for name, fn in (("create-once (If-None-Match)", create_once), ("second-create-rejected", create_twice),
                          ("headers-round-trip", headers), ("body-read-back", body_readback),
+                         ("head-metadata", head_metadata), ("listing-sizes", listing_sizes),
+                         ("delete-idempotent", delete_idempotent),
                          ("if-match-current-succeeds", match_current), ("if-match-stale-rejected", match_stale)):
             run.record(name, fn)
     finally:

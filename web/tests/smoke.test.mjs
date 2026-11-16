@@ -578,6 +578,201 @@ test("embeds can be framed, feeds are RSS, and ordinary pages still refuse frami
   assert.match(feed.headers.get("content-type") ?? "", /application\/rss\+xml/);
 });
 
+// The build time this site was made from, read from the same meta.json the pages use.
+async function builtTime() {
+  const meta = await fetch(base + (realData ? "/data/meta.json" : "/sample-data/meta.json")).then((r) => r.json());
+  return meta.build?.time ?? meta.built ?? meta.build_time;
+}
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const shortDate = (iso) => `${Number(iso.slice(8, 10))} ${MONTHS[Number(iso.slice(5, 7)) - 1]} ${iso.slice(0, 4)}`;
+
+test("/status renders the data date, sources, run state and plain explanations; the footer links to it", async () => {
+  const p = await page();
+  await p.goto(base + "/status");
+  assert.equal((await p.locator("h1").innerText()).trim(), "Data status");
+  const built = await builtTime();
+  assert.match(await p.getByTestId("status-built").innerText(), new RegExp(shortDate(built)));
+  assert.ok((await p.getByTestId("status-sources").locator("li").count()) >= 1);
+  // The run is fetched on the server; whatever happened, the page says something plain and never fails.
+  const runText = await p.locator("[data-testid=status-run], [data-testid=status-run-unavailable]").first().innerText();
+  assert.ok(runText.length > 0);
+  if (!realData) assert.match(runText, /not shown on the sample site/);
+  const body = await p.locator("main").innerText();
+  assert.match(body, /keeps showing the previous data/);
+  assert.match(body, /more than 48 hours old/);
+  // The relative age is added after hydration.
+  await p.getByTestId("relative-age").waitFor();
+  assert.match(await p.getByTestId("relative-age").innerText(), /updated (just now|\d+ (minutes?|hours?|days?) ago)/);
+  assert.equal(await p.locator("footer.site-footer").getByRole("link", { name: "Data status" }).getAttribute("href"), "/status");
+  assert.match(await p.getByTestId("footer-age").innerText(), /updated/);
+  await p.close();
+});
+
+test("the stale banner follows the 48-hour rule from the browser's clock, and never shows on the sample site", async () => {
+  const built = Date.parse(await builtTime());
+  const at = async (ms) => {
+    const p = await page();
+    await p.clock.setFixedTime(new Date(built + ms));
+    await p.goto(base + "/about");
+    await p.getByTestId("footer-age").waitFor(); // hydrated
+    return p;
+  };
+  const fresh = await at(3 * 3600_000);
+  assert.equal(await fresh.getByTestId("stale-banner").count(), 0, "fresh data: no banner");
+  assert.match(await fresh.getByTestId("footer-age").innerText(), /updated 3 hours ago/);
+  await fresh.close();
+  const old = await at(5 * 24 * 3600_000);
+  if (realData) {
+    const banner = old.getByTestId("stale-banner");
+    const text = await banner.innerText();
+    assert.match(text, /This data was last updated .* \(5 days ago\)\. The daily update may have failed; figures may be out of date\./);
+    assert.equal(await banner.getByRole("link", { name: "Data status" }).getAttribute("href"), "/status");
+  } else {
+    assert.equal(await old.getByTestId("stale-banner").count(), 0, "the sample site never shows it (its data is invented)");
+  }
+  await old.close();
+});
+
+test("an explainer opens on click, closes on Escape and outside click, and stays on screen at phone width", async () => {
+  const id = realData ? "P000197" : "X000001";
+  const p = await page(390, 844);
+  await p.goto(`${base}/m/${id}`, { waitUntil: "networkidle" });
+  const term = p.getByTestId("explain-household");
+  const text = p.getByTestId("explain-household-text");
+  assert.equal(await term.getAttribute("aria-expanded"), "false");
+  assert.equal(await text.isVisible(), false);
+  await term.click();
+  assert.equal(await term.getAttribute("aria-expanded"), "true");
+  assert.match(await text.innerText(), /Trades are the household.s unless the filing says the member owns the asset/);
+  assert.equal(await term.getAttribute("aria-controls"), await text.getAttribute("id"));
+  const box = await text.boundingBox();
+  assert.ok(box.x >= 0 && box.x + box.width <= 390, `popover is inside the viewport: ${JSON.stringify(box)}`);
+  await p.keyboard.press("Escape");
+  assert.equal(await term.getAttribute("aria-expanded"), "false");
+  assert.equal(await p.evaluate(() => document.activeElement?.getAttribute("data-testid")), "explain-household", "focus returns to the term");
+  await p.keyboard.press("Enter");
+  assert.equal(await term.getAttribute("aria-expanded"), "true");
+  await p.mouse.click(200, 5);
+  assert.equal(await term.getAttribute("aria-expanded"), "false");
+  // One explainer per term in a view: the household term appears once on the page.
+  assert.equal(await p.getByTestId("explain-household").count(), 1);
+  assert.ok((await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)) <= 0);
+  await p.close();
+});
+
+// ---- discovery: /new, organisation feeds, the watchlist feed and Follow (fixture ids; skipped on real data) ----
+
+test("/new lists trades made public in the 7 days to the build date, and its filters work", async () => {
+  if (realData) return;
+  const p = await page();
+  await p.goto(base + "/new");
+  await p.waitForSelector("[data-testid=new-count]");
+  const line = await p.getByTestId("new-count").innerText();
+  assert.match(line, /^\d+ trades? made public in the 7 days to 13 Nov 2026/);
+  const all = await p.getByTestId("new-row").count();
+  assert.ok(all >= 5, `fixture rows: ${all}`);
+  assert.equal(await p.getByText("Subscribe (RSS)").count(), 1);
+  await p.getByTestId("new-chamber").selectOption("rep");
+  const house = await p.getByTestId("new-row").count();
+  assert.ok(house > 0 && house < all);
+  assert.match(await p.getByTestId("new-count").innerText(), new RegExp(`^${house} trades? made public`));
+  await p.getByTestId("new-chamber").selectOption("all");
+  const options = await p.locator("[data-testid=new-action] option").evaluateAll((os) => os.map((o) => [o.value, o.textContent]));
+  assert.ok(options.length >= 2, "action options");
+  const [value, label] = options[1];
+  await p.getByTestId("new-action").selectOption(value);
+  assert.ok((await p.getByTestId("new-row").count()) <= all);
+  assert.ok((await p.locator("[data-testid=new-row] td[data-label=Action]").allInnerTexts()).every((t) => t.startsWith(label)));
+  // the header still fits at phone width
+  await p.setViewportSize({ width: 390, height: 844 });
+  assert.ok((await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)) <= 0);
+  assert.equal(await p.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "New" }).count(), 1);
+  await p.close();
+});
+
+test("an organisation feed is RSS with items; a malformed or unknown id is a 404", async () => {
+  if (realData) return;
+  const res = await fetch(base + "/feed/o/co%3A9000001.xml");
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get("content-type") ?? "", /application\/rss\+xml/);
+  const xml = await res.text();
+  assert.match(xml, /^<\?xml/);
+  assert.ok((xml.match(/<item>/g) ?? []).length >= 1);
+  assert.match(xml, /<channel><title>[^<]*<\/title>/);
+  assert.equal((await fetch(base + "/feed/o/nope.xml")).status, 404);
+  assert.equal((await fetch(base + "/feed/o/co%3A1.xml")).status, 404);
+});
+
+test("the watchlist feed returns RSS for valid ids and 400 for bad ones", async () => {
+  if (realData) return;
+  const ok = await fetch(base + "/feed/w.xml?m=X000001");
+  assert.equal(ok.status, 200);
+  assert.match(ok.headers.get("content-type") ?? "", /application\/rss\+xml/);
+  assert.match(ok.headers.get("cache-control") ?? "", /s-maxage=3600/);
+  assert.ok(((await ok.text()).match(/<item>/g) ?? []).length >= 1);
+  const both = await fetch(base + "/feed/w.xml?o=co%3A9000001&m=X000001");
+  assert.equal(both.status, 200);
+  const bad = await fetch(base + "/feed/w.xml?m=bad");
+  assert.equal(bad.status, 400);
+  assert.match(await bad.text(), /not valid/);
+  assert.equal((await fetch(base + "/feed/w.xml")).status, 400);
+  assert.equal((await fetch(base + "/feed/w.xml?m=X000001&x=1")).status, 400);
+});
+
+test("Follow on a member page lists the member on /watch with a feed link; the list can be cleared; storage can be blocked", async () => {
+  if (realData) return;
+  const p = await page();
+  await p.goto(base + "/m/X000001");
+  await p.getByTestId("follow-button").first().click();
+  await p.waitForSelector("[data-testid=follow-feed]");
+  assert.match((await p.getByTestId("follow-feed").getAttribute("href")) ?? "", /m=X000001/);
+  await p.getByTestId("follow-manage").click();
+  await p.waitForSelector("[data-testid=watch-item]");
+  assert.match(await p.getByTestId("watch-member").innerText().catch(() => p.getByTestId("watch-members").innerText()), /Ada Sampleworth/);
+  assert.match(await p.getByTestId("watch-feed-url").inputValue(), /\/feed\/w\.xml\?m=X000001$/);
+  assert.match(await p.getByTestId("watch-privacy").innerText(), /only in this browser/);
+  assert.equal(await p.locator('meta[name=robots][content*=noindex]').count(), 1);
+  await p.getByTestId("watch-remove").first().click();
+  assert.equal(await p.getByTestId("watch-item").count(), 0);
+  await p.close();
+  // org page: follow and feed discovery
+  const q = await page();
+  await q.goto(base + "/o/co%3A9000001");
+  await q.waitForSelector("[data-testid=org-feed-link]");
+  assert.match((await q.getByTestId("org-feed-link").getAttribute("href")) ?? "", /\/feed\/o\/co%3A9000001\.xml/);
+  assert.equal(await q.locator("link[data-org-feed][rel=alternate][type='application/rss+xml']").count(), 1);
+  await q.getByTestId("follow-button").click();
+  assert.match((await q.getByTestId("follow-feed").getAttribute("href")) ?? "", /o=co%3A9000001/);
+  await q.close();
+  // blocked storage: works in memory with a notice
+  const blocked = await page();
+  await blocked.addInitScript(() => {
+    Object.defineProperty(window, "localStorage", { get() { throw new Error("blocked"); } });
+  });
+  await blocked.goto(base + "/m/X000001");
+  await blocked.getByTestId("follow-button").first().click();
+  await blocked.waitForSelector("[data-testid=follow-memory]");
+  assert.match((await blocked.getByTestId("follow-feed").getAttribute("href")) ?? "", /m=X000001/);
+  await blocked.close();
+});
+
+test("saved boards link to Following and can follow everything on a board; the footer links to it", async () => {
+  if (realData) return;
+  const p = await page();
+  await p.goto(base + "/saved");
+  assert.equal(await p.getByTestId("saved-following-link").count(), 1);
+  assert.equal(await p.getByTestId("footer-following").count(), 1);
+  await p.goto(base + "/m/X000001");
+  await p.getByTestId("save-member-button").click();
+  await p.getByTestId("save-member-name").fill("Watch test");
+  await p.getByTestId("save-member-confirm").click();
+  await p.goto(base + "/saved");
+  await p.getByTestId("board-follow-all").click();
+  assert.match(await p.getByTestId("board-follow-msg").innerText(), /Now following 1 more/);
+  assert.match((await p.getByTestId("board-export-feed").getAttribute("href")) ?? "", /m=X000001/);
+  await p.close();
+});
+
 test("no Content-Security-Policy violations on any page", async () => {
   const p = await page();
   for (const url of ["/", "/wall", "/cases", "/orgs", "/method", "/about"]) {

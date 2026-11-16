@@ -1,7 +1,7 @@
 // Every link the site builds: its own routes, the data files, official record pages,
 // and the guard for links that come from the data. Pure; tests/urls.test.mjs loads it directly.
 
-import { CORRECTIONS, SITE } from "./copy.ts";
+import { CORRECTIONS, SITE, STATUS } from "./copy.ts";
 import { clientRelease } from "./data/pin.ts";
 
 /** Where the browser fetches data files from: /data (real build) or /sample-data (fixtures), set by next.config.ts. */
@@ -46,6 +46,17 @@ export function correctionsLogUrl(): string {
   return `${CORRECTIONS.repo}/issues?q=${encodeURIComponent(`label:${CORRECTIONS.label}`)}`;
 }
 
+/** The data status page. */
+export function statusHref(): string {
+  return "/status";
+}
+
+/** GitHub's API address for the newest run of the daily-update workflow on main (server-side fetch on /status only). */
+export function dailyRunApiUrl(): string {
+  const slug = CORRECTIONS.repo.replace(/^https:\/\/github\.com\//, "");
+  return `https://api.github.com/repos/${slug}/actions/workflows/${STATUS.workflow}/runs?branch=main&per_page=1`;
+}
+
 export function memberHref(id: string): string {
   return `/m/${id}`;
 }
@@ -58,6 +69,21 @@ export function delaysHref(): string {
 /** A member's RSS feed of new filings: "/feed/m/K000389.xml". */
 export function memberFeedHref(id: string): string {
   return `/feed/m/${id}.xml`;
+}
+
+/** An organisation's RSS feed: "/feed/o/co%3A320193.xml" (the id is percent-encoded, as /o/ links are). */
+export function orgFeedHref(id: string): string {
+  return `/feed/o/${encodeURIComponent(id)}.xml`;
+}
+
+/** The trades-made-public-this-week page. */
+export function newHref(): string {
+  return "/new";
+}
+
+/** The page that lists what the reader follows (kept in their browser). */
+export function watchHref(): string {
+  return "/watch";
 }
 
 /** How to embed a member's card on another site. */

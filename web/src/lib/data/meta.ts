@@ -29,3 +29,17 @@ export function caseMinTypes(meta: Meta): number {
   const budget = (meta as Record<string, unknown>).publication_budget as { case_min_types?: unknown } | undefined;
   return typeof budget?.case_min_types === "number" ? budget.case_min_types : 2;
 }
+
+/** The build block (`build.time`, `build.pipeline_commit`, `build.contract`), each as written or null. */
+export function metaBuild(meta: Meta): { time: string | null; commit: string | null; contract: string | null } {
+  const b = ((meta as Record<string, unknown>).build ?? {}) as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === "string" && v ? v : null);
+  return { time: metaBuilt(meta), commit: str(b.pipeline_commit), contract: str(b.contract) };
+}
+
+/** The coverage sentences the pipeline wrote (`coverage_notes`, or `coverage` in older builds), strings only. */
+export function metaCoverageNotes(meta: Meta): string[] {
+  const m = meta as Record<string, unknown>;
+  const v = m.coverage_notes ?? m.coverage;
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x !== "") : [];
+}

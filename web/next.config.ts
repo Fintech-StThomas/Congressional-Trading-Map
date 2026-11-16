@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { isRealDataBuild, sampleFallbackError } from "./src/lib/data/source";
 import { remoteDataBase, remoteFileUrl, remoteRewrite } from "./src/lib/data/remote";
-import { RELEASE_ID_PATTERN, parsePointer, releaseBase, releaseFileUrl, releaseIndexRewrite, releasePointerUrl, releaseRewrite } from "./src/lib/data/release";
+import { RELEASE_ID_PATTERN, parsePointer, releaseBase, releaseFileUrl, releaseIndexRewrite, releasePointerRewrite, releasePointerUrl, releaseRewrite } from "./src/lib/data/release";
 import { MEMBER_ID_PATTERN, ORG_PATTERN, STATE_PATTERN } from "./src/lib/data/ids";
 import { EMBED_SOURCE, NOT_EMBED_SOURCE, embedHeaders, securityHeaders } from "./src/lib/security-headers";
 
@@ -120,9 +120,11 @@ export default async function config(phase: string): Promise<NextConfig> {
         ["/cases/:slug+", "/live/cases/:slug+"],
         [`/feed/m/:file(${MEMBER_ID_PATTERN}\\.xml)`, "/live/feed/m/:file"],
         ["/feed/trades.xml", "/live/feed/site/trades.xml"],
+        [`/feed/o/:file(${ORG_PATTERN}\\.xml)`, "/live/feed/o/:file"],
+        ["/new", "/live/new/week"],
         [`/embed/m/${m}`, "/live/embed/m/:id"],
       ].map(([source, destination]) => ({ source, destination }));
-      const proxies = [...(pinned ? [releaseIndexRewrite(pinned), releaseRewrite(pinned)] : []), ...(remote ? [remoteRewrite(remote)] : [])];
+      const proxies = [...(pinned ? [releaseIndexRewrite(pinned), releasePointerRewrite(pinned), releaseRewrite(pinned)] : []), ...(remote ? [remoteRewrite(remote)] : [])];
       return { beforeFiles: [...proxies, ...darkTo("/live/embed/m/:id/dark"), ...live], afterFiles: [org], fallback: [] };
     },
     // Later entries override earlier ones for the same header key (Next docs, "Header Overriding Behavior").
@@ -133,7 +135,8 @@ export default async function config(phase: string): Promise<NextConfig> {
         { source: NOT_EMBED_SOURCE, headers: securityHeaders(process.env) },
         { source: EMBED_SOURCE, headers: embedHeaders(process.env) },
         // Feeds: readers recheck hourly and may serve stale for a day.
-        { source: "/feed/:path*", headers: [{ key: "Cache-Control", value: "public, max-age=3600, stale-while-revalidate=86400" }] },
+        // Not /feed/w.xml: that route sets its own header, and only on a 200, so a rejected query is never cached.
+        { source: "/feed/:path((?!w\\.xml$).*)", headers: [{ key: "Cache-Control", value: "public, max-age=3600, stale-while-revalidate=86400" }] },
         // The share card is fetched by other sites (social previews, chat unfurls): readable cross-origin.
         { source: "/:og(opengraph-image.*)", headers: [{ key: "Cross-Origin-Resource-Policy", value: "cross-origin" }] },
         // Same for each member's card (app/m/[id]/opengraph-image and its remote-mode twin under app/live/m).
@@ -156,6 +159,8 @@ export default async function config(phase: string): Promise<NextConfig> {
               // Only <release id>/... is immutable. /releases/index.json (the release list) is mutable and advisory: always revalidated.
               { source: `/releases/:release(${RELEASE_ID_PATTERN})/:path*`, headers: [{ key: "Cache-Control", value: IMMUTABLE }] },
               { source: "/releases/index.json", headers: [{ key: "Cache-Control", value: "no-cache" }] },
+              // The pointer is read by open tabs ("newer data" note, permalink comparison): never served from a cache without revalidating.
+              { source: "/releases/current.json", headers: [{ key: "Cache-Control", value: "no-cache" }] },
               { source: `/r/:release(${RELEASE_ID_PATTERN})/:kind(board-data|board-member|search-index)/:path*`, headers: [{ key: "Cache-Control", value: IMMUTABLE }] },
             ]
           : []),

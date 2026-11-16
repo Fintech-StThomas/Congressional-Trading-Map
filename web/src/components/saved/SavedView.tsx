@@ -3,7 +3,10 @@
 // shared in the address (`#b=…`, read-only) or the reader's own boards: a list, a new-board form, the selected board
 // in full, and import. Boards come from this browser's storage only (components/saved/store.ts).
 import "@/styles/saved.css";
+import Link from "next/link";
 import { useEffect, useId, useState } from "react";
+import { WATCH } from "@/lib/copy-discovery";
+import { watchHref } from "@/lib/urls";
 import { SAVED } from "@/lib/copy";
 import { createBoard, latestBoard } from "@/lib/domain/saved";
 import { parseShareFragment, SHARE_PREFIX, type ParsedShare } from "@/lib/domain/saved-share";
@@ -51,6 +54,7 @@ export function SavedView({ pinned }: { pinned: boolean }) {
     <div className="page page--narrow saved" data-testid="saved-page">
       <h1>{SAVED.title}</h1>
       <p className="lede">{SAVED.lede}</p>
+      <p className="saved-hint"><Link href={watchHref()} data-testid="saved-following-link">{WATCH.savedLink}</Link></p>
       <aside className="saved-privacy no-print" aria-labelledby={`${uid}-priv`} data-testid="saved-privacy">
         <h2 id={`${uid}-priv`}>{SAVED.privacyTitle}</h2>
         {SAVED.privacy.map((p) => <p key={p}>{p}</p>)}

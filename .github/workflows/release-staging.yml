@@ -2,7 +2,8 @@ name: Release staging and rollback
 
 # Manual, default-branch-only operations on the immutable release archive (docs/RELEASE-OPERATIONS.md):
 #   provider-check: verifies that the bucket honours conditional writes and headers, under a disposable prefix.
-#   rollback: verifies an archived release in full, then moves releases/current.json to it.
+#   rollback: verifies an archived release (every blob exists with the right size; meta.json is read and hashed;
+#             with full_verify every blob is hashed), then moves releases/current.json to it.
 # No schedule. Inputs reach the shell only through environment variables.
 
 on:
@@ -20,6 +21,11 @@ on:
         type: string
         required: false
         default: ""
+      full_verify:
+        description: "rollback only: also read back and hash every blob (thousands of reads; slow)"
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -53,6 +59,7 @@ jobs:
         env:
           ACTION: ${{ inputs.action }}
           RELEASE_ID: ${{ inputs.release_id }}
+          FULL_VERIFY: ${{ inputs.full_verify && '1' || '' }}
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
@@ -68,7 +75,11 @@ jobs:
                 echo "::error::rollback needs release_id: 64 lowercase hexadecimal characters"
                 exit 2
               fi
-              python -m pipeline.publish_release --release "$RELEASE_ID" --activate
+              if [ "$FULL_VERIFY" = "1" ]; then
+                python -m pipeline.publish_release --release "$RELEASE_ID" --activate --full-verify
+              else
+                python -m pipeline.publish_release --release "$RELEASE_ID" --activate
+              fi
               ;;
             *)
               echo "::error::unknown action"

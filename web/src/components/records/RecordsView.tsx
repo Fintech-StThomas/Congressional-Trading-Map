@@ -19,6 +19,7 @@ import { COV_COLS, useRecordsView } from "./useRecordsView";
 import { ViewBar, ViewPrintLine } from "@/components/shared/ViewBar";
 import { AssumptionBar, useAssumptions } from "@/components/shared/Assume";
 import { updateView } from "@/components/shared/useViewState";
+import { Explain } from "@/components/shared/Explain";
 import { isOrgId } from "@/lib/data/ids";
 import { ASSET_COLS, coverageWords, holdingRows, LIABILITY_COLS, netWorthText, type HoldingsFile } from "@/lib/domain/holdings";
 
@@ -199,7 +200,7 @@ export function RecordsView({ id, hasTrades, hasHoldings, everHouse, names, sour
       {hasTrades && (
         <section id="rec-trades" className="rec__sec" aria-labelledby="rec-trades-h">
           <h2 id="rec-trades-h">Every trade</h2>
-          <p className="rec__note">Current versions of periodic transaction reports, all columns as published. Low and high are the disclosed range.</p>
+          <p className="rec__note">Current versions of periodic transaction reports, all columns as published. Low and high are the <Explain term="range">disclosed range</Explain>.</p>
           <CoverageNote facts={facts} scopes={["trades", "owner", "values"]} label="Coverage for trades" testId="rec-coverage-trades" />
           {state.trades === "error" ? (
             <p className="rec__state" role="alert">The trade file failed to load.</p>

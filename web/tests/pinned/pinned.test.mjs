@@ -73,6 +73,12 @@ function writeRelease(id, { name, built }) {
   writeFileSync(join(dir, "wall-years.json"), JSON.stringify({ years: [2000, 2026] }));
   for (const rel of ["members.json", `members/${MEMBER}.json`]) swap(rel, (t) => t.replaceAll(NAME_A, name));
   if (id === B) swap(`trades/${MEMBER}.json`, tradesOfB);
+  // B's header counts differ from A's in two of the three counts the permalink note compares (members stays the same).
+  if (id === B) swap(`members/${MEMBER}.json`, (t) => {
+    const f = JSON.parse(t);
+    f.member.counts = { ...f.member.counts, trades: f.member.counts.trades + 2, orgs: f.member.counts.orgs + 1 };
+    return JSON.stringify(f);
+  });
   writeFileSync(join(dir, "release.json"), JSON.stringify({ schema_version: 1, release_id: id, files: {} }));
 }
 
@@ -172,7 +178,8 @@ async function tracked() {
   return { p, pinned, unpinned };
 }
 
-const idsIn = (paths) => new Set(paths.map((x) => /^\/(?:releases|r)\/([^/]+)/.exec(x)[1]));
+// The release ids in /releases/<id>/... and /r/<id>/... paths (the pointer, /releases/current.json, names no release).
+const idsIn = (paths) => new Set(paths.map((x) => /^\/(?:releases|r)\/([0-9a-f]{64})/.exec(x)?.[1]).filter(Boolean));
 
 test("a latest page and every request it makes carry one release id (A)", async () => {
   const { p, pinned, unpinned } = await tracked();
@@ -186,14 +193,18 @@ test("a latest page and every request it makes carry one release id (A)", async 
   assert.equal(await p.getByTestId("release-banner").count(), 0, "the latest page has no permalink banner");
 
   // Search loads /r/<A>/search-index.
+  // (Each wait starts before its action, so a fast response cannot slip past it.)
+  const searched = p.waitForResponse((r) => r.url().includes("/search-index"));
   await p.getByRole("search").getByRole("combobox").fill("Ada");
-  await p.waitForResponse((r) => r.url().includes("/search-index"));
+  await searched;
   // The full file loads the member file from /releases/<A>/.
+  const file = p.waitForResponse((r) => r.url().includes(`/releases/${A}/members/${MEMBER}.json`));
   await p.goto(`${site}/m/${MEMBER}/records`);
-  await p.waitForResponse((r) => r.url().includes(`/releases/${A}/members/${MEMBER}.json`));
+  await file;
   // The board loads a state's strings from /r/<A>/board-data/<state>.
+  const board = p.waitForResponse((r) => r.url().includes("/board-data/VT"));
   await p.goto(`${site}/?s=VT&m=X000008`);
-  await p.waitForResponse((r) => r.url().includes("/board-data/VT"));
+  await board;
 
   assert.ok(pinned.some((x) => x === `/r/${A}/search-index`), pinned.join("\n"));
   assert.ok(pinned.some((x) => x === `/releases/${A}/members/${MEMBER}.json`));
@@ -241,13 +252,18 @@ test("after the latest pointer moves to B, the permalink to A still shows A", as
   assert.ok(movedToB, "the latest page picked up release B");
 
   const { p, pinned, unpinned } = await tracked();
+  // This test is about the page's own data; the note comparing it with the latest release (which reads B) is tested below.
+  await p.route("**/releases/current.json", (r) => r.abort());
   await p.goto(`${site}/r/${A}/m/${MEMBER}`);
   assert.ok((await p.locator("h1").first().innerText()).includes(NAME_A));
   assert.ok(!(await p.content()).includes(NAME_B));
+  // Start waiting before each action: on a fast run the response can arrive before a wait registered afterwards.
+  const searched = p.waitForResponse((r) => r.url().includes("/search-index"));
   await p.getByRole("search").getByRole("combobox").fill("Ada");
-  await p.waitForResponse((r) => r.url().includes("/search-index"));
+  await searched;
+  const opened = p.waitForResponse((r) => r.url().includes(`/releases/${A}/members/${MEMBER}.json`));
   await p.getByRole("link", { name: "Open the full file" }).click();
-  await p.waitForResponse((r) => r.url().includes(`/releases/${A}/members/${MEMBER}.json`));
+  await opened;
   assert.deepEqual([...idsIn(pinned)], [A]);
   assert.deepEqual(unpinned, []);
   // The latest page, opened in the same browser, is B and its fetches are B's.
@@ -264,6 +280,70 @@ test("after the latest pointer moves to B, the permalink to A still shows A", as
   assert.ok(pinned.length > 0);
   assert.deepEqual([...idsIn(pinned)], [B]);
   await p.close();
+});
+
+test("a permalink to an earlier release says what changed since; the latest release's permalink says nothing", async () => {
+  // The latest release is B here (the previous test moved the pointer).
+  const { p, pinned } = await tracked();
+  await p.goto(`${site}/r/${A}/m/${MEMBER}`);
+  const note = p.getByTestId("snapshot-note");
+  await note.waitFor();
+  const text = await note.innerText();
+  assert.match(text, /^Since this snapshot: /);
+  assert.match(text, /1 trade with a newer filing version/);
+  assert.match(text, /1 trade changed in the source data or our extraction/);
+  assert.match(text, /1 trade added to the data/);
+  assert.match(text, /1 trade no longer in the data/);
+  assert.doesNotMatch(text, /sold|sale/i);
+  assert.equal(await note.getByRole("link", { name: "see what changed" }).getAttribute("href"), `/changes?m=${MEMBER}&from=${A}&to=${B}`);
+  // Directly under the release banner, and in a polite live region.
+  assert.equal(await p.locator("[data-testid=release-banner] + .snapshot-slot").getAttribute("aria-live"), "polite");
+  // Header counts that differ show both figures; the snapshot's own figure stays as it was; equal counts show nothing extra.
+  const a = JSON.parse(readFileSync(join(bucket, "releases", A, "members", `${MEMBER}.json`), "utf8")).member.counts;
+  assert.equal((await p.getByTestId("snapshot-count-trades").innerText()).trim(), `${a.trades} in this snapshot · ${a.trades + 2} in today’s data`);
+  assert.equal((await p.getByTestId("snapshot-count-orgs").innerText()).trim(), `${a.orgs} in this snapshot · ${a.orgs + 1} in today’s data`);
+  assert.equal(await p.getByTestId("snapshot-count-members").count(), 0);
+  assert.match(await p.locator(".dossier__counts").innerText(), new RegExp(`${a.trades}[\\s\\S]*Organisations tied[\\s\\S]*${a.orgs}`));
+  assert.ok(pinned.includes("/releases/current.json") && pinned.includes(`/releases/${B}/members/${MEMBER}.json`));
+  assert.equal(await p.getByTestId("newer-data-note").count(), 0, "permalinks never poll");
+  await p.close();
+
+  // The latest release's own permalink: it asks which release is latest, finds itself, and shows no note.
+  const latest = await tracked();
+  await Promise.all([latest.p.waitForResponse((r) => r.url().endsWith("/releases/current.json")), latest.p.goto(`${site}/r/${B}/m/${MEMBER}`)]);
+  await latest.p.waitForTimeout(500);
+  assert.equal(await latest.p.getByTestId("snapshot-note").count(), 0);
+  assert.equal(await latest.p.locator("[data-testid^=snapshot-count]").count(), 0);
+  assert.ok(!latest.pinned.some((x) => x.startsWith(`/releases/${A}/`)), "nothing of release A is loaded");
+  await latest.p.close();
+
+  // A comparison that cannot load is said plainly, and the page's own figures are untouched.
+  const failing = await browser.newPage();
+  await failing.route("**/releases/current.json", (r) => r.abort());
+  await failing.goto(`${site}/r/${A}/m/${MEMBER}`);
+  const err = failing.getByTestId("snapshot-note");
+  await err.waitFor();
+  assert.match(await err.innerText(), /Could not check whether this member.s records changed in later data releases/);
+  assert.ok((await failing.locator("h1").first().innerText()).includes(NAME_A));
+  await failing.close();
+
+  // The data is months old against today's clock: the neutral stale banner and the relative age are on every page.
+  const old = await browser.newPage();
+  await old.goto(`${site}/m/${MEMBER}`);
+  const banner = old.getByTestId("stale-banner");
+  await banner.waitFor();
+  assert.match(await banner.innerText(), /This data was last updated \d+ Mar 2026 \(\d+ days ago\)\. The daily update may have failed; figures may be out of date\./);
+  assert.equal(await banner.getByRole("link", { name: "Data status" }).getAttribute("href"), "/status");
+  assert.match(await old.getByTestId("footer-age").innerText(), /updated \d+ days ago/);
+  // /status is its own ISR entry: it may need a revalidation or two to show B.
+  for (let i = 0; i < 20; i++) {
+    await old.goto(`${site}/status`);
+    if (/9 Mar 2026/.test(await old.getByTestId("status-built").innerText())) break;
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  assert.match(await old.getByTestId("status-built").innerText(), /9 Mar 2026/);
+  assert.match(await old.locator("main").innerText(), new RegExp(`Data release\\s+${B.slice(0, 12)}`));
+  await old.close();
 });
 
 test("an unpublished release is a 404 with explicit wording and never the latest data", async () => {
@@ -315,7 +395,12 @@ test("proxied release files: right bytes, immutable caching, nothing outside the
   assert.equal((await res.json()).built, BUILT_A);
   assert.match(res.headers.get("cache-control"), /immutable/);
   assert.equal((await fetch(`${site}/releases/${A}/nope.json`)).status, 404);
-  assert.equal((await fetch(`${site}/releases/current.json`)).status, 404, "the pointer is not exposed under /releases/<id>");
+  // The pointer itself is exposed (open tabs compare against it), revalidated every time, and is the bucket's file unchanged.
+  const ptr = await fetch(`${site}/releases/current.json`);
+  assert.equal(ptr.status, 200);
+  assert.match(ptr.headers.get("cache-control"), /no-cache/);
+  assert.doesNotMatch(ptr.headers.get("cache-control"), /immutable/);
+  assert.match((await ptr.json()).release_id, /^[0-9a-f]{64}$/);
   const json = await fetch(`${site}/r/${A}/search-index`);
   assert.equal(json.status, 200);
   assert.match(json.headers.get("cache-control"), /immutable/);
@@ -402,4 +487,62 @@ test("/changes compares two archived releases; an unavailable release is named a
   await p.getByTestId("cmp-bad").waitFor();
   assert.ok(!bucketLog.slice(before).some((x) => /not-a-release|Z99/.test(x)));
   await p.close();
+});
+
+test("a page left open says newer data exists: after 30 visible minutes, never while hidden, never on a permalink", async () => {
+  // Put the latest release back to A and wait until the latest page is A again (each response is one release).
+  setCurrent(A);
+  for (let i = 0; i < 40; i++) {
+    const html = await (await fetch(`${site}/m/${MEMBER}`)).text();
+    if (html.includes(`/releases/${A}/`) && !html.includes(`/releases/${B}/`)) break;
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  const open = async (path) => {
+    const p = await browser.newPage();
+    const asked = [];
+    p.on("request", (r) => {
+      if (new URL(r.url()).pathname === "/releases/current.json") asked.push(Date.now());
+    });
+    // The tab's visibility is scriptable so the hidden case can be exercised.
+    await p.addInitScript(() => {
+      window.__visible = true;
+      Object.defineProperty(document, "visibilityState", { get: () => (window.__visible ? "visible" : "hidden") });
+    });
+    await p.clock.install();
+    await p.goto(`${site}${path}`);
+    await p.getByTestId("footer-age").waitFor();
+    return { p, asked };
+  };
+
+  const { p, asked } = await open(`/m/${MEMBER}`);
+  assert.ok((await p.locator("h1").first().innerText()).includes(NAME_A), "loaded as release A");
+  assert.equal(await p.getByTestId("newer-data-note").count(), 0);
+  setCurrent(B); // newer data is published while the tab stays open
+
+  // Hidden: time passes and nothing is fetched.
+  await p.evaluate(() => { window.__visible = false; document.dispatchEvent(new Event("visibilitychange")); });
+  await p.clock.runFor(40 * 60 * 1000);
+  await p.waitForTimeout(300);
+  assert.equal(asked.length, 0, "no polling while the tab is hidden");
+  assert.equal(await p.getByTestId("newer-data-note").count(), 0);
+
+  // Visible again and more than 30 minutes since the last check: one check, then the polite note.
+  await p.evaluate(() => { window.__visible = true; document.dispatchEvent(new Event("visibilitychange")); });
+  const note = p.getByTestId("newer-data-note");
+  await note.waitFor();
+  assert.equal((await note.innerText()).trim(), "Newer data has been published. Reload to see it.");
+  assert.equal(await p.locator(".newer-slot").getAttribute("aria-live"), "polite");
+  assert.equal(asked.length, 1);
+  assert.ok((await p.locator("h1").first().innerText()).includes(NAME_A), "the page itself is not reloaded");
+  await p.getByRole("button", { name: "Dismiss" }).click();
+  assert.equal(await p.getByTestId("newer-data-note").count(), 0);
+  await p.close();
+
+  // A permalink never polls: its only request for the pointer is the snapshot comparison's own.
+  const perm = await open(`/r/${A}/m/${MEMBER}`);
+  await perm.p.clock.runFor(35 * 60 * 1000);
+  await perm.p.waitForTimeout(300);
+  assert.equal(perm.asked.length, 1);
+  assert.equal(await perm.p.getByTestId("newer-data-note").count(), 0);
+  await perm.p.close();
 });
