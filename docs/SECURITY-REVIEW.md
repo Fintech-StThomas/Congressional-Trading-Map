@@ -29,7 +29,7 @@ Vercel/GitHub after merge.
 | L2 revalidation | Fixed in code | Data fetch cache and on-demand pages revalidate hourly (`REVALIDATE_SECONDS=3600`). |
 | L3 portraits / geo | Fixed in code | Week-long browser caching; shared off-screen portraits use `loading="lazy"`. Case-file hero remains eager. Smoke checks inspect actual asset response headers. |
 | L4 bucket / data caching | Fixed in code; publish confirmation pending | `s-maxage=3600` on objects and `/data/*`. Manifest records the cache policy, forcing one full re-upload when the policy changes. Moto tests verify unchanged content is re-uploaded on policy changes and old manifests. Confirm public headers after the next successful publish. |
-| PR checks / daily test isolation | Implemented; hosted execution pending | `checks.yml` runs on PRs and `claude/**` branch pushes: project status, pipeline tests, sample build with lint, type check and unit tests. Daily publish requirement is step-local, with an explicit default-branch upload gate. Actions use verified pinned Node 24 releases. |
+| PR checks / daily test isolation | Verified on GitHub; main publish follow-up remains | `checks.yml` runs on PRs and `claude/**` branch pushes: project status, pipeline tests, sample build with lint, type check and unit tests. Daily publish requirement is step-local, with an explicit default-branch upload gate. Actions use verified pinned Node 24 releases. |
 
 ### Verification evidence
 
