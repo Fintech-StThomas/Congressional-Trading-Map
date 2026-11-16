@@ -18,8 +18,9 @@ execution log at the end of `docs/PRODUCT-PLAN.md`.
   sample fixtures), 0 failed. A manual pass covered citations, view switching, `/connect`, `/saved`, feeds, embed and the
   share image with real members. Still unchecked: print output, clipboard, a real cross-site iframe for `/embed`, and an
   RSS validator for `/feed/*.xml`.
-- The bucket's latest build (`2026-11-15T15:02:21Z`) is older than today's 07:41 UTC scheduled run should have produced,
-  and it has no `holdings/positions/` files: check whether the 2026-11-16 daily run failed before merging.
+- The bucket still holds the build from run 43727087194 (`main`, 2026-11-15 15:03 UTC). The last run on `main`
+  (43761542434, 2026-11-15 21:03 UTC) failed, and no scheduled run had started on 2026-11-16 by 13:20 UTC. So the
+  position timelines merged to `main` have never been published. Look at that failed run before merging this branch.
 - The public `r2.dev` address answered 429 (rate limited) on the first live-data build; a retry a few minutes later
   passed. Vercel builds use the same address, so a custom domain on the bucket (STATUS "Optimisations") would make
   builds more reliable.
