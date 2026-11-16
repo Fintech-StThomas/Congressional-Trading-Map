@@ -14,6 +14,7 @@ import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 import { CorrectionLink, CorrectionProvider } from "@/components/shared/CorrectionLink";
 import { ReleasePin } from "@/components/shared/ReleasePin";
 import { ReleaseBanner } from "@/components/shared/ReleaseBanner";
+import { ViewSwitch } from "@/components/shared/ViewSwitch";
 import "@/styles/records.css";
 
 /** Page metadata; the full file is never indexed, and a permalink names the latest page as canonical. */
@@ -65,6 +66,7 @@ export async function RecordsPageView({ data, id, pinned }: { data: Data; id: st
       <nav className="crumbs crumbs--page" aria-label="Breadcrumb">
         <Link href={release ? releaseMemberHref(release, m.id) : memberHref(m.id)}>{m.name}</Link> <span aria-hidden="true">/</span> <span aria-current="page">The full file</span>
       </nav>
+      <ViewSwitch current="full" member={m.id} state={m.current ? m.state : null} release={release} />
       <h1>The full file: {m.name}</h1>
       <p className="records__seat mono">{seat(m)} · bioguide {m.id}{built ? ` · data built ${date(built)}` : ""}</p>
       <div className="records__what">

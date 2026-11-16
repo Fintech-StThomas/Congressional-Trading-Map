@@ -20,6 +20,13 @@ const STATES = new Set<string>(STATE_CODES);
  */
 export const ORG_ID = /^(?:co:[1-9]\d{0,9}|tk:[A-Z0-9.^-]{1,24}|pac:C\d{8}|cmte:[A-Z0-9]{2,10}|lda:(?:registrant|client|lobbyist)-\d{1,12})$/;
 
+/** Tie (edge) ids: twelve lowercase hex digits. */
+export const EDGE_ID = /^[0-9a-f]{12}$/;
+
+export function isEdgeId(id: unknown): id is string {
+  return typeof id === "string" && EDGE_ID.test(id);
+}
+
 export function isMemberId(id: unknown): id is string {
   return typeof id === "string" && MEMBER_ID.test(id);
 }

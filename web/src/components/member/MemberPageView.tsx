@@ -6,9 +6,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { IS_SAMPLE, metaBuilt, orgNodesOf, type Data } from "@/lib/data/server";
 import { decodeLedger, decodeTradeFile, ledgerTotals } from "@/lib/data/decode";
+import { countByBasis, countWire } from "@/lib/domain/datebasis";
 import { sortEdges, TYPE_LABEL } from "@/lib/domain/edges";
 import { count, date, money, PARTY_NAMES, plural, seat, served, stateName, yearRange } from "@/lib/format";
-import { boardHref, changesHref, memberHref, recordsHref, releaseRecordsHref } from "@/lib/urls";
+import { boardHref, changesHref, embedHelpHref, memberFeedHref, memberHref, recordsHref, releaseRecordsHref } from "@/lib/urls";
 import { toBoardMember, type NameBook } from "@/lib/domain/names";
 import { caseMinTypes, metaSources, sourceNames } from "@/lib/data/meta";
 import { CASE_NOT_SHOWN, COMPARE, CORRECTIONS, caseRuleText, RELEASE, SITE, TIMING } from "@/lib/copy";
@@ -38,6 +39,9 @@ import { MemberSave } from "@/components/saved/Savers";
 import { coverageFacts, coverageMeta, tradeValueStats } from "@/lib/domain/coverage";
 import "@/styles/cite.css";
 import { ConnectLink } from "@/components/connect/ConnectLink";
+import { ViewSwitch } from "@/components/shared/ViewSwitch";
+import { ViewBar, ViewPrintLine } from "@/components/shared/ViewBar";
+import { ViewLink } from "@/components/shared/ViewLink";
 
 /** Page metadata for a member; a permalink is not indexed and names the latest page as canonical. */
 export async function memberMetadata(data: Data, id: string, pinned: boolean): Promise<Metadata> {
@@ -105,8 +109,9 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
   const ts = file.trade_summary;
   const nTrades = ts?.count ?? 0;
   const initialTrades = nTrades ? decodeTradeFile(tradeFile, 60) : [];
-  const tradeByYear: Record<number, number> = {};
-  for (const [y, n] of Object.entries(ts?.by_year ?? {})) if (/^\d{4}$/.test(y)) tradeByYear[Number(y)] = n;
+  // Trades per year under each date basis, from the trade rows themselves (never mixed; undated counted apart).
+  const none = countByBasis([], "event");
+  const tradeCounts = countWire(tradeFile) ?? { event: none, public: none };
   const moneyByYear: Record<number, number> = {};
   for (const e of file.edges) if (e.family === "money") for (const b of e.by_year) moneyByYear[b.y] = (moneyByYear[b.y] ?? 0) + b.n;
 
@@ -154,6 +159,8 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
         {m.current ? <Link href={boardHref({ s: m.state })}>{stateName(m.state)}</Link> : <Link href="/wall?former=1">Former members</Link>}{" "}
         <span aria-hidden="true">/</span> <span aria-current="page">{m.name}</span>
       </nav>
+      <ViewSwitch current="case" member={m.id} state={m.current ? m.state : null} release={release} />
+      <ViewPrintLine />
       <header className="dossier__head">
         <Print id={m.id} name={m.name} photo={m.photo} size="xl" />
         <div className="dossier__id">
@@ -177,14 +184,16 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
           )}
           <div className="dossier__actions no-print">
             {m.current ? (
-              <Link className="btn btn--paper" href={boardHref({ s: m.state, m: m.id })}>Open on the board</Link>
+              <ViewLink className="btn btn--paper" href={boardHref({ s: m.state, m: m.id })}>Open on the board</ViewLink>
             ) : (
-              <Link className="btn btn--paper" href={boardHref({ m: m.id })}>Open on the board</Link>
+              <ViewLink className="btn btn--paper" href={boardHref({ m: m.id })}>Open on the board</ViewLink>
             )}
             <PrintButton />
             <MemberCite {...cite} />
             <MemberSave member={cite.member} years={served(m.served)} party={m.party} counts={cite.counts} dates={cite.dates} limitations={cite.limitations} />
             <ConnectLink a={m.id} />
+            <Link className="btn btn--small" href={memberFeedHref(m.id)} prefetch={false} data-testid="member-feed-link">Subscribe (RSS)</Link>
+            <Link className="btn btn--small" href={embedHelpHref()} data-testid="member-embed-link">Embed</Link>
           </div>
         </div>
         <section className="dossier__cmte" aria-labelledby="cmte-h">
@@ -209,6 +218,8 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
         </section>
       </header>
 
+      <ViewBar />
+
       {file.cases.length > 0 && (
         <section className="section" id="cases" aria-labelledby="cases-h">
           <h2 id="cases-h">Cases</h2>
@@ -223,7 +234,7 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
                   {c.money ? ` · ${money(Math.round(c.money))} from its PAC, all years` : ` · ${TYPE_LABEL.pac_money}`}
                 </span>
                 <span className="mono">{yearRange(c.years)}</span>
-                <Link className="no-print" href={boardHref({ s: m.current ? m.state : undefined, m: m.id, focus: c.org })}>On the board</Link>
+                <ViewLink className="no-print" href={boardHref({ s: m.current ? m.state : undefined, m: m.id, focus: c.org })}>On the board</ViewLink>
                 <span className="notshown dossier__notshown">{CASE_NOT_SHOWN}</span>
               </AssumeCase>
             ))}
@@ -267,7 +278,7 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
       <section className="section" aria-labelledby="time-h">
         <h2 id="time-h">Activity by year</h2>
         <p className="section__note">Bars show trades reported and itemised money records per year. Shading shows how complete the underlying data is for that year.</p>
-        <Timeline tradeByYear={tradeByYear} moneyByYear={moneyByYear} coverage={file.coverage} served={m.served} />
+        <Timeline trades={tradeCounts} moneyByYear={moneyByYear} coverage={file.coverage} served={m.served} />
       </section>
 
       <HoldingsSection h={holdings} facts={facts} memberId={m.id} />
@@ -306,7 +317,7 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
           {SITE.disclaimer} Not investment advice. Use is restricted by 5 U.S.C. 13107(c): no commercial use other than by news media, and no use for soliciting money.
         </p>
         <p className="dossier__fullfile">
-          <Link href={recordsLink} className="no-print">Open the full file</Link>
+          <ViewLink href={recordsLink} className="no-print">Open the full file</ViewLink>
           <span className="print-only">The full file (every record, unfiltered): {recordsLink}</span>
           <span className="sub"> · every record held for this member, unfiltered, with CSV downloads</span>
           {data.release && <> <span className="sub no-print">·</span> <Link href={changesHref(m.id)} className="no-print" data-testid="compare-releases-link">{COMPARE.link}</Link></>}

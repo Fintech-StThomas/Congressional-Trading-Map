@@ -4,7 +4,7 @@
 import { FAMILIES, FAMILY_HINT, FAMILY_LABEL, type Family } from "@/lib/domain/edges";
 import { stateName } from "@/lib/format";
 import { LineSample } from "@/components/shared/LineSample";
-import { YearRange } from "./YearRange";
+import { YearRange } from "@/components/shared/YearRange";
 import { EMPTY, type Sel } from "./types";
 
 type Props = {

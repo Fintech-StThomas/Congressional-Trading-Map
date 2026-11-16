@@ -15,7 +15,11 @@ export type Assumptions = {
 export const DEFAULT_ASSUMPTIONS: Assumptions = { self: true, family: true, unstated: true, noFunds: false, noSmall: false, lateOnly: false };
 export const SMALL_TRADE = 15000;
 
-export type TradeLite = { owner: string; asset_class: string; low: number | null; late: boolean | null; org: string | null };
+export type TradeLite = {
+  owner: string; asset_class: string; low: number | null; late: boolean | null; org: string | null;
+  /** Transaction date and date made public, when the loader keeps them (the timeline counts by either). */
+  date?: string | null; available?: string | null;
+};
 
 export function isDefault(a: Assumptions): boolean {
   return (Object.keys(DEFAULT_ASSUMPTIONS) as (keyof Assumptions)[]).every((k) => a[k] === DEFAULT_ASSUMPTIONS[k]);

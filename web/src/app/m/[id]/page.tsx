@@ -1,6 +1,7 @@
 // The member page ("case file") for the latest data. Built statically per member locally; the body is
 // components/member/MemberPageView.tsx, shared with the live twin and the release permalink.
 import type { Metadata } from "next";
+import { FEED } from "@/lib/copy";
 import { IS_REMOTE, latestData } from "@/lib/data/server";
 import { MemberPageView, memberMetadata } from "@/components/member/MemberPageView";
 
@@ -16,7 +17,9 @@ export async function generateStaticParams() {
 
 export async function generateMetadata({ params }: PageProps<"/m/[id]">): Promise<Metadata> {
   const { id } = await params;
-  return memberMetadata(await latestData(), id, false);
+  const base = await memberMetadata(await latestData(), id, false);
+  // Feed discovery: this member's trades made public (app/feed/m/[file]).
+  return { ...base, alternates: { ...base.alternates, types: { "application/rss+xml": [{ url: `/feed/m/${id}.xml`, title: FEED.memberTitle(typeof base.title === "string" ? base.title : id) }, { url: "/feed/trades.xml", title: FEED.siteTitle }] } } };
 }
 
 export default async function MemberPage({ params }: PageProps<"/m/[id]">) {

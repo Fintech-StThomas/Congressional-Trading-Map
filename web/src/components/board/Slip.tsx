@@ -5,6 +5,8 @@ import Link from "next/link";
 import { date, plural, seat, stateName } from "@/lib/format";
 import { memberHref, orgHref } from "@/lib/urls";
 import { PartyTag } from "@/components/shared/Print";
+import { ViewLink } from "@/components/shared/ViewLink";
+import { ViewSwitch } from "@/components/shared/ViewSwitch";
 import type { Center } from "./BoardCanvas";
 import type { Sel } from "./types";
 
@@ -36,7 +38,7 @@ export function Slip({
               , plus <span className="mono">{more.toLocaleString("en-US")}</span> more {more === 1 ? "tie" : "ties"} in the full list
             </>
           )}{" "}
-          · <Link href={memberHref(m.id)}>Open case file</Link>
+          · <ViewLink href={memberHref(m.id)}>Open case file</ViewLink>
           {featured ? (
             <>
               {" · "}
@@ -54,6 +56,7 @@ export function Slip({
             </>
           ) : null}
         </p>
+        <ViewSwitch current="board" member={m.id} state={m.current ? m.state : null} testId="view-switch-board" />
       </div>
     );
   }

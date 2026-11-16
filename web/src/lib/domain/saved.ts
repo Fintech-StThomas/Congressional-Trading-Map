@@ -3,7 +3,7 @@
 // export (private notes excluded unless asked for) and merge-on-import. Share links are in saved-share.ts and the
 // browser storage adapter in saved-storage.ts. No DOM access here; times and ids are passed in so tests are exact.
 import { CITATION_SCHEMA, citationText, type Citation } from "./citation.ts";
-import { isMemberId, isOrgId } from "../data/ids.ts";
+import { isEdgeId, isMemberId, isOrgId } from "../data/ids.ts";
 import { isReleaseId } from "../data/release.ts";
 import type { Edge } from "../types.ts";
 import { typeLabel } from "./edges.ts";
@@ -56,10 +56,9 @@ export type ItemInput = {
 
 export const emptyState = (): SavedState => ({ schema: SAVED_SCHEMA, boards: [] });
 
-const EDGE_ID = /^[0-9a-f]{12}$/;
 const BOARD_ID = /^[A-Za-z0-9_-]{1,64}$/;
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
-export const isEdgeId = (x: unknown): x is string => typeof x === "string" && EDGE_ID.test(x);
+export { isEdgeId };
 
 /** The identity of an item inside a board, from its ids; null when the ids do not fit its kind. */
 export function itemKey(i: { kind: unknown; member?: unknown; org?: unknown; edge?: unknown }): string | null {

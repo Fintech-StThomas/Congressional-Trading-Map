@@ -668,3 +668,122 @@ export const CONNECT = {
     sits_with: "sits with",
   } satisfies Record<EdgeType, string>,
 } as const;
+
+// ---------------------------------------------------------------- feeds, embeds and exports (plan packet R4.1)
+// RSS feeds of trades made public, the citation-preserving embed card, and the research export bundle.
+export const FEED = {
+  siteTitle: `${SITE.name}: trades recently made public`,
+  memberTitle: (name: string) => `${SITE.name}: ${name}, trades made public`,
+  /** `bound` is the number of member files read to build the site feed. */
+  siteNote: (bound: number) =>
+    `Lists recent trades from members with recent activity in this data build, not every trade site-wide: at most ${bound} members with trades in the latest years are read, and the 100 most recently made-public of their trades are shown.`,
+  memberNote: (caseFile: string) => `The 50 most recently made-public trades filed for this member. The full record is in the case file: ${caseFile}`,
+  amounts: "Amounts are the disclosed ranges, never a single figure. A missing date or amount is shown as not disclosed, not as zero.",
+  noDate: "Trades with no public-availability date are left out of feeds, because a feed item needs a date it became public.",
+  source: (sourceName: string, release: string, built: string) => `Source: ${sourceName}; Paper Trail data release ${release} built ${built}`,
+  latestBuild: "latest build",
+  unknownBuild: "build date not recorded",
+  ownerUnstated: "not stated in the filing",
+  noAsset: "asset not named",
+} as const;
+
+export const EMBED = {
+  title: "Embed a member card",
+  intro:
+    "A small, self-contained card for one member of Congress, for a news story or a classroom page. It carries its own source line and data date; neither can be turned off.",
+  attribution: "Attribution is required. The card's footer names Paper Trail, links to the case file and shows the data release and build date. Do not crop or cover it, and do not edit the card's text.",
+  usage: "Paste the snippet below where the card should appear. The card needs no scripts and sets no cookies. Add ?theme=dark for a dark card (light is the default).",
+  pinned: "To fix the card to one archived data release, use the /embed/r/<release>/m/<member> address; otherwise the card shows the latest data and its date moves with each build.",
+  footerShort: SITE.disclaimer,
+  source: "Source: Paper Trail",
+  counts: { trades: "Trades", orgs: "Organisations", cases: "Cases" },
+  sourceLine: (release: string, built: string) => `data release ${release} · built ${built}`,
+  latestBuild: "latest build",
+  noTies: "No ties are published for this member.",
+  topTies: "Top ties by disclosed amount",
+  notFound: "This member card is not available.",
+  height: 340,
+  copy: "Copy embed code",
+  copied: "Embed code copied.",
+  copyFailed: "Copying is not available here. Select the code and press Ctrl+C (Cmd+C on a Mac).",
+  frameTitle: (name: string) => `Paper Trail member card: ${name}`,
+  noticeHeading: "Use of the data",
+} as const;
+
+export const EXPORT = {
+  title: "Research export",
+  lede: "Pick a member and the kinds of record you need. You get one JSON file holding exactly the published rows, with the data file, release and checksum of each source, so a researcher can fetch the same bytes again.",
+  memberLabel: "Member",
+  kindsLabel: "Records to include",
+  kinds: { ties: "Ties (full edges, with their evidence)", trades: "Trades (every filed row)", holdings: "Holdings (House annual reports)" },
+  build: "Build the export",
+  building: "Building the export...",
+  download: "Download export (JSON)",
+  none: "Pick a member and at least one kind of record.",
+  done: "Export downloaded.",
+  failed: "The export could not be built: a data file did not load. Try again.",
+  hashNote: "Each checksum (SHA-256) identifies the bytes this page downloaded, not whether the filing is accurate or complete.",
+  rowsUnmodified: "Rows are copied exactly as published; nothing is recomputed, rounded or filled in.",
+  noRelease: "This build is not served from an archived data release, so files have no permanent address. Record the data build date; the files may change when new data is published.",
+  missing: "This member has no file of this kind in the published data (not the same as none filed).",
+  kindHeading: "What the file holds",
+} as const;
+
+// ---------------------------------------------------------------- one view of a member (board, case file, full file)
+// The shared view state (years, assumptions, tie families, selected tie, date basis) is carried between the three
+// views in the URL (lib/domain/viewstate.ts). This is the wording for the switcher, the filters and the printed line.
+export const VIEW = {
+  switchLabel: "View:",
+  switchAria: "Views of this member",
+  board: "Board",
+  caseFile: "Case file",
+  fullFile: "Full file",
+  /** Printed on every view: what the numbers on the page are limited to. */
+  showing: "Showing",
+  yearsAll: "all years",
+  byEvent: "by transaction date",
+  byPublic: "by date made public",
+  families: (labels: string[]) => (labels.length ? `ties limited to ${labels.join(", ")}` : "no tie families shown"),
+  assumeAll: "all household trades counted",
+  assumeOwn: "household trades counted as the member’s own",
+  assumeOwnShort: "only the member’s own and jointly owned trades",
+  assumeSome: "household trades counted with these limits",
+  dropSelf: "member’s own trades left out",
+  dropFamily: "spouse and dependents left out",
+  dropUnstated: "unstated owners left out",
+  dropFunds: "funds, bonds and unlabelled assets left out",
+  dropSmall: "trades under $15,000 left out",
+  lateOnly: "only trades public over 45 days after the trade",
+  /** The year filter. */
+  filtered: (years: string) => `Filtered to ${years}`,
+  showAll: "show all years",
+  clearAria: "Show all years: clear the year filter",
+  yearsLabel: "Years",
+  /** Which date the years are counted by. */
+  basisLabel: "Count trades by",
+  basisEvent: "Transaction date",
+  basisPublic: "Date made public",
+  basisEventHint: "The transaction date as filed",
+  basisPublicHint: "The date the public could first see the report",
+  axisEvent: "Trades by transaction date (as filed)",
+  axisPublic: "Trades by date made public",
+  axisMoney: "Money records by record year",
+  publicNote: "Money ties and holdings are shown by record year: the data holds no publication date for them.",
+  undated: (n: number, basis: "event" | "public") =>
+    `${n.toLocaleString("en-US")} ${n === 1 ? "trade has" : "trades have"} no ${basis === "public" ? "date made public" : "transaction date"} and ${n === 1 ? "is" : "are"} not counted in any year.`,
+  undatedRows: (n: number) => `${n.toLocaleString("en-US")} ${n === 1 ? "row has" : "rows have"} no date and ${n === 1 ? "is" : "are"} not counted in any year.`,
+  showUndated: (n: number) => `Show the ${n.toLocaleString("en-US")} undated`,
+  hideUndated: "Hide the undated rows",
+  /** Selected tie. */
+  selectedTie: "Selected tie",
+  clearTie: "Clear the selected tie",
+  selectTie: (id: string) => `Select tie ${id}`,
+  notDrawn: "The selected tie is not drawn on the board; it is listed in the case file.",
+  notDrawnLink: "Open it in the case file",
+  /** Full file tables. */
+  recordYearsNote: "Ties are placed by the years of their records, first to last; holdings and coverage by report year.",
+  rowsInWindow: (shown: number, total: number) => `${shown.toLocaleString("en-US")} of ${total.toLocaleString("en-US")} rows in these years`,
+  assumeAppliedNote: "Trades follow the assumptions above; ties, holdings and documents do not.",
+  leftOut: (n: number) => `${n.toLocaleString("en-US")} ${n === 1 ? "trade is" : "trades are"} left out by the assumptions.`,
+} as const;
+

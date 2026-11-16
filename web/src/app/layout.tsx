@@ -2,7 +2,7 @@
 import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import { Public_Sans, JetBrains_Mono, Courier_Prime } from "next/font/google";
-import { SITE } from "@/lib/copy";
+import { FEED, SITE } from "@/lib/copy";
 import { IS_SAMPLE, getMetaForLayout, metaBuilt } from "@/lib/data/server";
 import { date } from "@/lib/format";
 import { SearchBox } from "@/components/shared/SearchBox";
@@ -27,6 +27,8 @@ export const metadata: Metadata = {
   description: SITE.description,
   openGraph: { title: SITE.name, description: SITE.description, type: "website", siteName: SITE.name },
   twitter: { card: "summary_large_image", title: SITE.name, description: SITE.description },
+  // Feed discovery: readers and browsers find the site-wide feed of trades made public (app/feed/trades.xml).
+  alternates: { types: { "application/rss+xml": [{ url: "/feed/trades.xml", title: FEED.siteTitle }] } },
   robots: IS_SAMPLE ? { index: false, follow: false } : undefined,
 };
 

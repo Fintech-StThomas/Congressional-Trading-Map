@@ -1,13 +1,18 @@
 "use client";
 // "Trades" on the member page: every periodic transaction report row, filterable, sortable and windowed
 // (only visible rows are in the DOM). Starts with the newest rows from the server, then loads trades/<id>.json.
+// The shared view (year window, date basis, assumptions) narrows it: years count by the transaction date or the date
+// made public, never both, and trades without that date are listed apart, not placed in any year.
 import "@/styles/delays.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Trade, TradeFile } from "@/lib/types";
 import { decodeTradeFile, type TradeRow } from "@/lib/data/decode";
 import Link from "next/link";
 import { amountText, count, date, days, NOT_DISCLOSED } from "@/lib/format";
-import { DELAYS } from "@/lib/copy";
+import { DELAYS, VIEW } from "@/lib/copy";
+import { isDefault, tradeCounts } from "@/lib/domain/assume";
+import { basisYear, splitByYears } from "@/lib/domain/datebasis";
+import { useView } from "@/components/shared/useViewState";
 import { delayGroupFromTrades, overCount } from "@/lib/domain/delays";
 import { getJSON } from "@/lib/data/fetch";
 import { delaysHref, safeHttpUrl } from "@/lib/urls";
@@ -72,7 +77,12 @@ export function TradesTable({ initial, total, fullUrl }: Props) {
   const [owner, setOwner] = useState("all");
   const [cls, setCls] = useState("all");
   const [late, setLate] = useState(false);
+  const [undatedFor, setUndatedFor] = useState<string | null>(null);
   const [top, setTop] = useState(0);
+  const view = useView();
+  // "Show only the undated" holds for the year window it was chosen under, and lapses when the window changes.
+  const yearsKey = view.years ? view.years.join("-") : "";
+  const undatedOnly = yearsKey !== "" && undatedFor === yearsKey;
   const scroller = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -90,14 +100,19 @@ export function TradesTable({ initial, total, fullUrl }: Props) {
     };
   }, [fullUrl, total, initial.length]);
 
-  const years = useMemo(() => [...new Set(trades.map((t) => t.date?.slice(0, 4) ?? "undated"))].sort().reverse(), [trades]);
+  // The shared view first: assumptions drop trades, the year window splits the rest into in-window and undated.
+  const counted = useMemo(() => (isDefault(view.assume) ? trades : trades.filter((t) => tradeCounts(t, view.assume))), [trades, view.assume]);
+  const windowed = useMemo(() => splitByYears(counted, view.years, view.basis), [counted, view.years, view.basis]);
+  const base = undatedOnly && view.years ? windowed.undated : windowed.shown;
+  const yearOfRow = (t: TradeRow) => basisYear(t, view.basis)?.toString() ?? "undated";
+  const years = useMemo(() => [...new Set(base.map((t) => basisYear(t, view.basis)?.toString() ?? "undated"))].sort().reverse(), [base, view.basis]);
   const owners = useMemo(() => [...new Set(trades.map((t) => t.owner))], [trades]);
   const classes = useMemo(() => [...new Set(trades.map((t) => t.asset_class))], [trades]);
 
   const rows = useMemo(() => {
-    const f = trades.filter(
+    const f = base.filter(
       (t) =>
-        (year === "all" || (t.date?.slice(0, 4) ?? "undated") === year) &&
+        (year === "all" || yearOfRow(t) === year) &&
         (owner === "all" || t.owner === owner) &&
         (cls === "all" || t.asset_class === cls) &&
         (!late || t.late === true),
@@ -106,7 +121,8 @@ export function TradesTable({ initial, total, fullUrl }: Props) {
       const c = cmp(a, b, sort.k);
       return a[sort.k] == null || b[sort.k] == null ? c : c * sort.dir;
     });
-  }, [trades, year, owner, cls, late, sort]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [base, view.basis, year, owner, cls, late, sort]);
 
   const lateCount = useMemo(() => rows.reduce((n, t) => n + (t.late ? 1 : 0), 0), [rows]);
   // Observed days from the transaction date to public availability, over every loaded trade (not the filtered rows).
@@ -114,7 +130,7 @@ export function TradesTable({ initial, total, fullUrl }: Props) {
 
   useEffect(() => {
     scroller.current?.scrollTo({ top: 0 });
-  }, [year, owner, cls, late, sort]);
+  }, [year, owner, cls, late, sort, view.years, view.basis, view.assume, undatedOnly]);
 
   if (!total) return <p className="empty">No periodic transaction reports on file for this member&rsquo;s household. Reports exist only from July 2012.</p>;
 
@@ -132,6 +148,15 @@ export function TradesTable({ initial, total, fullUrl }: Props) {
           <Link href={delaysHref()}>{DELAYS.memberLink}</Link>
         </p>
       )}
+      {view.years && windowed.undated.length > 0 && (
+        <p className="view-undated" data-testid="trades-undated">
+          {VIEW.undated(windowed.undated.length, view.basis)}{" "}
+          <button type="button" className="linkbtn" aria-pressed={undatedOnly} onClick={() => setUndatedFor(undatedOnly ? null : yearsKey)} data-testid="trades-undated-toggle">
+            {undatedOnly ? VIEW.hideUndated : VIEW.showUndated(windowed.undated.length)}
+          </button>
+        </p>
+      )}
+      {counted.length < trades.length && <p className="view-undated" data-testid="trades-leftout">{VIEW.leftOut(trades.length - counted.length)}</p>}
       <div className="filters">
         <label>
           <span>Year</span>

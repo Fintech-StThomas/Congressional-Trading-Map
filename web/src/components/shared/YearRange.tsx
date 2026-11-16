@@ -1,5 +1,5 @@
 "use client";
-// The board's two-thumb year window.
+// A two-thumb year window (the board toolbar, and the case file and full file view bars).
 import { useId } from "react";
 import { YEAR_MAX, YEAR_MIN } from "@/lib/years";
 

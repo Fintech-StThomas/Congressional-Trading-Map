@@ -1,0 +1,51 @@
+/* The research export page (components/export/ExportView.tsx) and the embed help page (app/embed/page.tsx). Tokens only. */
+.export__field {
+  margin: 0 0 18px;
+  padding: 0;
+  border: 0;
+}
+.export__field legend,
+.export__field > label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 650;
+}
+.export__field input[type="search"] {
+  width: min(100%, 420px);
+  padding: 8px 10px;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+.export__options {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.export__kind {
+  display: block;
+  margin: 6px 0;
+}
+.embedhelp__code {
+  display: block;
+  max-width: 100%;
+  padding: 10px 12px;
+  overflow-x: auto;
+  border: 1px solid var(--rule);
+  border-radius: var(--r);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.embedhelp__preview {
+  width: 100%;
+  max-width: 460px;
+  border: 0;
+}

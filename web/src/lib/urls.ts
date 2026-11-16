@@ -55,6 +55,16 @@ export function delaysHref(): string {
   return "/delays";
 }
 
+/** A member's RSS feed of new filings: "/feed/m/K000389.xml". */
+export function memberFeedHref(id: string): string {
+  return `/feed/m/${id}.xml`;
+}
+
+/** How to embed a member's card on another site. */
+export function embedHelpHref(): string {
+  return "/embed";
+}
+
 export function recordsHref(id: string): string {
   return `/m/${id}/records`;
 }
