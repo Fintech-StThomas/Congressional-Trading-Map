@@ -1,0 +1,511 @@
+/* Saved boards: the Save control (drawer and member header), /saved, the comparison table and the printed evidence list.
+   Tokens only. Red is reserved for ties, so nothing here uses it: warnings are neutral boxes with a heavier rule and text.
+   The evidence drawer is paper, the pages are dark. */
+
+/* ---------- the Save control ---------- */
+.save {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  font-size: 13.5px;
+}
+.save__btn {
+  gap: 6px;
+}
+.save__btn[data-saved="true"] {
+  border-color: var(--text-2);
+}
+.save__panel {
+  margin-top: 8px;
+  padding: 12px;
+  width: min(100%, 34ch);
+  min-width: 250px;
+  border: 1px solid var(--rule);
+  border-radius: var(--r);
+  background: var(--surface);
+  color: var(--text);
+}
+.save__title {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 650;
+}
+.save__title:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.save__label {
+  display: block;
+  margin: 8px 0 4px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.save__in ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.save__in li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin: 4px 0;
+}
+.save__select,
+.save__input,
+.saved input[type="text"],
+.saved-note__text,
+.saved-link input {
+  display: block;
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 8px;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-sm);
+  background: var(--bg-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 13.5px;
+}
+.save__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 0;
+}
+.save__msg {
+  min-height: 1.4em;
+  margin: 8px 0 4px;
+  font-size: 12.5px;
+}
+.save__note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+.save__note a {
+  color: inherit;
+}
+/* Beside "Cite this" in the drawer; when either panel is open it takes the full row. */
+.cite-save-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0 8px;
+}
+.cite-save-row > .cite--block {
+  flex: 0 1 auto;
+}
+.cite-save-row > .save {
+  margin-top: 12px;
+}
+.cite-save-row:has(.cite__panel) > .cite--block,
+.cite-save-row > .save:has(.save__panel) {
+  flex: 1 1 100%;
+}
+.dossier__actions .save {
+  display: inline-block;
+}
+.drawer .save__panel {
+  background: var(--paper-2);
+  border-color: var(--paper-edge);
+  color: var(--ink);
+}
+.drawer .save__note {
+  color: var(--ink-2);
+}
+.drawer .save__select,
+.drawer .save__input {
+  background: var(--paper);
+  border-color: var(--paper-edge);
+  color: var(--ink);
+}
+.drawer .save .btn {
+  background: var(--paper);
+  color: var(--ink);
+  border-color: var(--paper-edge);
+}
+.drawer .save .btn:hover {
+  background: var(--paper-2);
+  border-color: var(--ink-3);
+}
+
+/* ---------- /saved ---------- */
+.saved .lede {
+  margin-bottom: 14px;
+}
+.saved-privacy,
+.saved-warn,
+.saved-banner {
+  margin: 14px 0;
+  padding: 12px 16px;
+  max-width: 76ch;
+  border: 1px solid var(--rule);
+  border-left: 4px solid var(--text-2);
+  border-radius: var(--r);
+  background: var(--surface);
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+.saved-privacy h2 {
+  margin: 0 0 4px;
+  font-size: 14px;
+  color: var(--text);
+}
+.saved-privacy p {
+  margin: 4px 0;
+}
+.saved-warn {
+  color: var(--text);
+  border-left-width: 6px;
+}
+.saved-banner {
+  font-weight: 600;
+  color: var(--text);
+}
+.saved-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  gap: 28px;
+  margin-top: 18px;
+  align-items: start;
+}
+.saved-list h2,
+.saved-board h2 {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+.saved-list ul {
+  margin: 0 0 14px;
+  padding: 0;
+  list-style: none;
+}
+.saved-list__btn {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--rule-soft);
+  border-radius: var(--r);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+.saved-list li + li {
+  margin-top: 4px;
+}
+.saved-list__btn:hover {
+  background: var(--surface);
+}
+.saved-list__btn[aria-current="true"] {
+  background: var(--paper);
+  color: var(--ink);
+  border-color: var(--paper);
+}
+.saved-new,
+.saved-import {
+  display: grid;
+  gap: 6px;
+  margin: 14px 0 0;
+  font-size: 13.5px;
+}
+.saved-new label,
+.saved-import__label,
+.saved-note__label,
+.saved-link label {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.saved-import h3,
+.saved-export h3,
+.saved-compare-sec h3 {
+  margin: 0 0 6px;
+  font-size: 15px;
+}
+.saved-board__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+}
+.saved-board__head h2 {
+  margin: 0 auto 0 0;
+}
+.saved-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+.saved-inline input {
+  flex: 1 1 14em;
+  width: auto;
+}
+.saved-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--text-2);
+  border-radius: var(--r);
+  background: var(--surface);
+}
+.saved-confirm p {
+  margin: 0 12px 0 0;
+}
+.saved-count,
+.saved-hint,
+.saved-empty {
+  margin: 8px 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--text-2);
+  max-width: 72ch;
+}
+.saved-items {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 12px;
+}
+.saved-item {
+  padding: 12px 14px;
+  border: 1px solid var(--rule);
+  border-radius: var(--r);
+  background: var(--surface);
+}
+.saved-item__head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+.saved-item__head input[type="checkbox"],
+.saved-check input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--paper);
+  flex: none;
+  align-self: center;
+}
+.saved-item__kind {
+  padding: 1px 7px;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-sm);
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+.saved-item__label {
+  margin: 0;
+  font-size: 15.5px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.saved-item__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 22px;
+  margin: 8px 0;
+}
+.saved-item__facts dt {
+  font-size: 12px;
+  color: var(--text-3);
+}
+.saved-item__facts dd {
+  margin: 0;
+  font-size: 14px;
+}
+.saved-item__ids {
+  margin: 4px 0;
+  font-size: 12px;
+  color: var(--text-3);
+  overflow-wrap: anywhere;
+}
+.saved-item__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 6px 0;
+  font-size: 13.5px;
+}
+.saved-item__links a {
+  color: var(--text);
+}
+.saved-item__check {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin: 6px 0;
+}
+.saved-item__result {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text);
+}
+.saved-item__actions,
+.saved-export__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin: 8px 0;
+}
+.saved-note {
+  margin: 8px 0;
+}
+.saved-note__label {
+  display: block;
+  margin: 0 0 4px;
+}
+.saved-note__text {
+  resize: vertical;
+  min-height: 4.5em;
+}
+.saved-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+}
+.saved-export,
+.saved-compare-sec {
+  margin-top: 22px;
+  padding-top: 14px;
+  border-top: 1px solid var(--rule-soft);
+}
+.saved-link {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0;
+  max-width: 72ch;
+}
+.saved-msg {
+  min-height: 1.4em;
+  margin: 8px 0;
+  font-size: 13.5px;
+}
+.saved-ok,
+.saved-err {
+  margin: 6px 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.saved-err {
+  padding: 8px 12px;
+  border: 1px solid var(--text-2);
+  border-radius: var(--r);
+}
+.saved-err p,
+.saved-err ul {
+  margin: 2px 0;
+}
+.saved-compare {
+  overflow-x: auto;
+  border: 1px solid var(--rule);
+  border-radius: var(--r);
+}
+.saved-compare:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.saved-compare table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13.5px;
+}
+.saved-compare th,
+.saved-compare td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--rule-soft);
+  text-align: left;
+  vertical-align: top;
+  min-width: 11em;
+}
+.saved-compare tbody th {
+  min-width: 8em;
+  font-weight: 600;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.saved-compare thead th {
+  background: var(--surface-2);
+}
+
+@media (max-width: 760px) {
+  .saved-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 18px;
+  }
+  .saved-item__actions .btn,
+  .saved-export__row .btn {
+    flex: 1 1 100%;
+    justify-content: center;
+    white-space: normal;
+    height: auto;
+    min-height: 34px;
+  }
+}
+
+/* ---------- print: a board as a clean evidence list ---------- */
+.saved-print {
+  display: none;
+}
+@media print {
+  .saved-print {
+    display: block;
+    color: #111;
+  }
+  .saved-print h2 {
+    font-size: 16pt;
+    margin: 0 0 4pt;
+  }
+  .saved-print h3 {
+    font-size: 11.5pt;
+    margin: 0 0 2pt;
+  }
+  .saved-print ol {
+    margin: 10pt 0;
+    padding-left: 18pt;
+  }
+  .saved-print li {
+    break-inside: avoid-page;
+    margin-bottom: 12pt;
+  }
+  .saved-print p {
+    margin: 2pt 0;
+    font-size: 9.5pt;
+  }
+  .saved-print pre {
+    margin: 4pt 0;
+    padding: 6pt;
+    border: 1px solid #bbb;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font: 8.5pt/1.4 var(--mono);
+  }
+  .saved-shared .saved-banner {
+    border-color: #999;
+    color: #111;
+  }
+  .saved-privacy,
+  .saved-layout .saved-list {
+    display: none !important;
+  }
+  .saved-layout {
+    display: block;
+  }
+}

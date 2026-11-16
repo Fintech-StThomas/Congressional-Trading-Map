@@ -69,8 +69,21 @@ export function releaseRecordsHref(release: string, id: string): string {
   return `/r/${release}/m/${id}/records`;
 }
 
+/** The release comparison for one member: "/changes?m=K000389&from=<release>&to=<release>" (the releases are optional). */
+export function changesHref(member: string, from?: string | null, to?: string | null): string {
+  const q = new URLSearchParams({ m: member });
+  if (from) q.set("from", from);
+  if (to) q.set("to", to);
+  return `/changes?${q.toString()}`;
+}
+
 export function orgHref(id: string): string {
   return `/o/${encodeURIComponent(id)}`;
+}
+
+/** The saved-boards page, with a share fragment (`#b=…`, see lib/domain/saved-share.ts) when it opens a shared board. */
+export function savedHref(fragment = ""): string {
+  return `/saved${fragment}`;
 }
 
 /** The board at a state, member, organisation and optional focused card: "/?s=CA&m=K000389". */
@@ -110,4 +123,16 @@ export function safeHttpUrl(url: unknown): string | null {
 /** The absolute address of a site path (for citations that leave the site): siteUrl("/m/K000389") on the live site. */
 export function siteUrl(path: string): string {
   return `${SITE.url}${path}`;
+}
+
+/** The connection finder: "/connect?a=<node>&b=<node>&h=2&d=1&hub=1". Only the options that differ from the defaults are written. */
+export function connectHref(p: { a?: string | null; b?: string | null; hops?: number; derived?: boolean; hubs?: boolean } = {}): string {
+  const q = new URLSearchParams();
+  if (p.a) q.set("a", p.a);
+  if (p.b) q.set("b", p.b);
+  if (p.hops && p.hops !== 2) q.set("h", String(p.hops));
+  if (p.derived) q.set("d", "1");
+  if (p.hubs) q.set("hub", "1");
+  const s = q.toString();
+  return s ? `/connect?${s}` : "/connect";
 }

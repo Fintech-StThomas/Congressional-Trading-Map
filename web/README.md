@@ -22,7 +22,10 @@ web/
     │   ├── member/       /m/<id> sections: ties, ledger, trades, holdings, timeline, printable case file; MemberPageView (the page body, shared by latest and permalink)
     │   ├── records/      /m/<id>/records (the full file); RecordsPageView (the page body)
     │   ├── cases/        /cases list, filters and pager
+    │   ├── saved/        /saved and the Save control: boards kept only in the browser (store.ts), item cards, compare, export, shared boards
+    │   ├── changes/      /changes: comparing one member's records between two archived data releases (ChangesView: state and loading, ChangesResult, ChangeTable)
     │   ├── delays/       /delays: disclosure timing (DelaysView, BandSummary, GroupsTable, MembersTable)
+    │   ├── connect/      /connect: documented connections (ConnectView, NodePicker, PathCard, ConnectNotes; load.ts reads the files and runs the search, useConnect.ts, ConnectLink for the entry links)
     │   └── shared/       used by several pages: EvidenceDrawer, TieTable, Print, SearchBox, controls, Assume, ReleasePin (pins browser fetches to the page's release), ReleaseBanner, FooterAsOf; CiteButton / CiteEnv / TieCite / CitePrint ("Cite this"), CoverageNote (coverage beside a measure), download
     ├── lib/
     │   ├── types.ts      the contract's types, copied verbatim from the data dictionary
@@ -33,7 +36,7 @@ web/
     │   ├── hash.ts       FNV hash (tilts, seeds) and the org shard name
     │   ├── data/         loading: server.ts (latestData / releaseData), reader.ts (a `Data` reader bound to one release), mode.ts (which mode), remote.ts (DATA_BASE_URL rule), release.ts (pure pinned-mode rules), pin.ts (the browser's release), recent.ts (bounded per-release memory), endpoints.ts + permalink.ts (JSON routes and /r guards), fetch.ts (browser), decode.ts (columnar → objects), meta.ts, source.ts
     │   ├── method.ts     METHOD_VERSION, recorded in every citation (bump when a calculation, tie rule or displayed-range rule changes)
-    │   ├── domain/       rules: edges (tie vocabulary, amounts), pick (board strings), featured, assume, wallyears, party, holdings, records, names, delays, citation (citation packets and their text), coverage (which coverage facts apply)
+    │   ├── domain/       rules: saved (+ saved-share, saved-storage: private boards, fragment links, storage adapter), edges (tie vocabulary, amounts), paths + pathhops (connection finder), pick (board strings), featured, assume, wallyears, party, holdings, records, names, delays, citation (citation packets and their text), coverage (which coverage facts apply)
     │   └── board/        board geometry: layout (card placement, yarn curves), fray (worn yarn), geo (map projection)
     └── styles/           tokens.css (colours, type, spacing) → globals → board → pages; reach, records, casefile, delays, cite (cite panel, coverage note, printed citation) per page
 ```
@@ -48,13 +51,16 @@ Rules of thumb: pure logic lives in `src/lib` and imports other lib files with a
 | Open a string's evidence | drawer on any page | `components/shared/EvidenceDrawer.tsx`, `lib/domain/edges.ts` (labels, amounts), `lib/copy.ts` (not shown) |
 | Cite a tie, a case file, the full file or one table | "Cite this" in the drawer, the member header, the full file and each table; printed with the case file | `components/shared/CiteButton.tsx` (panel, copy, JSON download), `TieCite.tsx`, `CiteEnv.tsx` (release + build time), `CitePrint.tsx`, `components/member/MemberCite.tsx`, `lib/domain/citation.ts` (packet, text), `lib/method.ts`, `lib/copy.ts` (`CITE`) |
 | See what the data does not cover, beside the number it qualifies | holdings, ties, trades, tie drawer, full file | `components/shared/CoverageNote.tsx`, `lib/domain/coverage.ts` (which facts apply; the PAC share comes only from `meta.reports.fec.pac_money_match`), `lib/copy.ts` (`COVERAGE`) |
+| Find documented connections between two members or organisations | `/connect?a=<id>&b=<id>&h=2&d=1&hub=1` (links on every member and organisation page) | `app/connect/page.tsx`, `components/connect/*` (pickers, results, notes; `load.ts` reads `members/<id>.json` or the `orgs/<shard>.json` entry per node, at most 15 requests for the search, plus up to 12 shard reads to name organisations on the paths shown), `lib/domain/paths.ts` (hops, bounded search, ranking, year overlap, hub rule), `lib/domain/pathhops.ts` (files to hops), `lib/copy.ts` (`CONNECT`), `styles/connect.css` |
 | Disclosure timing, site-wide and by member | `/delays` | `app/delays/page.tsx`, `components/delays/*`, `lib/domain/delays.ts`, `delays.json` read through `data.readData` |
+| Compare a member's records between two archived data releases | `/changes?m=<id>&from=<release>&to=<release>` (link "Compare data releases" on the member page in pinned mode) | `app/changes/page.tsx` (static shell, noindex), `components/changes/*`, `lib/domain/compare.ts` (classes, release list check), `compareRows.ts` (tables, CSV), `lib/data/compareLoad.ts` (fetches by release id), `lib/copy.ts` (`COMPARE`), `lib/urls.ts` (`changesHref`) |
 | Change assumptions (whose trades count) | `?as=own,…` | `lib/domain/assume.ts` (rules), `components/shared/Assume.tsx` (UI, URL) |
 | Read a member's case file | `/m/<id>` | `app/m/[id]/page.tsx`, `components/member/*` |
 | Download every record | `/m/<id>/records` | `components/records/RecordsView.tsx`, `DataTable.tsx`, `lib/domain/records.ts` (tables, CSV), `lib/domain/holdings.ts` |
 | See everyone at once, or one year | `/wall`, `/wall?y=2012` | `components/wall/WallView.tsx`, `lib/domain/wallyears.ts`, `lib/domain/party.ts` |
 | Look at an organisation | `/o/<id>` (rewritten to `/org`), `/orgs` | `components/org/OrgView.tsx`, `OrgReach.tsx`, `OrgsBrowse.tsx` |
 | Cases and method | `/cases`, `/cases/page/3`, `/cases/ties/trade-pac/chamber/senate/party/r`, `/method` | `components/cases/CasesView.tsx`, `lib/domain/casepages.ts` (paths, filters, 50 per page), `app/cases/page.tsx` (page 1), `app/cases/[...slug]/page.tsx` (every other page and filter, all prerendered), `app/method/page.tsx` |
+| Save records to private boards, compare them, export evidence, share a link | "Save" in the drawer and member header; `/saved`, `/saved#b=…` | `components/saved/*` (SaveButton, Savers, SavedView, BoardPanel, ItemCard, CompareTable, ExportPanel, SharedBoard, store, resolve), `lib/domain/saved.ts` (boards, validation, export, import), `saved-share.ts` (fragment links: title and ids only), `saved-storage.ts` (one localStorage key), `lib/copy.ts` (`SAVED`), `styles/saved.css` |
 | Report a correction | footer, `/method#corrections`, evidence drawer, member page, full file | `components/shared/CorrectionLink.tsx`, `lib/urls.ts` (`correctionIssueUrl`), `lib/copy.ts` (`CORRECTIONS`, `CORRECTIONS_POLICY`) |
 
 ## Run locally
@@ -88,6 +94,7 @@ Production stays on `DATA_BASE_URL` until the archive publisher is activated; no
 | Server reads | `fetch(<base>/<release id>/<file>)` with `cache: "force-cache"` (releases never change). The release is resolved once per render from `<base>/current.json` (`revalidate` as in remote mode, validated strictly by `parsePointer`; an unreachable or malformed pointer is an error, never a guess) |
 | Prebuilt / ISR | same routes as remote mode; the live twins serve per-member, per-state and paged routes |
 | Browser data | `/releases/<id>/<file>` (a `beforeFiles` rewrite to the bucket, `Cache-Control: immutable`) and the generated JSON at `/r/<id>/board-data/<state>`, `/r/<id>/board-member/<id>`, `/r/<id>/search-index` |
+| Release list | `/releases/index.json` (a `beforeFiles` rewrite to the bucket's `index.json`, `Cache-Control: no-cache`: it is mutable and advisory, never used to decide what is current). Read only by `/changes`, which validates it strictly (`validateReleaseIndex`) and shows "comparisons need archived data releases" when it is empty or missing |
 | Permalinks | `/r/<id>/m/<member>` and `/r/<id>/m/<member>/records`: one release, a banner, `noindex`, canonical link to the latest page. An unavailable release (never published, withdrawn, malformed id) is a 404 that says so; it is never replaced by the latest data |
 
 How a request stays on one release:
@@ -175,6 +182,8 @@ Two captures of the same build differ by up to a few hundred pixels on the board
 | How cards are placed or the yarn curves | `src/lib/board/layout.ts`, `src/components/board/yarn.tsx` |
 | The featured example | `src/lib/domain/featured.ts` |
 | Assumption switches | `src/lib/domain/assume.ts` |
+| Which ties a connection path may use, the step limit, the hub threshold, how paths are ranked or labelled for years | `src/lib/domain/paths.ts` (`MAX_HOPS`, `HUB_DEGREE`, `exclusionReason`, `comparePaths`, `temporalOf`; tests: `tests/paths.test.mjs`); wording (ranking rules, notes, verbs per tie type) in `src/lib/copy.ts` (`CONNECT`) |
+| How a member file or organisation row becomes a hop, how many intermediate files a three-step search reads | `src/lib/domain/pathhops.ts`, `src/components/connect/load.ts` (`EXPANSION_PER_SIDE`) |
 | Wall measures or the year logic | `src/components/wall/WallView.tsx`, `src/lib/domain/wallyears.ts` |
 | Colours, fonts, spacing | `src/styles/tokens.css` |
 | A link to an official record built from an id | `src/lib/urls.ts` (`recordUrlFor`) |
@@ -182,7 +191,10 @@ Two captures of the same build differ by up to a few hundred pixels on the board
 | What a citation contains, its text, the JSON file name | `src/lib/domain/citation.ts` (tests: `tests/citation.test.mjs`); wording in `src/lib/copy.ts` (`CITE`) |
 | The calculation version recorded in citations | `src/lib/method.ts` (`METHOD_VERSION`): bump on any change to a calculation, tie rule or displayed-range rule |
 | Which coverage notes appear, and their wording | `src/lib/domain/coverage.ts` (tests: `tests/coverage.test.mjs`), `src/lib/copy.ts` (`COVERAGE`); placement in `MemberPageView.tsx`, `HoldingsSection.tsx`, `RecordsView.tsx`, `EvidenceDrawer.tsx` |
+| How a change between two releases is classified, or the wording that explains it | `src/lib/domain/compare.ts` (tests: `tests/compare.test.mjs`), `src/lib/copy.ts` (`COMPARE`); columns and CSV of the comparison: `src/lib/domain/compareRows.ts` |
+| The release list the comparison reads (`/releases/index.json`: proxy and cache header) | `src/lib/data/release.ts` (`releaseIndexRewrite`), `next.config.ts` (the header is `no-cache`, never the immutable one) |
 | Trade timing wording on the member page | `src/lib/copy.ts` (`TIMING`) |
+| Saved boards: schema, limits, export, import, share fragment, storage key | `src/lib/domain/saved.ts`, `saved-share.ts`, `saved-storage.ts` (tests: `tests/saved.test.mjs`); wording in `src/lib/copy.ts` (`SAVED`); UI in `src/components/saved/` |
 | Fixture delays | `scripts/fixture-delays.mjs` derives `fixtures/data/delays.json` |
 
 ## Deploy on Vercel

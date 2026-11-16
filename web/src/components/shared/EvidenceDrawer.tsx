@@ -16,6 +16,7 @@ import { YearBars } from "./YearBars";
 import { LineSample } from "./LineSample";
 import { ExternalIcon } from "./ExternalIcon";
 import { TieCite } from "./TieCite";
+import { TieSave } from "@/components/saved/Savers";
 import { CoverageNote } from "./CoverageNote";
 import { edgeFacts } from "@/lib/domain/coverage";
 
@@ -158,7 +159,10 @@ export function EvidenceDrawer({ edge, book, sources, range, onClose, loading, s
           </div>
         </dl>
         {!loading && (
-          <TieCite key={edge.id} edge={edge} names={{ from: nodeName(edge.from, book), to: nodeName(edge.to, book) }} sources={sources} range={range} ledgerOnly={shown === 0} />
+          <div className="cite-save-row">
+            <TieCite key={edge.id} edge={edge} names={{ from: nodeName(edge.from, book), to: nodeName(edge.to, book) }} sources={sources} range={range} ledgerOnly={shown === 0} />
+            <TieSave key={`save-${edge.id}`} edge={edge} book={book} names={{ from: nodeName(edge.from, book), to: nodeName(edge.to, book) }} sources={sources} range={range} ledgerOnly={shown === 0} />
+          </div>
         )}
         {inRange && filtered && (
           <p className="drawer__range mono">

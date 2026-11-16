@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { isRealDataBuild, sampleFallbackError } from "./src/lib/data/source";
 import { remoteDataBase, remoteFileUrl, remoteRewrite } from "./src/lib/data/remote";
-import { RELEASE_ID_PATTERN, parsePointer, releaseBase, releaseFileUrl, releasePointerUrl, releaseRewrite } from "./src/lib/data/release";
+import { RELEASE_ID_PATTERN, parsePointer, releaseBase, releaseFileUrl, releaseIndexRewrite, releasePointerUrl, releaseRewrite } from "./src/lib/data/release";
 import { MEMBER_ID_PATTERN, ORG_PATTERN, STATE_PATTERN } from "./src/lib/data/ids";
 import { securityHeaders } from "./src/lib/security-headers";
 
@@ -112,7 +112,7 @@ export default async function config(phase: string): Promise<NextConfig> {
         [`/board-member/${m}`, "/live/board-member/:id"],
         ["/cases/:slug+", "/live/cases/:slug+"],
       ].map(([source, destination]) => ({ source, destination }));
-      const proxies = [...(pinned ? [releaseRewrite(pinned)] : []), ...(remote ? [remoteRewrite(remote)] : [])];
+      const proxies = [...(pinned ? [releaseIndexRewrite(pinned), releaseRewrite(pinned)] : []), ...(remote ? [remoteRewrite(remote)] : [])];
       return { beforeFiles: [...proxies, ...live], afterFiles: [org], fallback: [] };
     },
     // Later entries override earlier ones for the same header key (Next docs, "Header Overriding Behavior").
@@ -136,7 +136,9 @@ export default async function config(phase: string): Promise<NextConfig> {
         // Pinned mode: a release is immutable, so its files and the JSON generated from it never change under their URL.
         ...(pinned
           ? [
-              { source: "/releases/:path*", headers: [{ key: "Cache-Control", value: IMMUTABLE }] },
+              // Only <release id>/... is immutable. /releases/index.json (the release list) is mutable and advisory: always revalidated.
+              { source: `/releases/:release(${RELEASE_ID_PATTERN})/:path*`, headers: [{ key: "Cache-Control", value: IMMUTABLE }] },
+              { source: "/releases/index.json", headers: [{ key: "Cache-Control", value: "no-cache" }] },
               { source: `/r/:release(${RELEASE_ID_PATTERN})/:kind(board-data|board-member|search-index)/:path*`, headers: [{ key: "Cache-Control", value: IMMUTABLE }] },
             ]
           : []),

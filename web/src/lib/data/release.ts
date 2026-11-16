@@ -56,6 +56,14 @@ export function releaseRewrite(base: string): { source: string; destination: str
   return { source: `/releases/:id(${RELEASE_ID_PATTERN})/:path*`, destination: `${base}/:id/:path*` };
 }
 
+/** The mutable, advisory release list (data dictionary, "Release history index"), as the browser fetches it: same origin. */
+export const RELEASE_INDEX_PATH = "/releases/index.json";
+
+/** The next.config rewrite for the release list: exactly /releases/index.json, proxied to the bucket's index.json. */
+export function releaseIndexRewrite(base: string): { source: string; destination: string } {
+  return { source: RELEASE_INDEX_PATH, destination: `${base}/index.json` };
+}
+
 /** Is this URL path under a permalink (/r/<release id>/...)? Used by the footer, which says "Latest data" there. */
 export function isReleasePath(pathname: string | null | undefined): boolean {
   return typeof pathname === "string" && /^\/r\/[0-9a-f]{64}(?:\/|$)/.test(pathname);

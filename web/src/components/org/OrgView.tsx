@@ -16,6 +16,7 @@ import { ExternalIcon } from "@/components/shared/ExternalIcon";
 import { PartyTag } from "@/components/shared/Print";
 import { LineSample } from "@/components/shared/LineSample";
 import { OrgReach, OrgSplit } from "./OrgReach";
+import { ConnectLink } from "@/components/connect/ConnectLink";
 
 type Key = "member" | "type" | "amount" | "count" | "last";
 
@@ -148,6 +149,7 @@ export function OrgView({ sources }: { sources: Record<string, string> }) {
         </p>
         <div className="dossier__actions">
           <Link className="btn btn--paper" href={boardHref({ o: o.id })}>Open on the board</Link>
+          <ConnectLink a={o.id} />
           {record && (
             <a className="btn" href={record} target="_blank" rel="noopener noreferrer">
               {record.includes("fec.gov") ? "FEC committee page" : "SEC filings"} <ExternalIcon />

@@ -30,6 +30,11 @@ const NAME_B = "Ada Revisedname";
 const BUILT_A = "2026-03-01T06:00:00Z";
 const BUILT_B = "2026-03-09T06:00:00Z";
 const REVALIDATE = "2";
+// Release B's trades file differs from A's in exactly four records (writeRelease, `tradesOfB`); /changes must sort them.
+const EVT_CHANGED = "SAMPLE-EVT-7e0c31e203"; // same id and version 2, amount range differs: changed without a newer filing version
+const EVT_AMENDED = "SAMPLE-EVT-4f2cf356be"; // version 1 -> 2: a new filing version
+const EVT_REMOVED = "SAMPLE-EVT-07e764e4fa"; // only in A: no longer in the data
+const EVT_ADDED = "SAMPLE-EVT-pinned-added"; // only in B, public from 2026-03-05, after A was built (2026-03-01)
 
 // next build adds the alternate dist dir to tsconfig.json's include; put the file back afterwards.
 const TSCONFIG = join(WEB, "tsconfig.json");
@@ -45,6 +50,21 @@ const freePort = () =>
     });
   });
 
+/** Release B's trades: the fixtures with one amount changed, one version raised, one record dropped and one added. */
+function tradesOfB(text) {
+  const f = JSON.parse(text);
+  const at = Object.fromEntries(f.cols.map((c, i) => [c, i]));
+  const rows = f.rows.filter((r) => r[at.id] !== EVT_REMOVED);
+  for (const r of rows) {
+    if (r[at.id] === EVT_CHANGED) [r[at.low], r[at.high]] = [100001, 250000];
+    if (r[at.id] === EVT_AMENDED) [r[at.version], r[at.amended]] = [2, true];
+  }
+  const added = Object.fromEntries(f.cols.map((c) => [c, null]));
+  Object.assign(added, { id: EVT_ADDED, version: 1, amended: false, date: "2026-03-04", available: "2026-03-05", lag_days: 1, late: false, owner: "self", action: "buy", ticker: "XMPL", ticker_source: "resolved", asset: "Example Dynamics Inc common stock", asset_class: "stock", low: 15001, high: 50000, org: "co:9000001", doc: "S0010002" });
+  rows.push(f.cols.map((c) => added[c]));
+  return JSON.stringify({ ...f, rows });
+}
+
 function writeRelease(id, { name, built }) {
   const dir = join(bucket, "releases", id);
   cpSync(join(WEB, "fixtures", "data"), dir, { recursive: true });
@@ -52,7 +72,17 @@ function writeRelease(id, { name, built }) {
   swap("meta.json", (t) => JSON.stringify({ ...JSON.parse(t), built }));
   writeFileSync(join(dir, "wall-years.json"), JSON.stringify({ years: [2000, 2026] }));
   for (const rel of ["members.json", `members/${MEMBER}.json`]) swap(rel, (t) => t.replaceAll(NAME_A, name));
+  if (id === B) swap(`trades/${MEMBER}.json`, tradesOfB);
   writeFileSync(join(dir, "release.json"), JSON.stringify({ schema_version: 1, release_id: id, files: {} }));
+}
+
+/** releases/index.json (the mutable, advisory release list), newest first, as docs/data-dictionary.md describes it. */
+function writeIndex() {
+  const releases = [
+    { release_id: B, build_time: BUILT_B, activated_at: "2026-03-09T07:00:00Z" },
+    { release_id: A, build_time: BUILT_A, activated_at: "2026-03-01T07:00:00Z" },
+  ];
+  writeFileSync(join(bucket, "releases", "index.json"), JSON.stringify({ schema_version: 1, releases }));
 }
 
 function setCurrent(id) {
@@ -68,7 +98,7 @@ function startBucket() {
       res.writeHead(404, { "content-type": "text/plain" }).end("not found");
       return;
     }
-    res.writeHead(200, { "content-type": "application/json", "cache-control": path.endsWith("current.json") ? "no-cache" : "public, max-age=31536000, immutable" }).end(readFileSync(file));
+    res.writeHead(200, { "content-type": "application/json", "cache-control": path.endsWith("current.json") || path.endsWith("index.json") ? "no-cache" : "public, max-age=31536000, immutable" }).end(readFileSync(file));
   });
   return new Promise((resolve) => bucketServer.listen(0, "127.0.0.1", resolve));
 }
@@ -89,6 +119,7 @@ before(async () => {
   mkdirSync(join(bucket, "releases"), { recursive: true });
   writeRelease(A, { name: NAME_A, built: BUILT_A });
   writeRelease(B, { name: NAME_B, built: BUILT_B });
+  writeIndex();
   setCurrent(A);
   await startBucket();
   bucketBase = `http://127.0.0.1:${bucketServer.address().port}/releases`;
@@ -288,4 +319,87 @@ test("proxied release files: right bytes, immutable caching, nothing outside the
   const json = await fetch(`${site}/r/${A}/search-index`);
   assert.equal(json.status, 200);
   assert.match(json.headers.get("cache-control"), /immutable/);
+});
+
+test("/changes compares two archived releases; an unavailable release is named and never replaced", async () => {
+  // The release list is proxied to the bucket's index.json, revalidated every time (it is mutable and advisory).
+  const idx = await fetch(`${site}/releases/index.json`);
+  assert.equal(idx.status, 200);
+  assert.match(idx.headers.get("cache-control"), /no-cache/);
+  assert.doesNotMatch(idx.headers.get("cache-control"), /immutable/);
+  assert.deepEqual((await idx.json()).releases.map((r) => r.release_id), [B, A]);
+
+  const { p, unpinned } = await tracked();
+  const asked = [];
+  p.on("request", (r) => {
+    const u = new URL(r.url());
+    if (u.origin === site && u.pathname.startsWith("/releases/")) asked.push(u.pathname);
+  });
+  const res = await p.goto(`${site}/changes?m=${MEMBER}&from=${A}&to=${B}`);
+  assert.equal(res.status(), 200);
+  assert.equal(await p.locator("meta[name=robots]").getAttribute("content"), "noindex");
+  await p.getByTestId("cmp-result").waitFor();
+
+  // Both releases are named, earlier first, with their build dates.
+  const cards = p.getByTestId("cmp-release");
+  assert.equal(await cards.count(), 2);
+  assert.equal(await cards.nth(0).getAttribute("data-release"), A);
+  assert.equal(await cards.nth(1).getAttribute("data-release"), B);
+  assert.match(await cards.nth(0).innerText(), new RegExp(`${A}[\\s\\S]*1 Mar 2026`));
+  assert.match(await cards.nth(1).innerText(), new RegExp(`${B}[\\s\\S]*9 Mar 2026`));
+  assert.equal(await p.getByTestId("cmp-from").inputValue(), A);
+  assert.equal(await p.getByTestId("cmp-to").inputValue(), B);
+
+  // The fixed explanation is on the page.
+  const explain = await p.getByTestId("cmp-explain").innerText();
+  assert.match(explain, /does not show that anything was sold/);
+  assert.match(explain, /cannot tell the last two apart/);
+  assert.match(explain, /archive starts when release publishing was switched on/);
+
+  // Each changed record is listed under its own class, and only there.
+  const sec = (cls) => p.getByTestId(`cmp-sec-trades-${cls}`).innerText();
+  const changed = await sec("changed_same_version");
+  assert.ok(changed.includes(EVT_CHANGED), changed);
+  assert.ok(changed.includes("$50,001–$100,000") && changed.includes("$100,001–$250,000"), "the range before and after");
+  const amended = await sec("amended_filing");
+  assert.ok(amended.includes(EVT_AMENDED) && amended.includes("1 → 2"), amended);
+  const added = await sec("added");
+  assert.ok(added.includes(EVT_ADDED) && added.includes("Became public after the earlier release"), added);
+  const removed = await sec("removed");
+  assert.ok(removed.includes(EVT_REMOVED), removed);
+  assert.match(removed, /no longer in the data/);
+  for (const [text, own] of [[changed, EVT_CHANGED], [amended, EVT_AMENDED], [added, EVT_ADDED], [removed, EVT_REMOVED]]) {
+    for (const other of [EVT_CHANGED, EVT_AMENDED, EVT_ADDED, EVT_REMOVED]) if (other !== own) assert.ok(!text.includes(other), `${other} is not under ${own}'s class`);
+  }
+  assert.equal(await p.getByTestId("cmp-sec-ties-changed").count(), 0, "no tie differs between A and B");
+
+  // Only A's and B's files were read, plus the release list; nothing from an unpinned URL.
+  assert.ok(asked.includes("/releases/index.json"));
+  assert.deepEqual([...idsIn(asked.filter((x) => x !== "/releases/index.json"))].sort(), [A, B].sort());
+  assert.deepEqual(unpinned, []);
+
+  // Defaults: previous release to the newest listed.
+  await p.goto(`${site}/changes?m=${MEMBER}`);
+  await p.getByTestId("cmp-result").waitFor();
+  assert.equal(await p.getByTestId("cmp-from").inputValue(), A);
+  assert.equal(await p.getByTestId("cmp-to").inputValue(), B);
+
+  // A release the archive does not hold is named as unavailable; no comparison is made and no other release is used.
+  await p.goto(`${site}/changes?m=${MEMBER}&from=${UNKNOWN}&to=${B}`);
+  await p.getByTestId("cmp-unavailable").waitFor();
+  const text = await p.getByTestId("cmp-unavailable").innerText();
+  assert.match(text, new RegExp(`Data release ${UNKNOWN.slice(0, 12)} is not available for this member`));
+  assert.match(text, /not replaced by any other release/);
+  assert.equal(await p.getByTestId("cmp-result").count(), 0);
+  assert.equal(await p.getByTestId("cmp-summary").count(), 0);
+  assert.ok(bucketLog.filter((x) => x.includes(UNKNOWN)).every((x) => x.endsWith("/meta.json")), "only availability was checked for it");
+
+  // A malformed id is refused before any fetch.
+  const before = bucketLog.length;
+  await p.goto(`${site}/changes?m=${MEMBER}&from=not-a-release&to=${B}`);
+  await p.getByTestId("cmp-bad").waitFor();
+  await p.goto(`${site}/changes?m=Z99&from=${A}&to=${B}`);
+  await p.getByTestId("cmp-bad").waitFor();
+  assert.ok(!bucketLog.slice(before).some((x) => /not-a-release|Z99/.test(x)));
+  await p.close();
 });

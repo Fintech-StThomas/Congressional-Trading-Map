@@ -8,10 +8,10 @@ import { IS_SAMPLE, metaBuilt, orgNodesOf, type Data } from "@/lib/data/server";
 import { decodeLedger, decodeTradeFile, ledgerTotals } from "@/lib/data/decode";
 import { sortEdges, TYPE_LABEL } from "@/lib/domain/edges";
 import { count, date, money, PARTY_NAMES, plural, seat, served, stateName, yearRange } from "@/lib/format";
-import { boardHref, memberHref, recordsHref, releaseRecordsHref } from "@/lib/urls";
+import { boardHref, changesHref, memberHref, recordsHref, releaseRecordsHref } from "@/lib/urls";
 import { toBoardMember, type NameBook } from "@/lib/domain/names";
 import { caseMinTypes, metaSources, sourceNames } from "@/lib/data/meta";
-import { CASE_NOT_SHOWN, CORRECTIONS, caseRuleText, RELEASE, SITE, TIMING } from "@/lib/copy";
+import { CASE_NOT_SHOWN, COMPARE, CORRECTIONS, caseRuleText, RELEASE, SITE, TIMING } from "@/lib/copy";
 import type { Edge, OrgSummary } from "@/lib/types";
 import { Print, PartyTag } from "@/components/shared/Print";
 import { TieSection } from "@/components/member/TieSection";
@@ -34,8 +34,10 @@ import { AssumeCase, AssumeCount, AssumptionProvider, PageAssumptionBar } from "
 import { CiteEnvProvider } from "@/components/shared/CiteEnv";
 import { CoverageNote } from "@/components/shared/CoverageNote";
 import { MemberCite, MemberCitePrint, type MemberCiteProps } from "@/components/member/MemberCite";
+import { MemberSave } from "@/components/saved/Savers";
 import { coverageFacts, coverageMeta, tradeValueStats } from "@/lib/domain/coverage";
 import "@/styles/cite.css";
+import { ConnectLink } from "@/components/connect/ConnectLink";
 
 /** Page metadata for a member; a permalink is not indexed and names the latest page as canonical. */
 export async function memberMetadata(data: Data, id: string, pinned: boolean): Promise<Metadata> {
@@ -181,6 +183,8 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
             )}
             <PrintButton />
             <MemberCite {...cite} />
+            <MemberSave member={cite.member} years={served(m.served)} party={m.party} counts={cite.counts} dates={cite.dates} limitations={cite.limitations} />
+            <ConnectLink a={m.id} />
           </div>
         </div>
         <section className="dossier__cmte" aria-labelledby="cmte-h">
@@ -305,6 +309,7 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
           <Link href={recordsLink} className="no-print">Open the full file</Link>
           <span className="print-only">The full file (every record, unfiltered): {recordsLink}</span>
           <span className="sub"> · every record held for this member, unfiltered, with CSV downloads</span>
+          {data.release && <> <span className="sub no-print">·</span> <Link href={changesHref(m.id)} className="no-print" data-testid="compare-releases-link">{COMPARE.link}</Link></>}
         </p>
         <p className="no-print">
           <CorrectionLink what={`${m.name} (${m.id})`} details={[`Member: ${m.name} (bioguide ${m.id})`]} /> <span className="sub">· {CORRECTIONS.note} Members and their offices can reply the same way.</span>
