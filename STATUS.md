@@ -3,7 +3,7 @@
 **Read this first.** It is the single shared picture of the project for every teammate and every AI assistant (Claude, ChatGPT or any other), in any session.
 **Rule:** whoever changes what is live, what is in progress, or what is planned updates this file in the same pull request. If this file and the code disagree, the code is right and this file must be fixed.
 
-Last updated: 2026-11-15 (America/Chicago)
+Last updated: 2026-11-16 (America/Chicago)
 
 ## What this is
 
@@ -101,6 +101,7 @@ web/ (Next.js on Vercel) reads the bucket: pages are built on first visit and re
 
 ## In progress
 
+- State-outline reliability fix on `codex/fix-persistent-state-outlines` (awaiting merge/deployment): map topology is compiled into the server bundle so ISR no longer depends on excluded `public/geo` files. Missing/incomplete geometry fails the build. The regression reproduced the old failure and now passes two forced homepage regenerations without geometry files. Local fixture build/lint/typecheck passed; web tests: 61 passed, 17 real-data skips; pipeline tests: 163 passed. Production-data validation could not run because this checkout has no generated `web/public/data/meta.json`.
 - Product implementation is sequenced in [`docs/PRODUCT-PLAN.md`](docs/PRODUCT-PLAN.md): release reliability → immutable citations and coverage → disclosure/change analysis → investigation views and saved boards → distribution and source expansion. This supersedes the feature ordering below; that list remains the broader backlog.
 - Pull request #8 adds deterministic release manifests and an opt-in immutable archive publisher. It is not wired into the daily job and production remains unchanged. Release-pinned readers, citation UI, contextual coverage, provider staging checks and a withdrawal policy remain required before activation.
 - The financial-history and security/CI continuation is now on `main`: House member pages include asset timelines, change since the first disclosed report and debt history; full files include transition CSV. Automated checks run on every PR, and this branch extends the site job to run Chromium/CSP tests.
