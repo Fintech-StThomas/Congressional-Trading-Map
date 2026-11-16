@@ -8,18 +8,18 @@ import { IS_SAMPLE, metaBuilt, orgNodesOf, type Data } from "@/lib/data/server";
 import { decodeLedger, decodeTradeFile, ledgerTotals } from "@/lib/data/decode";
 import { countByBasis, countWire } from "@/lib/domain/datebasis";
 import { sortEdges, TYPE_LABEL } from "@/lib/domain/edges";
-import { count, date, money, PARTY_NAMES, plural, seat, served, stateName, yearRange } from "@/lib/format";
-import { boardHref, changesHref, embedHelpHref, memberFeedHref, memberHref, recordsHref, releaseRecordsHref } from "@/lib/urls";
+import { count, date, money, plural, seat, stateName, yearRange } from "@/lib/format";
+import { SECTION_INDEX } from "@/lib/copy-ui";
+import { boardHref, memberHref, recordsHref, releaseRecordsHref } from "@/lib/urls";
 import { toBoardMember, type NameBook } from "@/lib/domain/names";
 import { caseMinTypes, metaSources, sourceNames } from "@/lib/data/meta";
-import { CASE_NOT_SHOWN, COMPARE, CORRECTIONS, caseRuleText, RELEASE, SITE, TIMING } from "@/lib/copy";
+import { CASE_NOT_SHOWN, CORRECTIONS, caseRuleText, RELEASE, SITE, TIMING } from "@/lib/copy";
+import { CASES_UI } from "@/lib/copy-ui";
 import type { Edge, OrgSummary } from "@/lib/types";
-import { Print, PartyTag } from "@/components/shared/Print";
 import { TieSection } from "@/components/member/TieSection";
 import { TradesTable } from "@/components/member/TradesTable";
 import { LedgerTable } from "@/components/member/LedgerTable";
 import { Timeline } from "@/components/member/Timeline";
-import { PrintButton } from "@/components/member/PrintButton";
 import { CaseFile, caseNumber } from "@/components/member/CaseFile";
 import { pickAgainst, pickBoard } from "@/lib/domain/pick";
 import { ownTradeCount } from "@/lib/domain/assume";
@@ -31,20 +31,19 @@ import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 import { CorrectionLink, CorrectionProvider } from "@/components/shared/CorrectionLink";
 import { ReleasePin } from "@/components/shared/ReleasePin";
 import { ReleaseBanner } from "@/components/shared/ReleaseBanner";
-import { AssumeCase, AssumeCount, AssumptionProvider, PageAssumptionBar } from "@/components/shared/Assume";
+import { AssumeCase, AssumptionProvider } from "@/components/shared/Assume";
 import { CiteEnvProvider } from "@/components/shared/CiteEnv";
 import { CoverageNote } from "@/components/shared/CoverageNote";
-import { MemberCite, MemberCitePrint, type MemberCiteProps } from "@/components/member/MemberCite";
-import { FollowButton } from "@/components/shared/FollowButton";
-import { MemberSave } from "@/components/saved/Savers";
+import { MemberCitePrint, type MemberCiteProps } from "@/components/member/MemberCite";
+import { MemberHeader } from "@/components/member/MemberHeader";
+import { SectionIndex } from "@/components/member/SectionIndex";
 import { coverageFacts, coverageMeta, tradeValueStats } from "@/lib/domain/coverage";
 import "@/styles/cite.css";
-import { ConnectLink } from "@/components/connect/ConnectLink";
 import { ViewSwitch } from "@/components/shared/ViewSwitch";
 import { ViewBar, ViewPrintLine } from "@/components/shared/ViewBar";
 import { ViewLink } from "@/components/shared/ViewLink";
 import { Explain } from "@/components/shared/Explain";
-import { SnapshotCount, SnapshotNote, SnapshotProvider } from "@/components/member/SnapshotNote";
+import { SnapshotNote, SnapshotProvider } from "@/components/member/SnapshotNote";
 
 /** Page metadata for a member; a permalink is not indexed and names the latest page as canonical. */
 export async function memberMetadata(data: Data, id: string, pinned: boolean): Promise<Metadata> {
@@ -120,8 +119,6 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
 
   const orgName = (oid: string) => orgIndex.get(oid)?.name ?? oid;
   const built = metaBuilt(meta);
-  const current = m.committees.filter((c) => c.current);
-  const past = m.committees.filter((c) => !c.current);
   const lateCount = ts?.late ?? 0;
   const owners = ts?.by_owner ?? {};
   const ownTrades = ownTradeCount(owners);
@@ -163,72 +160,28 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
         {m.current ? <Link href={boardHref({ s: m.state })}>{stateName(m.state)}</Link> : <Link href="/wall?former=1">Former members</Link>}{" "}
         <span aria-hidden="true">/</span> <span aria-current="page">{m.name}</span>
       </nav>
-      <ViewSwitch current="case" member={m.id} state={m.current ? m.state : null} release={release} />
+      <div className="viewrow no-print">
+        <ViewSwitch current="case" member={m.id} state={m.current ? m.state : null} release={release} />
+        <ViewBar />
+      </div>
       <ViewPrintLine casefile />
-      <header className="dossier__head">
-        <Print id={m.id} name={m.name} photo={m.photo} size="xl" />
-        <div className="dossier__id">
-          <h1>
-            {m.name} <PartyTag party={m.party} />
-          </h1>
-          <p className="dossier__seat">
-            {seat(m)} · {PARTY_NAMES[m.party]} · {m.current ? "Serving" : "Former member"}, {served(m.served)}
-          </p>
-          <dl className="dossier__counts">
-            <div><dt><Explain term="household">Household trades reported</Explain></dt><dd className="mono"><AssumeCount kind="trades" total={m.counts.trades} />{release && <SnapshotCount kind="trades" />}</dd></div>
-            <div><dt>Organisations tied</dt><dd className="mono">{count(m.counts.orgs)}{release && <SnapshotCount kind="orgs" />}</dd></div>
-            <div><dt>Members tied</dt><dd className="mono">{count(m.counts.members)}{release && <SnapshotCount kind="members" />}</dd></div>
-            <div><dt>Cases</dt><dd className="mono"><AssumeCount kind="cases" total={m.counts.cases} /></dd></div>
-            {nTrades > 0 && <div><dt>{TIMING.countLabel}</dt><dd className="mono">{count(lateCount)}</dd></div>}
-          </dl>
-          {nTrades > 0 && (
-            <div className="no-print dossier__assume">
-              <PageAssumptionBar scope={m.name} />
-            </div>
-          )}
-          <div className="dossier__actions no-print">
-            {m.current ? (
-              <ViewLink className="btn btn--paper" href={boardHref({ s: m.state, m: m.id })}>Open on the board</ViewLink>
-            ) : (
-              <ViewLink className="btn btn--paper" href={boardHref({ m: m.id })}>Open on the board</ViewLink>
-            )}
-            <PrintButton />
-            <MemberCite {...cite} />
-            <MemberSave member={cite.member} years={served(m.served)} party={m.party} counts={cite.counts} dates={cite.dates} limitations={cite.limitations} />
-            <ConnectLink a={m.id} />
-            <Link className="btn btn--small" href={memberFeedHref(m.id)} prefetch={false} data-testid="member-feed-link">Subscribe (RSS)</Link>
-            <FollowButton kind="member" id={m.id} name={m.name} />
-            <Link className="btn btn--small" href={embedHelpHref()} data-testid="member-embed-link">Embed</Link>
-          </div>
-        </div>
-        <section className="dossier__cmte" aria-labelledby="cmte-h">
-          <h2 id="cmte-h">Committees</h2>
-          {current.length === 0 && past.length === 0 ? (
-            <p className="nd">None on file</p>
-          ) : (
-            <ul>
-              {current.map((c) => (
-                <li key={c.id}>
-                  {c.name}
-                  {c.role && <span className="sub"> · {c.role}</span>}
-                </li>
-              ))}
-              {past.map((c) => (
-                <li key={c.id} className="is-past">
-                  {c.name} <span className="sub">· past</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      </header>
+      <MemberHeader m={m} release={release} hasReleases={Boolean(data.release)} nTrades={nTrades} lateCount={lateCount} cite={cite} />
 
-      <ViewBar />
+      <SectionIndex
+        links={[
+          ...(file.cases.length > 0 ? [{ id: "cases", label: SECTION_INDEX.cases }] : []),
+          { id: "ties", label: SECTION_INDEX.ties },
+          { id: "activity", label: SECTION_INDEX.activity },
+          { id: "holdings", label: SECTION_INDEX.holdings },
+          { id: "trades", label: SECTION_INDEX.trades },
+        ]}
+      />
 
       {file.cases.length > 0 && (
         <section className="section" id="cases" aria-labelledby="cases-h">
           <h2 id="cases-h">Cases</h2>
           <p className="section__note">{caseRuleText(minTypes)} A reason to read the filings, not a finding.</p>
+          <p className="notshown cases__notshown" data-testid="cases-not-shown"><span className="notshown__k">{CASES_UI.notShownLabel}</span> {CASE_NOT_SHOWN}</p>
           <ol className="dossier__cases">
             {file.cases.map((c) => (
               <AssumeCase key={c.id} org={c.org}>
@@ -240,14 +193,13 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
                 </span>
                 <span className="mono">{yearRange(c.years)}</span>
                 <ViewLink className="no-print" href={boardHref({ s: m.current ? m.state : undefined, m: m.id, focus: c.org })}>On the board</ViewLink>
-                <span className="notshown dossier__notshown">{CASE_NOT_SHOWN}</span>
               </AssumeCase>
             ))}
           </ol>
         </section>
       )}
 
-      <section className="section" aria-labelledby="ties-h">
+      <section className="section" id="ties" aria-labelledby="ties-h">
         <h2 id="ties-h">Ties</h2>
         <p className="section__note">
           Every <Explain term="tie">tie</Explain> with its records attached, grouped by kind. Open a row to read the filings.
@@ -280,7 +232,7 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
         </section>
       )}
 
-      <section className="section" aria-labelledby="time-h">
+      <section className="section" id="activity" aria-labelledby="time-h">
         <h2 id="time-h">Activity by year</h2>
         <p className="section__note">Bars show trades reported and itemised money records per year. Shading shows how complete the underlying data is for that year.</p>
         <Timeline trades={tradeCounts} moneyByYear={moneyByYear} coverage={file.coverage} served={m.served} />
@@ -289,7 +241,7 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
       <HoldingsSection h={holdings} facts={facts} memberId={m.id} />
       {holdings && <PositionsPanel memberId={m.id} available={!!holdings.positions_summary} />}
 
-      <section className="section" aria-labelledby="trades-h">
+      <section className="section" id="trades" aria-labelledby="trades-h">
         <h2 id="trades-h">Trades reported by this member&rsquo;s household</h2>
         <p className="section__note">
           {nTrades > 0 && (
@@ -325,7 +277,6 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
           <ViewLink href={recordsLink} className="no-print">Open the full file</ViewLink>
           <span className="print-only">The full file (every record, unfiltered): {recordsLink}</span>
           <span className="sub"> · every record held for this member, unfiltered, with CSV downloads</span>
-          {data.release && <> <span className="sub no-print">·</span> <Link href={changesHref(m.id)} className="no-print" data-testid="compare-releases-link">{COMPARE.link}</Link></>}
         </p>
         <p className="no-print">
           <CorrectionLink what={`${m.name} (${m.id})`} details={[`Member: ${m.name} (bioguide ${m.id})`]} /> <span className="sub">· {CORRECTIONS.note} Members and their offices can reply the same way.</span>

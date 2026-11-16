@@ -110,17 +110,7 @@
   }
 }
 
-/* Coverage note: always visible, next to the measure it qualifies. */
-.covnote {
-  margin: 8px 0 12px;
-  padding: 8px 12px;
-  max-width: 72ch;
-  border-left: 3px solid var(--rule);
-  background: var(--surface);
-  color: var(--text-2);
-  font-size: 12.5px;
-  line-height: 1.45;
-}
+/* Coverage note: always visible, next to the measure it qualifies. Surface and rule come from .notice (notices.css). */
 .covnote__k {
   margin: 0 0 2px;
   font-size: 12px;
@@ -136,9 +126,10 @@
   margin-top: 3px;
 }
 .drawer .covnote {
-  background: var(--paper-2);
-  color: var(--ink-2);
-  border-left-color: var(--ink-3);
+  --notice-bg: var(--paper-2);
+  --notice-fg: var(--ink-2);
+  --notice-strong: var(--ink);
+  --notice-rule: var(--ink-3);
 }
 .drawer .covnote__k {
   color: var(--ink);
@@ -168,13 +159,6 @@
     overflow-wrap: anywhere;
     font: 8.5pt/1.4 var(--mono);
     color: #000;
-  }
-  .covnote {
-    background: #fff;
-    border: 1px solid #777;
-    border-left-width: 3px;
-    color: #000;
-    break-inside: avoid;
   }
   .covnote__k {
     color: #000;

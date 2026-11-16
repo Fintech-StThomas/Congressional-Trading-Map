@@ -1,7 +1,7 @@
 // Unit tests for the assumption switches (src/lib/domain/assume.ts).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { applyAssumptions, decodeAssumptions, DEFAULT_ASSUMPTIONS, encodeAssumptions, isDefault, isOwnOnly, isOwnOwner, ownOnly, ownTradeCount, readout, tradeCounts } from "../src/lib/domain/assume.ts";
+import { applyAssumptions, assumptionSummary, decodeAssumptions, DEFAULT_ASSUMPTIONS, encodeAssumptions, isDefault, isOwnOnly, isOwnOwner, ownOnly, ownTradeCount, readout, tradeCounts } from "../src/lib/domain/assume.ts";
 
 const T = (owner, org, extra = {}) => ({ owner, org, asset_class: "stock", low: 15001, late: false, ...extra });
 const trades = [
@@ -56,4 +56,12 @@ test("URL round trip", () => {
   }
   assert.equal(encodeAssumptions(DEFAULT_ASSUMPTIONS), "");
   assert.equal(encodeAssumptions(ownOnly(DEFAULT_ASSUMPTIONS, true)), "own");
+});
+
+test("the assumptions chip names the state: default wording, own only, or how many switches differ", () => {
+  assert.equal(assumptionSummary(DEFAULT_ASSUMPTIONS), "household, every trade");
+  assert.equal(assumptionSummary(ownOnly(DEFAULT_ASSUMPTIONS, true)), "own trades only");
+  assert.equal(assumptionSummary({ ...DEFAULT_ASSUMPTIONS, noSmall: true }), "1 changed");
+  assert.equal(assumptionSummary({ ...DEFAULT_ASSUMPTIONS, noSmall: true, lateOnly: true }), "2 changed");
+  assert.equal(assumptionSummary({ ...ownOnly(DEFAULT_ASSUMPTIONS, true), noFunds: true }), "own trades only, 1 more changed");
 });

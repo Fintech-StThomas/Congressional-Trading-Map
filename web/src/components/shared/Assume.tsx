@@ -5,7 +5,8 @@ import "@/styles/reach.css";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { dataUrl } from "@/lib/urls";
 import { getJSON } from "@/lib/data/fetch";
-import { applyAssumptions, DEFAULT_ASSUMPTIONS, decodeAssumptions, encodeAssumptions, isDefault, isOwnOnly, OWN_SWITCH, ownOnly, readout, SWITCHES, tradeCounts, type AssumptionEffect, type Assumptions, type TradeLite } from "@/lib/domain/assume";
+import { applyAssumptions, assumptionSummary, DEFAULT_ASSUMPTIONS, decodeAssumptions, encodeAssumptions, isDefault, isOwnOnly, OWN_SWITCH, ownOnly, readout, SWITCHES, tradeCounts, type AssumptionEffect, type Assumptions, type TradeLite } from "@/lib/domain/assume";
+import { ASSUME_UI } from "@/lib/copy-ui";
 import { VIEW_EVENT } from "./useViewState";
 import { Switch } from "./ChipSelect";
 
@@ -85,16 +86,19 @@ export function useAssumptions(member: string | null, hasTrades: boolean, edges:
   return { assume, setAssume, effect, kept, status, line };
 }
 
-/** The switches, in a disclosure so they never crowd the board. */
+/** The switches, behind one chip that always says the current state (a disclosure, closed until the reader opens it). */
 export function AssumptionBar({ state, scope }: { state: AssumptionState; scope: string }) {
   const { assume, setAssume, status, line } = state;
   const active = !isDefault(assume);
   const own = isOwnOnly(assume);
   return (
-    <details className={`assume${active ? " is-active" : ""}`} open={active || undefined}>
+    <details className={`assume${active ? " is-active" : ""}`}>
       <summary>
-        <span className="assume__k">Assumptions</span>
-        <span className="assume__v">{active ? "changed" : "household, every trade"}</span>
+        <span className="assume__k">{ASSUME_UI.summaryKey}</span>
+        <span className="assume__v" data-testid="assume-summary">{assumptionSummary(assume)}</span>
+        <svg className="assume__caret" viewBox="0 0 10 6" width="10" height="6" aria-hidden="true">
+          <path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
       </summary>
       <div className="assume__body" role="group" aria-label={`Assumptions for ${scope}`}>
         <Switch label={OWN_SWITCH.label} on={own} onChange={(v) => setAssume(ownOnly(assume, v))} hint={OWN_SWITCH.hint} />

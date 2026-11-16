@@ -13,10 +13,13 @@ import argparse
 import hashlib
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Callable
 
-from .publish_r2 import MissingConfig, PublishError, _code, _transient, client_from_env, content_type, retry
+from .publish_r2 import (
+    WORKERS as UPLOAD_WORKERS, MissingConfig, PublishError, _code, _transient, client_from_env, content_type, retry,
+)
 from .release_blobs import (
     archive_stats, blob_key, check_reused, create_once, head_blobs, identity, store_blob, verify_body,
 )
@@ -158,19 +161,34 @@ def publish(client: Any, bucket: str, root: Path, *, activate: bool = False,
     for rel, entry in manifest["files"].items():
         groups.setdefault(entry["sha256"], []).append(rel)
     heads = head_blobs(client, bucket, sorted(groups), sleep)
-    new_blobs = new_bytes = 0
+    missing = []
     for sha in sorted(groups):
+        if heads[sha] is not None:
+            check_reused(heads[sha], manifest["files"][groups[sha][0]])
+        else:
+            missing.append(sha)
+    print(f"archive: {len(groups)} distinct files, {len(missing)} to upload, {len(groups) - len(missing)} already stored",
+          flush=True)
+
+    def upload(sha: str) -> int:
+        """Store one missing blob; its byte count when this call created it, else 0."""
         rel = groups[sha][0]
         expected = manifest["files"][rel]
-        if heads[sha] is not None:
-            check_reused(heads[sha], expected)
-            continue
         body = (root / rel).read_bytes()
         if identity(body) != expected:
             raise PublishError("source file changed during archive publication")
-        if store_blob(client, bucket, sha, body, content_type(rel), sleep):
-            new_blobs += 1
-            new_bytes += expected["bytes"]
+        return expected["bytes"] if store_blob(client, bucket, sha, body, content_type(rel), sleep) else 0
+
+    new_blobs = new_bytes = 0
+    # Uploads run in parallel like the legacy publisher's (one by one, a first archive of ~3,800 files took over 30
+    # minutes). Any failure propagates; blobs already stored are reused by the next run, so a retry is cheap.
+    with ThreadPoolExecutor(max_workers=UPLOAD_WORKERS) as pool:
+        for done, created in enumerate(pool.map(upload, missing), 1):
+            if created:
+                new_blobs += 1
+                new_bytes += created
+            if done % 500 == 0:
+                print(f"archive: {done} of {len(missing)} uploaded", flush=True)
     _check_tree(root, manifest)
     descriptor = canonical_json(manifest)
     create_once(client, bucket, descriptor_key_of(manifest), descriptor, "application/json", sleep)

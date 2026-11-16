@@ -6,6 +6,7 @@ import Link from "next/link";
 import { FRESH } from "@/lib/copy";
 import { staleBannerText } from "@/lib/domain/freshness";
 import { statusHref } from "@/lib/urls";
+import { Notice } from "./Notice";
 import { useNow } from "./useNow";
 
 export function StaleBanner({ built, sample }: { built: string | null; sample: boolean }) {
@@ -14,10 +15,10 @@ export function StaleBanner({ built, sample }: { built: string | null; sample: b
   const text = staleBannerText(built, now);
   if (!text) return null;
   return (
-    <aside className="stale-banner no-print" role="note" data-testid="stale-banner">
+    <Notice tone="info" band className="stale-banner no-print" data-testid="stale-banner">
       <p>
         {text} <Link href={statusHref()}>{FRESH.staleLink}</Link>
       </p>
-    </aside>
+    </Notice>
   );
 }

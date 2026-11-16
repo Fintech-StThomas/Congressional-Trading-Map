@@ -1548,6 +1548,14 @@ button.crumb:hover {
 .assume summary::-webkit-details-marker {
   display: none;
 }
+.assume__caret {
+  flex: none;
+  color: var(--text-3);
+  transition: transform 140ms;
+}
+.assume[open] .assume__caret {
+  transform: rotate(180deg);
+}
 .assume summary:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 2px;

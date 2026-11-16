@@ -351,11 +351,58 @@
   font-size: 20px;
   font-weight: 500;
 }
+/* One primary button, three per-item controls and a More menu: one row of equal 34px controls. The panels that
+   Cite this, Save and Follow open (and the feed links Follow adds) take their own full-width row below. */
 .dossier__actions {
   display: flex;
+  align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-  margin-top: 20px;
+  margin-top: 18px;
+}
+.dossier__actions .btn,
+.dossier__actions .btn--small {
+  height: 34px;
+  padding: 0 12px;
+  font-size: 13.5px;
+}
+.dossier__actions .btn svg {
+  flex: none;
+}
+.dossier__actions .cite,
+.dossier__actions .save,
+.dossier__actions .follow {
+  display: contents;
+}
+.dossier__actions .cite__panel,
+.dossier__actions .save__panel {
+  flex: 1 1 100%;
+  order: 20;
+  margin-top: 4px;
+}
+.dossier__actions .follow > :not(button) {
+  order: 21;
+}
+.dossier__actions .follow > .saved-warn {
+  flex: 1 1 100%;
+}
+.dossier__actions .dossier__more {
+  margin-left: 0;
+}
+.dossier__actions .menu__list {
+  min-width: 250px;
+}
+/* Phones: the primary button takes its own row; the three per-item controls and More share the next. */
+@media (max-width: 480px) {
+  .dossier__actions .btn--paper {
+    flex: 1 1 100%;
+    justify-content: center;
+  }
+  .dossier__actions .btn,
+  .dossier__actions .btn--small {
+    padding: 0 10px;
+    gap: 5px;
+  }
 }
 .dossier__cmte h2 {
   font-size: 13px;
@@ -674,39 +721,111 @@
   }
 }
 
-@media (max-width: 719px) {
+/* ---------- phone header: one row, 56px (brand, search button, menu button); the menu opens a panel ---------- */
+@media (max-width: 720px) {
   .site-header__inner {
-    flex-wrap: wrap;
-    height: auto;
-    padding-top: 10px;
-    padding-bottom: 10px;
-    gap: 10px 14px;
+    position: relative;
+    height: 56px;
+    gap: 8px;
   }
-  .brand__tagline {
-    display: none;
-  }
-  .search {
-    order: 3;
-    width: 100%;
-    margin-left: 0;
-  }
+  .brand__tagline,
+  .stamp,
   .search__kbd {
     display: none;
-  }
-  .nav {
-    margin-left: auto;
-    flex: 0 1 auto;
-    flex-wrap: wrap;
-    min-width: 0;
-  }
-  .nav a {
-    padding: 6px 7px;
   }
   .brand__name {
     font-size: 17px;
   }
-  .stamp {
-    font-size: 11px;
+  .site-header .site-header__searchbtn,
+  .nav .nav__toggle,
+  .site-header .site-header__searchclose {
+    display: inline-flex;
+    justify-content: center;
+    height: 40px;
+    min-width: 40px;
+    padding: 0 10px;
+  }
+  .site-header__searchbtn {
+    margin-left: auto;
+  }
+  .site-header__searchbtn svg,
+  .nav__toggle svg,
+  .site-header__searchclose svg {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.6;
+    stroke-linecap: round;
+  }
+  .site-header__search {
+    display: none;
+  }
+  .is-searching .site-header__search {
+    position: absolute;
+    z-index: 2;
+    inset: 0;
+    display: flex;
+    margin: 0;
+    padding: 0 var(--gutter);
+    background: var(--bg-2);
+  }
+  .is-searching .search {
+    flex: 1;
+    width: auto;
+  }
+  .nav {
+    flex: none;
+  }
+  .nav__panel {
+    display: none;
+  }
+  .nav[data-open] .nav__panel {
+    position: absolute;
+    z-index: 50;
+    top: 100%;
+    left: 0;
+    right: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px 12px;
+    padding: 8px var(--gutter) 14px;
+    background: var(--bg-2);
+    border-bottom: 1px solid var(--rule);
+    box-shadow: 0 16px 28px -12px oklch(0 0 0 / 0.7);
+  }
+  .nav__link,
+  .nav .menu__item {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 0 8px;
+    font-size: 15px;
+    color: var(--text);
+  }
+  /* "More" is flattened into the panel: its button goes, its links list inline. */
+  .nav__more,
+  .nav__more .menu__list,
+  .nav__more .menu__list li {
+    display: contents;
+  }
+  .nav .menu__btn {
+    display: none;
+  }
+  .nav .menu__list[hidden] {
+    display: contents;
+  }
+  .nav .menu__list {
+    position: static;
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    max-width: none;
+  }
+}
+
+@media (max-width: 719px) {
+  .brand__name {
+    font-size: 17px;
   }
   .page h1 {
     font-size: 25px;
@@ -1122,33 +1241,3 @@
 }
 
 /* ---------- data release permalinks (/r/<release>/...) ---------- */
-
-.release-banner {
-  margin: 0 0 16px;
-  padding: 10px 14px;
-  border: 1px solid var(--paper-edge);
-  border-left: 4px solid var(--red-ink);
-  background: var(--paper-2);
-  color: var(--ink);
-  font-size: 14px;
-  line-height: 1.45;
-}
-.release-banner p {
-  margin: 0;
-}
-.release-banner p + p {
-  margin-top: 4px;
-}
-.release-banner a {
-  color: var(--ink);
-  text-decoration: underline;
-}
-@media print {
-  .release-banner {
-    border: 1px solid #111;
-    border-left-width: 4px;
-    background: #fff;
-    color: #111;
-    break-inside: avoid;
-  }
-}

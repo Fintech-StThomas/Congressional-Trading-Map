@@ -226,6 +226,122 @@ realTest("a large organisation shows its party split and reach", async () => {
   await p.close();
 });
 
+test("the header stays one short row at phone width, and its menu lists every link", async () => {
+  const p = await page(390, 844);
+  for (const url of ["/", `/m/${realData ? "P000197" : "X000001"}`]) {
+    await p.goto(base + url, { waitUntil: "networkidle" });
+    const h = await p.evaluate(() => document.querySelector(".site-header").getBoundingClientRect().height);
+    assert.ok(h <= 72, `${url}: header is ${h}px tall at 390px (limit 72)`);
+  }
+  const nav = p.getByRole("navigation", { name: "Main" });
+  assert.equal(await nav.getByRole("link", { name: "New" }).count(), 0, "links stay in the closed menu");
+  await p.getByTestId("nav-toggle").click();
+  assert.equal(await p.getByTestId("nav-toggle").getAttribute("aria-expanded"), "true");
+  for (const name of ["Board", "New", "Cases", "Organisations", "Wall", "Timing", "Saved", "Following", "Method", "Data status"])
+    assert.equal(await nav.getByRole("link", { name, exact: true }).count(), 1, `menu has ${name}`);
+  await p.keyboard.press("Escape");
+  assert.equal(await p.getByTestId("nav-toggle").getAttribute("aria-expanded"), "false");
+  assert.equal(await p.evaluate(() => document.activeElement?.getAttribute("data-testid")), "nav-toggle", "focus returns to the menu button");
+  // Search opens from its button and closes with Escape.
+  await p.getByTestId("search-toggle").click();
+  assert.equal(await p.evaluate(() => document.activeElement?.tagName), "INPUT");
+  await p.keyboard.press("Escape");
+  assert.ok((await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)) <= 0);
+  await p.close();
+});
+
+test("the header's More menu is a disclosure: Escape and outside click close it, focus returns, current section is marked", async () => {
+  const p = await page();
+  await p.goto(base + "/wall");
+  const more = p.getByRole("button", { name: "More pages" });
+  assert.equal(await more.getAttribute("aria-expanded"), "false");
+  assert.equal(await more.getAttribute("aria-current"), "true", "the Wall is inside More");
+  assert.equal(await p.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Wall" }).count(), 0, "closed: its links are not reachable");
+  await more.click();
+  assert.equal(await more.getAttribute("aria-expanded"), "true");
+  assert.equal(await p.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Wall" }).getAttribute("aria-current"), "page");
+  await p.keyboard.press("ArrowDown");
+  await p.keyboard.press("Escape");
+  assert.equal(await more.getAttribute("aria-expanded"), "false");
+  assert.equal(await p.evaluate(() => document.activeElement?.getAttribute("aria-label")), "More pages");
+  await more.click();
+  await p.mouse.click(700, 500);
+  assert.equal(await more.getAttribute("aria-expanded"), "false", "a click outside closes it");
+  await p.goto(base + "/");
+  assert.equal(await p.getByRole("button", { name: "More pages" }).getAttribute("aria-current"), null, "the board is a primary link, not inside More");
+  await p.close();
+});
+
+test("member page: one primary action, Cite/Save/Follow, and a More menu with the rest; unselected toggles are not struck through", async () => {
+  const id = realData ? "P000197" : "X000001";
+  const p = await page();
+  await p.goto(base + `/m/${id}`, { waitUntil: "networkidle" });
+  const actions = p.locator(".dossier__actions");
+  assert.equal(await actions.getByRole("link", { name: "Open on the board" }).count(), 1);
+  for (const name of [/^Cite this/, /^Save/, /^Follow/]) assert.equal(await actions.getByRole("button", { name }).count(), 1, String(name));
+  const more = actions.getByRole("button", { name: /^More actions/ });
+  assert.equal(await p.getByTestId("member-feed-link").isVisible(), false, "the rest is behind the menu");
+  await more.click();
+  assert.equal(await more.getAttribute("aria-expanded"), "true");
+  for (const t of ["member-feed-link", "member-embed-link"]) assert.equal(await p.getByTestId(t).isVisible(), true, t);
+  assert.equal(await p.getByRole("button", { name: "Print case file" }).isVisible(), true);
+  assert.equal(await p.getByRole("link", { name: "Find documented connections…" }).isVisible(), true);
+  await p.keyboard.press("Escape");
+  assert.equal(await more.getAttribute("aria-expanded"), "false");
+  assert.equal(await p.evaluate(() => document.activeElement === document.querySelector(".dossier__more .menu__btn")), true, "focus returns to the button");
+  // Tab leaves the menu and closes it.
+  await more.click();
+  await p.keyboard.press("Tab");
+  await p.keyboard.press("Tab");
+  await p.keyboard.press("Tab");
+  await p.keyboard.press("Tab");
+  await p.keyboard.press("Tab");
+  await p.keyboard.press("Tab");
+  assert.equal(await more.getAttribute("aria-expanded"), "false", "tabbing out closes it");
+  // Unselected date-basis toggle: readable, clickable, not struck through, not dimmed like a disabled control.
+  const unselected = p.getByTestId("basis-public");
+  assert.equal(await unselected.getAttribute("aria-pressed"), "false");
+  const css = await unselected.evaluate((e) => { const s = getComputedStyle(e); return { deco: s.textDecorationLine, opacity: s.opacity }; });
+  assert.equal(css.deco, "none");
+  assert.equal(css.opacity, "1");
+  // The assumptions chip is the single entry point and always says the state.
+  assert.equal(await p.getByTestId("assume-summary").first().innerText(), "household, every trade");
+  assert.equal(await p.getByRole("switch").first().isVisible(), false, "the switches stay folded until the chip is opened");
+  await p.locator(".assume summary").first().click();
+  assert.equal(await p.getByRole("switch").first().isVisible(), true);
+  await p.close();
+});
+
+test("member page: section index, one caveat above the cases, and long ties fold behind Show all", async () => {
+  const id = realData ? "P000197" : "X000001";
+  const p = await page();
+  await p.goto(base + `/m/${id}`, { waitUntil: "networkidle" });
+  const index = p.getByTestId("section-index");
+  for (const name of ["Ties", "Activity", "Holdings", "Trades"]) assert.equal(await index.getByRole("link", { name }).count(), 1, name);
+  for (const href of await index.locator("a").evaluateAll((as) => as.map((a) => a.getAttribute("href"))))
+    assert.equal(await p.locator(href).count(), 1, `${href} exists`);
+  // The caveat is said once, above the cases; the case rows do not repeat it.
+  assert.equal(await p.getByTestId("cases-not-shown").count(), await p.locator("#cases").count());
+  assert.equal(await p.locator(".dossier__cases .notshown").count(), 0);
+  // Ties fold after 12 rows and unfold; hidden rows are not in the tab order.
+  const rows = p.locator("[data-testid=member-page] .tiesection table.ties tbody tr[data-edge]");
+  const total = await rows.count();
+  assert.ok(total > 12, `fixture has more than 12 ties (${total})`);
+  const shownRows = () => rows.evaluateAll((trs) => trs.filter((r) => getComputedStyle(r).display !== "none").length);
+  assert.equal(await shownRows(), 12);
+  const btn = p.getByTestId("ties-fold");
+  assert.equal(await btn.getAttribute("aria-expanded"), "false");
+  await btn.click();
+  assert.equal(await shownRows(), total);
+  assert.equal(await btn.getAttribute("aria-expanded"), "true");
+  await btn.click();
+  assert.equal(await shownRows(), 12);
+  // Print shows every row.
+  await p.emulateMedia({ media: "print" });
+  assert.equal(await rows.evaluateAll((trs) => trs.filter((r) => r.classList.contains("is-fold")).every((r) => getComputedStyle(r).display === "table-row")), true);
+  await p.close();
+});
+
 realTest("wall and organisation pages do not scroll sideways at phone width", async () => {
   const p = await page(390, 844);
   for (const url of ["/wall", "/orgs", "/o/co%3A732717"]) {
@@ -686,6 +802,7 @@ test("/new lists trades made public in the 7 days to the build date, and its fil
   // the header still fits at phone width
   await p.setViewportSize({ width: 390, height: 844 });
   assert.ok((await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)) <= 0);
+  await p.getByTestId("nav-toggle").click();
   assert.equal(await p.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "New" }).count(), 1);
   await p.close();
 });

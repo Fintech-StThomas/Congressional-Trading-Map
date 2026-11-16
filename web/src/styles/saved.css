@@ -105,9 +105,6 @@
 .cite-save-row > .save:has(.save__panel) {
   flex: 1 1 100%;
 }
-.dossier__actions .save {
-  display: inline-block;
-}
 .drawer .save__panel {
   background: var(--paper-2);
   border-color: var(--paper-edge);

@@ -43,12 +43,25 @@
   margin: 8px 0 0;
 }
 
+/* The year window and date basis are a compact row, not a boxed bar. On the member page the row sits beside the
+   view switcher (.viewrow); elsewhere it sits under it. */
 .viewbar {
+  margin: 0 0 14px;
+  padding: 0;
+}
+.viewrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 28px;
   margin: 0 0 18px;
-  padding: 12px 14px;
-  border: 1px solid var(--rule-soft);
-  border-radius: var(--r);
-  background: var(--surface);
+}
+.viewrow > .viewswitch,
+.viewrow > .viewbar {
+  margin: 0 0 10px;
+}
+.viewrow > .viewbar {
+  flex: 1 1 auto;
 }
 .viewbar__row {
   display: flex;
@@ -124,7 +137,17 @@
 
 @media (max-width: 719px) {
   .viewbar__row {
-    gap: 12px;
+    gap: 10px 16px;
+  }
+  .viewrow > .viewbar {
+    flex-basis: 100%;
+  }
+  .viewbar__basis {
+    gap: 6px;
+  }
+  .viewbar__basis .chip {
+    padding: 0 10px;
+    font-size: 12.5px;
   }
 }
 @media print {
