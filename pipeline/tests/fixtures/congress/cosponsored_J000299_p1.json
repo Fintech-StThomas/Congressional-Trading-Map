@@ -1,0 +1,57 @@
+{
+ "cosponsoredLegislation": [
+  {
+   "congress": 119,
+   "introducedDate": "2026-09-03",
+   "latestAction": {
+    "actionDate": "2026-09-03",
+    "text": "Referred to the House Committee on Oversight and Government Reform."
+   },
+   "number": "10253",
+   "policyArea": {
+    "name": "Government Operations and Politics"
+   },
+   "title": "To designate the facility of the United States Postal Service located at 1706 South Burnside Avenue in Gonzales, Louisiana, as the \"Cpl. Lawrence Brown Post Office Building\".",
+   "type": "HR",
+   "url": "https://api.congress.gov/v3/bill/119/hr/10253?format=json"
+  },
+  {
+   "congress": 119,
+   "introducedDate": "2026-01-07",
+   "latestAction": {
+    "actionDate": "2026-07-16",
+    "text": "Received in the Senate and Read twice and referred to the Committee on Veterans' Affairs."
+   },
+   "number": "6963",
+   "policyArea": {
+    "name": "Armed Forces and National Security"
+   },
+   "title": "To designate the community-based outpatient clinic of the Department of Veterans Affairs in Lafayette, Louisiana, as the \"Rodney C. Hamilton Sr. VA Clinic\".",
+   "type": "HR",
+   "url": "https://api.congress.gov/v3/bill/119/hr/6963?format=json"
+  },
+  {
+   "congress": 119,
+   "introducedDate": "2025-03-11",
+   "latestAction": {
+    "actionDate": "2025-01-06",
+    "text": "Referred to the House Committee on the Judiciary."
+   },
+   "number": "12",
+   "policyArea": {
+    "name": "Congress"
+   },
+   "title": "Proposing an amendment to the Constitution of the United States to limit the number of terms that a Member of Congress may serve.",
+   "type": "HJRES",
+   "url": "https://api.congress.gov/v3/bill/119/hjres/12?format=json"
+  }
+ ],
+ "pagination": {
+  "count": 3
+ },
+ "request": {
+  "bioguideId": "j000299",
+  "contentType": "application/json",
+  "format": "json"
+ }
+}

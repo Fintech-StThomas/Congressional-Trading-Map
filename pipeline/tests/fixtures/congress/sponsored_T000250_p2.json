@@ -1,0 +1,42 @@
+{
+ "pagination": {
+  "count": 7
+ },
+ "request": {
+  "bioguideId": "t000250",
+  "contentType": "application/json",
+  "format": "json"
+ },
+ "sponsoredLegislation": [
+  {
+   "congress": 119,
+   "introducedDate": "2026-08-06",
+   "latestAction": {
+    "actionDate": "2026-08-06",
+    "text": "Submitted in the Senate, considered, and agreed to without amendment and with a preamble by Unanimous Consent. (consideration: CR S4530; text: CR S4525)"
+   },
+   "number": "840",
+   "policyArea": {
+    "name": "Congress"
+   },
+   "title": "A resolution to authorize testimony and representation by the Senate Legal Counsel.",
+   "type": "SRES",
+   "url": "https://api.congress.gov/v3/bill/119/sres/840?format=json"
+  },
+  {
+   "congress": 119,
+   "introducedDate": "2026-07-23",
+   "latestAction": {
+    "actionDate": "2026-07-30",
+    "text": "Resolution agreed to in Senate without amendment by Yea-Nay Vote. 50 - 47. Record Vote Number: 217."
+   },
+   "number": "817",
+   "policyArea": {
+    "name": "Congress"
+   },
+   "title": "An executive resolution authorizing the en bloc consideration in Executive Session of certain nominations on the Executive Calendar.",
+   "type": "SRES",
+   "url": "https://api.congress.gov/v3/bill/119/sres/817?format=json"
+  }
+ ]
+}

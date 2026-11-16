@@ -1,0 +1,80 @@
+{
+ "pagination": {
+  "count": 7,
+  "next": "https://api.congress.gov/v3/member/T000250/sponsored-legislation?offset=5&limit=5&format=json"
+ },
+ "request": {
+  "bioguideId": "t000250",
+  "contentType": "application/json",
+  "format": "json"
+ },
+ "sponsoredLegislation": [
+  {
+   "congress": 119,
+   "introducedDate": "2026-09-29",
+   "latestAction": {
+    "actionDate": "2026-09-29",
+    "text": "Submitted in the Senate, considered, and agreed to without amendment and with a preamble by Unanimous Consent. (consideration: CR S5186; text: CR S5178)"
+   },
+   "number": "928",
+   "policyArea": {
+    "name": "Congress"
+   },
+   "title": "A resolution to authorize testimony, document production, and representation by the Senate Legal Counsel in the case of United States v. Terry.",
+   "type": "SRES",
+   "url": "https://api.congress.gov/v3/bill/119/sres/928?format=json"
+  },
+  {
+   "congress": 119,
+   "introducedDate": "2026-08-07",
+   "latestAction": {
+    "actionDate": "2026-11-12",
+    "text": "Placed on Senate Legislative Calendar under General Orders. Calendar No. 711."
+   },
+   "number": "5359",
+   "policyArea": {
+    "name": "Public Lands and Natural Resources"
+   },
+   "title": "Pennington County Land Conveyance Act",
+   "type": "S",
+   "url": "https://api.congress.gov/v3/bill/119/s/5359?format=json"
+  },
+  {
+   "congress": 119,
+   "introducedDate": "2026-08-06",
+   "latestAction": {
+    "actionDate": "2026-08-06",
+    "text": "Submitted in the Senate, considered, and agreed to without amendment and with a preamble by Unanimous Consent. (consideration: CR S4530; text: CR S4525)"
+   },
+   "number": "839",
+   "policyArea": {
+    "name": "Congress"
+   },
+   "title": "A resolution to authorize representation by the Senate Legal Counsel in Federal Trade Commission v. Key Investment Group, LLC, et al.",
+   "type": "SRES",
+   "url": "https://api.congress.gov/v3/bill/119/sres/839?format=json"
+  },
+  {
+   "amendmentNumber": "6889",
+   "congress": 119,
+   "introducedDate": "2026-11-10",
+   "latestAction": {
+    "actionDate": "2026-11-11",
+    "text": "Considered by Senate. (consideration: CR S5567)"
+   },
+   "type": null,
+   "url": "https://api.congress.gov/v3/amendment/119/samdt/6889?format=json"
+  },
+  {
+   "amendmentNumber": "5183",
+   "congress": 114,
+   "introducedDate": "2016-12-10",
+   "latestAction": {
+    "actionDate": "2016-12-10",
+    "text": "Amendment SA 5183 agreed to in Senate by Unanimous Consent."
+   },
+   "type": null,
+   "url": "https://api.congress.gov/v3/amendment/114/samdt/5183?format=json"
+  }
+ ]
+}

@@ -43,6 +43,21 @@ def lda() -> None:
         print(f"  lda: failed ({type(e).__name__}: {e}); previous plug-in files left in place")
 
 
+def congress() -> None:
+    """Congress.gov bill sponsorship pilot (pipeline/congress/). Off unless PT_ENABLE_CONGRESS=1. Even then it only
+    rebuilds a member -> bill fact table from cached pages under pipeline/build/congress/: it never downloads here
+    (use `python -m pipeline.congress.run --download`) and writes no plug-in file, so nothing is published."""
+    import os
+    if os.environ.get("PT_ENABLE_CONGRESS") != "1":
+        print("  congress: skipped (set PT_ENABLE_CONGRESS=1 to enable)")
+        return
+    from .congress import run as congress_run
+    try:
+        congress_run.main([])
+    except Exception as e:  # noqa: BLE001 - an unpublished pilot must never fail the pipeline
+        print(f"  congress: failed ({type(e).__name__}: {e})")
+
+
 def holdings_publish() -> None:
     """Rerun the holdings stage once the new tree is in place. Why: its overlaps compare each holding with the
     member's *published* file (contract), and before assemble that file is the previous build's. The plug-in files
@@ -62,6 +77,7 @@ STAGES: dict[str, Callable[[], None]] = {
     "edges_trades": edges_trades.run,
     "edges_committees": edges_committees.run,
     "lda": lda,
+    "congress": congress,      # pilot, off by default, writes no plug-in file
     "holdings": holdings.run,  # before assemble, so its `owns` edges are merged in the same run
     "assemble": assemble.run,  # carries the holdings files over when it swaps web/public/data
     "holdings_publish": holdings_publish,

@@ -34,6 +34,7 @@ commit and retrieval times. To get the published data without running the pipeli
 | `PT_CACHE_ONLY=1` | reuse every cached download regardless of age (reproducible rebuilds, offline work) |
 | `PT_OUT_DIR` | publish somewhere other than `web/public/data/` (dry runs, comparisons) |
 | `PT_ENABLE_LDA=1`, `LDA_API_KEY` | switch the lobbying stage on (off by default; "off" also removes stale `lda.*` plug-in files) |
+| `PT_ENABLE_CONGRESS=1`, `CONGRESS_API_KEY` | switch the Congress.gov sponsorship pilot on (off by default; unpublished, see "Congress.gov pilot") |
 
 To check that a change is a pure refactor, rebuild into a copy and compare hashes:
 `PT_CACHE_ONLY=1 PT_OUT_DIR=/tmp/out HF_REVISION=<sha> HF_HOLDINGS_REVISION=<sha> python -m pipeline.run` (the
@@ -70,6 +71,7 @@ Times and peak memory (resident set of the whole process, which only grows) from
 | `edges_trades` | `edges_trades.py` | `trades.parquet`, `ticker_orgs.json`, `companies.json` | `trades_resolved.parquet`, `edges/trades.jsonl`, `orgs/trades.jsonl` | 23 s | 1.5 GB |
 | `edges_committees` | `edges_committees.py` | `committees.json` | `edges/committees.jsonl` | 1 s | |
 | `lda` | `lda/` | LDA API pages (off unless `PT_ENABLE_LDA=1`) | `edges/lda.jsonl`, `orgs/lda.jsonl`, `sources/lda.json` | 0 s | |
+| `congress` | `congress/` | cached Congress.gov pages (off unless `PT_ENABLE_CONGRESS=1`) | `build/congress/` only (no plug-in file) | 0 s | |
 | `holdings` | `holdings/` | HF `ZipLime/congress-trading` (by commit), build files | `web/public/data/holdings/`, `holdings-index.json`, `edges/holdings_owns.jsonl`, `orgs/holdings.jsonl`, `sources/holdings.json`, `holdings_rows.json` | 21-23 s | 1.7 GB |
 | `assemble` | `assemble/` | every plug-in file, `trades_resolved.parquet` | every other file in `web/public/data/` (staging dir, then swap) | 84 s | 4.2 GB |
 | `holdings_publish` | `run.py` | the newly published member files | the holdings files again, with this build's overlaps; `meta.json.reports.holdings` | 21-23 s | |
@@ -94,6 +96,7 @@ pipeline/
   fec/                download -> load (parse) -> refs (identities) -> build (rules, edges, orgs) -> run (write, checks)
   holdings/           source (download) -> run (parse, resolve, emit) -> rules (redaction) -> validate
   lda/                download -> build (parse) -> match (identities) -> edges -> run (write, checks); off by default
+  congress/           download -> facts (parse, exact ids) -> run (fact table, review sample); off by default, unpublished
   assemble/           plugins (load, merge) cases budget orgs wall members publish, run (the orchestrator)
   validate.py         output checks; holdings/validate.py for holdings
   publish_r2.py       upload web/public/data to Cloudflare R2 (changed files only); run by the daily workflow
@@ -118,6 +121,18 @@ a `.meta.json` sidecar with sha256 and Last-Modified) -> **parse** (assert row c
    `edges/`, `orgs/` and `sources/`, and drops (and counts) edges with unknown endpoints or unlisted sources.
 5. Add thresholds to `config.py`, rules to the data dictionary, tests to `tests/test_<source>.py`, and run
    `python -m pipeline.run` to 0 validation failures.
+
+## Congress.gov pilot (off, unreviewed, unpublished)
+
+`pipeline/congress/` tests a bills source on five hand-listed current members before any bulk ingestion. With
+`PT_ENABLE_CONGRESS=1` set, `python -m pipeline.congress.run --download --sample` fetches their sponsored and cosponsored
+legislation from the Congress.gov API (about 40 requests, cached raw under `pipeline/.cache/congress/`), writes a
+member -> bill fact table and `report.json` to `pipeline/build/congress/`, and a review CSV that is copied to
+`docs/validation/congress-sample.csv` once, with empty reviewer columns. Without the variable it prints one line and does
+nothing; the `congress` stage in `run.py` is then a no-op, and even when enabled it reads the cache only and writes no
+file the assembler reads, so nothing reaches `web/public/data`. Members are matched by exact bioguide id only. No human
+has reviewed the sample. Contract: data dictionary, "Congress.gov bill sponsorship pilot". Survey of the other
+candidate sources: `docs/SOURCE-EXPANSION.md`.
 
 ## Overrides
 

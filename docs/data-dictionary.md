@@ -867,3 +867,40 @@ pos_unexplained_disappearance, pos_band_change_no_trade, pos_share_with_trades,
 margin_loan_years`. Missing first/latest comparison values are null.
 The holdings validator runs the positions checks alongside the main validator: snapshot sums and citations, trade
 identity, transition rules and summaries, first/latest change and leverage.
+
+## Congress.gov bill sponsorship pilot (`pipeline/congress/`, unreviewed, unpublished)
+
+A switched-off pilot, not a published source. It runs only with `PT_ENABLE_CONGRESS=1`, covers five hand-listed
+current members (`pipeline/congress/download.py`, `PILOT_MEMBERS`), and writes no plug-in file: nothing under
+`pipeline/build/edges`, `orgs` or `sources`, so the assembler never reads it and no field below appears in
+`web/public/data`. It exists to test access, identity and review on a small set before any bulk ingestion (plan gate
+"New sources"). The contract below is provisional and changes freely until a human has reviewed the sample.
+
+Source: Congress.gov API v3 (`https://api.congress.gov/v3/`), member `sponsored-legislation` and
+`cosponsored-legislation` lists, current (119th) Congress only. Cited with its access date; the cache holds the raw
+response text (`pipeline/.cache/congress/`, gitignored).
+
+**Fact table** `pipeline/build/congress/member_bills.jsonl` (one row per member, role and bill; key-sorted JSON):
+`member` (bioguide id), `role` (`sponsor` | `cosponsor`), `bill_id` (`<congress>-<type>-<number>`, from the item's own
+fields), `congress`, `bill_type` (lower-case code: hr, s, hres, sres, hjres, sjres, hconres, sconres), `number`,
+`introduced`, `policy_area`, `title`, `latest_action_date`, `congress_url` (Congress.gov bill page built from type and
+number), `api_url`. Missing values are null.
+
+Rules:
+- **Identity is exact.** A row belongs to a member only because the request that returned it was made for that
+  bioguide id and the returned member record carries the same id. The member must be current and, when
+  `pipeline/build/spine.json` exists, present in it; otherwise the run stops. No name is read or compared.
+- Items from another Congress and amendments (`amendmentNumber`, a Senate item kind that is not a bill) are dropped
+  and counted in `report.json` (`dropped`). The API lists every Congress ordered by last update, with no Congress
+  filter, so every page is read and the 119th is selected by the item's `congress` field.
+- A list longer than `MAX_PAGES` would be recorded as truncated (`state.json`), never cut silently.
+- Co-sponsorship is not turned into `legislates_with`. That edge type is declared in the contract and the site's
+  wording, but no stage builds it today, and a rule for it (which bills, how many shared, a baseline) is an owner
+  decision. `report.json` carries `shared_bills_by_pair` (bills on which two pilot members both appear) as a plain
+  count of facts; it is not a tie and has no evidence link.
+
+**Review sample.** `--sample` writes `pipeline/build/congress/congress-sample.csv` (up to 3 rows per member and role,
+fixed seed) and, only when none exists, the template `docs/validation/congress-sample.csv`. Columns: `member, role,
+bill_id, introduced, policy_area, title, congress_url, api_url` then the reviewer columns `checked_by,
+matches_source, comment`, which are empty until a person opens `congress_url` and confirms the member is listed as
+sponsor or cosponsor. No review has happened. A reviewed copy is never overwritten.

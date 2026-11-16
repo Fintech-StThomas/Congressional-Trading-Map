@@ -220,4 +220,11 @@ Revisit expansion after reliable citations, current congressional coverage, and 
 - P0.2 implemented locally: a read-only pull-request workflow runs pipeline tests, a fixture web build, lint,
   type checking, Chromium tests and the STATUS policy. It must run successfully on an actual PR before the
   workflow itself is considered verified; branch protection remains an owner setting.
-- Subsequent packets are queued, not running; update this log and STATUS after verification of each increment.
+- 2026-11-16 continuation (branch `claude/gallant-allen-60we8b`), lead with cheaper-model workers:
+  - R1.3 release-pinned readers and `/r/<release>/...` permanent pages (opt-in `RELEASE_BASE_URL`); verified against a fake local bucket (`npm run test:pinned`, 7 tests), not on Vercel or R2.
+  - R1.2 operations: provider check, history index, withdrawal, staging/rollback workflow, opt-in daily archive step (`PT_PUBLISH_RELEASES`); fake-S3 tests only. Owner checklist: `docs/RELEASE-OPERATIONS.md`.
+  - R1.4 citation packets and contextual coverage notes; R2.1 `delays.json` and `/delays`; R2.2 `/changes`; R3.1 synchronized views; R3.2 `/saved`; R3.3 `/connect`; R4.1 feeds, embeds, share images, `/export`.
+  - D1–D3 feasibility survey (`docs/SOURCE-EXPANSION.md`) and an unpublished Congress.gov pilot.
+  - Checks at the end: pipeline + CI-script tests 242 passed; web build clean; `npm test` 215 passed, 17 skipped (need real data); pinned 7 passed. `python -m pipeline.validate` and holdings validation were not run (no generated dataset in the session). Screens were checked by eye at desktop and 390px on the sample site only.
+  - Three workers ran in parallel in two waves, above the two-agent cap in STATUS; later waves kept to two.
+- Remaining before production activation: provider check on R2, one observed archived daily run, Vercel Preview with `RELEASE_BASE_URL`, then Production; reporter usability sessions; human review of the delay audit's open questions and the Congress.gov sample.
