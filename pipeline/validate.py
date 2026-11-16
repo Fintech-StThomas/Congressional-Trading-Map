@@ -28,6 +28,7 @@ from .config import MONEY_EDGES_PER_MEMBER
 from .edges import edge_id, sum_amounts
 from .holdings.rules import redact_beneficiary
 from .util import BUILD, OUT, read_json
+from .validate_delays import check_delays
 
 DATE = "date"
 OWNERS = {"self", "spouse", "joint", "dependent", "unspecified"}
@@ -381,6 +382,8 @@ def main() -> int:
     full_pairs: set[tuple[str, str]] = set()
     terms: dict[str, list[dict[str, Any]]] = {}
     trade_rows = 0
+    published_trades: dict[str, list[list[Any]]] = {}
+    trade_summaries: dict[str, dict[str, Any]] = {}
     for mid in sorted(members):
         mf = read_json(OUT / "members" / f"{mid}.json")
         where = f"members/{mid}"
@@ -404,7 +407,10 @@ def main() -> int:
         c.check(len(mf["board"]) <= BOARD_EDGES and set(mf["board"]) <= ids, "board: <= 12 ids of full edges", where)
         check_member_ledger(c, mf, where, orgs, members)
         tpath = OUT / "trades" / f"{mid}.json"
-        n = check_trades(c, read_json(tpath), f"trades/{mid}", orgs) if tpath.exists() else 0
+        tf = read_json(tpath) if tpath.exists() else None
+        n = check_trades(c, tf, f"trades/{mid}", orgs) if tf is not None else 0
+        published_trades[mid] = tf["rows"] if tf is not None and "rows" in tf else []
+        trade_summaries[mid] = mf["trade_summary"]
         trade_rows += n
         c.check(mf["member"]["counts"]["trades"] == n == mf["trade_summary"]["count"], "trade counts match trades file", where)
         for cov in mf["coverage"]:
@@ -444,6 +450,8 @@ def main() -> int:
     counts = meta["counts"]
     c.check(counts["members"] == len(members_list) and counts["orgs"] == len(orgs_list) and counts["cases"] == len(cases)
             and counts["edges"] == sum(counts["edges_by_type"].values()), "meta.json counts match the files", "")
+
+    check_delays(c, read_json(OUT / "delays.json"), members, published_trades, trade_summaries, is_date)
 
     # Row counts across stages: no join may have multiplied or lost trades.
     resolved = pq.read_metadata(BUILD / "trades_resolved.parquet").num_rows

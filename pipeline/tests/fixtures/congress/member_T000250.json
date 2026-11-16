@@ -1,0 +1,141 @@
+{
+ "member": {
+  "bioguideId": "T000250",
+  "currentMember": true,
+  "directOrderName": "John Thune",
+  "partyHistory": [
+   {
+    "partyAbbreviation": "R",
+    "partyName": "Republican",
+    "startYear": 1997
+   }
+  ],
+  "terms": [
+   {
+    "chamber": "House of Representatives",
+    "congress": 105,
+    "endYear": 1999,
+    "memberType": "Representative",
+    "startYear": 1997,
+    "stateCode": "SD",
+    "stateName": "South Dakota"
+   },
+   {
+    "chamber": "House of Representatives",
+    "congress": 106,
+    "endYear": 2001,
+    "memberType": "Representative",
+    "startYear": 1999,
+    "stateCode": "SD",
+    "stateName": "South Dakota"
+   },
+   {
+    "chamber": "House of Representatives",
+    "congress": 107,
+    "endYear": 2003,
+    "memberType": "Representative",
+    "startYear": 2001,
+    "stateCode": "SD",
+    "stateName": "South Dakota"
+   },
+   {
+    "chamber": "Senate",
+    "congress": 109,
+    "endYear": 2007,
+    "memberType": "Senator",
+    "startYear": 2005,
+    "stateCode": "SD",
+    "stateName": "South Dakota"
+   },
+   {
+    "chamber": "Senate",
+    "congress": 110,
+    "endYear": 2009,
+    "memberType": "Senator",
+    "startYear": 2007,
+    "stateCode": "SD",
+    "stateName": "South Dakota"
+   },
+   {
+    "chamber": "Senate",
+    "congress": 111,
+    "endYear": 2011,
+    "memberType": "Senator",
+    "startYear": 2009,
+    "stateCode": "SD",
+    "stateName": "South Dakota"
+   },
+   {
+    "chamber": "Senate",
+    "congress": 112,
+    "endYear": 2013,
+    "memberType": "Senator",
+    "startYear": 2011,
+    "stateCode": "SD",
+    "stateName": "South Dakota"
+   },
+   {
+    "chamber": "Senate",
+    "congress": 113,
+    "endYear": 2015,
+    "memberType": "Senator",
+    "startYear": 2013,
+    "stateCode": "SD",
+    "stateName": "South Dakota"
+   },
+   {
+    "chamber": "Senate",
+    "congress": 114,
+    "endYear": 2017,
+    "memberType": "Senator",
+    "startYear": 2015,
+    "stateCode": "SD",
+    "stateName": "South Dakota"
+   },
+   {
+    "chamber": "Senate",
+    "congress": 115,
+    "endYear": 2019,
+    "memberType": "Senator",
+    "startYear": 2017,
+    "stateCode": "SD",
+    "stateName": "South Dakota"
+   },
+   {
+    "chamber": "Senate",
+    "congress": 116,
+    "endYear": 2021,
+    "memberType": "Senator",
+    "startYear": 2019,
+    "stateCode": "SD",
+    "stateName": "South Dakota"
+   },
+   {
+    "chamber": "Senate",
+    "congress": 117,
+    "endYear": 2023,
+    "memberType": "Senator",
+    "startYear": 2021,
+    "stateCode": "SD",
+    "stateName": "South Dakota"
+   },
+   {
+    "chamber": "Senate",
+    "congress": 118,
+    "endYear": 2025,
+    "memberType": "Senator",
+    "startYear": 2023,
+    "stateCode": "SD",
+    "stateName": "South Dakota"
+   },
+   {
+    "chamber": "Senate",
+    "congress": 119,
+    "memberType": "Senator",
+    "startYear": 2025,
+    "stateCode": "SD",
+    "stateName": "South Dakota"
+   }
+  ]
+ }
+}

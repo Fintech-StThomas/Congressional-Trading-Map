@@ -81,7 +81,8 @@ Data objects and descriptors use `Cache-Control: public, max-age=31536000, immut
 `Cache-Control: no-cache, max-age=0, must-revalidate`. Object creation is conditional (`If-None-Match: *`);
 existing keys must match expected bytes and cache/content-type headers, otherwise publishing fails without
 overwriting them. Re-running an interrupted upload reuses matching objects and completes missing ones.
-No archive command deletes objects. A source tree must remain unchanged during publication; each uploaded
+Publishing and activation never delete objects; only the withdrawal command below does, and only under one
+release's exact prefix. A source tree must remain unchanged during publication; each uploaded
 body is checked against the initial descriptor, and the tree is checked again before completing the release.
 
 Activation captures the current pointer and ETag before work and changes the pointer only after verification,
@@ -90,13 +91,47 @@ changes fail closed. An ambiguous write result is accepted only when a read-back
 pointer. Rollback activates an existing release only after descriptor validation, full file verification, and
 the same pointer precondition. An explicit release never silently resolves to latest.
 
+### Release history index (mutable)
+
+`releases/index.json` is `{schema_version: 1, releases: [{release_id, build_time, activated_at}]}`, newest first,
+for a future "compare releases" view. `release_id` is the 64-hex ID; `build_time` is the release's `meta.json`
+`build.time`; `activated_at` is a UTC timestamp `YYYY-MM-DDTHH:MM:SSZ`. There is one entry per release: activating
+a release already in the list (a rollback or roll-forward) moves its entry to the front with a new `activated_at`;
+re-running the activation of the release already at the front changes nothing, so a repair re-run is idempotent.
+The list holds at most 400 entries (the oldest are dropped; the release objects themselves stay). The file uses the
+pointer's `Cache-Control` and is written with the pointer's discipline (`If-Match` on the captured ETag, or
+`If-None-Match: *` when absent; bounded retries when it changed concurrently). A malformed existing index fails
+closed. It is written only after the pointer has moved. **The pointer is the only authority for which release is
+current**; the index is a convenience, is never part of a release hash, and may be repaired by re-running the
+activation. Readers must not use it to decide what is current.
+
+### Withdrawal tombstone
+
+For discovered privacy or legal exposure only, `python -m pipeline.withdraw_release` writes
+`releases/withdrawn/<release_id>.json` = `{schema_version: 1, release_id, withdrawn_at, reason}` first, where
+`reason` is one of `privacy`, `legal`, `other` (no free text) and `withdrawn_at` is a UTC timestamp. It is
+written with `If-None-Match: *` and the pointer's no-cache headers. It then deletes every object under
+`releases/<release_id>/` and removes the entry from the index. The current release cannot be withdrawn. Publishing
+or activating a release that has a tombstone is refused. Normal corrections publish a new release; old bytes are
+never rewritten.
+
+Cited-release semantics: a citation names a `release_id`. If that release was withdrawn, or its objects are
+absent, the reader must say the release is not available. It must never substitute the latest release.
+A tombstone does not recall copies already held by browsers, CDN caches, or earlier page deployments.
+
+### Provider check prefix
+
+`python -m pipeline.release_provider_check` writes and deletes only under `release-provider-check/<random id>/`.
+Nothing there is read by any reader.
+
 Descriptor validation includes its schema, release ID, canonical identity, file hash/size types, required
 `meta.json`, and safe relative POSIX paths (no empty/dot/traversal segments, backslashes, colons, control
 characters, reserved root filenames, or absolute paths). This protects remote verification from fetching keys
 outside the specified release.
 Build identity and completeness do not prove filing accuracy, redaction, or source authenticity. Callers must
 run the pipeline's data/privacy validators before archiving. Production activation also requires PR checks,
-provider conditional-write verification, release-pinned readers, and the withdrawal process in the product plan.
+provider conditional-write verification (`release_provider_check`), release-pinned readers, and the withdrawal
+process above. Operating procedure: `docs/RELEASE-OPERATIONS.md`.
 
 ## Files in `web/public/data/`
 
@@ -114,6 +149,7 @@ provider conditional-write verification, release-pinned readers, and the withdra
 | `wall.json` | `Wall`: one compact row per member (all members, current flagged) for the wall view; a single fetch |
 | `wall-years.json` | `WallYears`: per member, terms by year and sparse per-year measures, so the wall can be drawn for any year 2000..current year; a single fetch (about 350 KB, 120 KB gzipped) |
 | `org-index.json` | `OrgIndex`: the top organisations by current members reached and by dollars to current members, split by party, so the site can browse organisations without shipping `orgs.json` |
+| `delays.json` | `Delays`: site-wide and per-member counts of elapsed days from transaction date to public availability, in bands (see "Disclosure timing") |
 
 The whole directory is built in a staging directory and swapped into place, so a reader never sees a half-written tree.
 All JSON is minified with sorted keys; output is byte-stable between runs on the same inputs, except `meta.json` (build time, retrieval times).
@@ -444,6 +480,70 @@ year (the weaker level if both), for members with at least one FEC id; otherwise
 `full` and Senate `partial` before 2019 (paper filings keyed by a contractor), `full` from 2019, for the calendar years
 of the loaded cycles (2000 cycle = 1999-2000 onward).
 
+## Disclosure timing (`delays.json`)
+
+Observed elapsed days between each trade's transaction date and the date its report became publicly available, counted
+in bands. It reports what the filings and the source dataset record. It is **not** a finding about whether any filing
+was on time or lawful: the statutory clock starts at the filer's notification of the transaction (not in the data) and
+ends no later than 45 days after the transaction, and committee extensions or waivers are not in the data either. The
+field-level audit is [`docs/validation/disclosure-timing-audit.md`](validation/disclosure-timing-audit.md).
+
+```ts
+type DelayGroup = {
+  count: number;              // trades in the group
+  dated: number;              // count - undated (includes negative lags)
+  bands: { "0-30": number; "31-45": number; "46-90": number; "91-365": number; "over-365": number };
+                              // trades by lag_days; the band keys are fixed text; 31-45 ends at config.LATE_DAYS
+  negative: number;           // lag_days < 0 (availability recorded before the transaction); in no band, no statistic
+  undated: number;            // lag_days is null (transaction or availability date missing); never counted as 0 days
+  amended: number;            // trades that are the current version of an event with more than one version;
+                              // also counted in the bands/negative/undated bucket they belong to, so NOT additive
+  median: number | null;      // nearest-rank percentiles of lag_days over dated, non-negative trades (integers)
+  p90: number | null;
+  max: number | null;         // all null when that set is empty
+};
+// bands + negative + undated == count in every group.
+
+type Delays = {
+  definition: {
+    measured: string;         // "days from the transaction date as filed to the date the report became publicly available"
+    threshold_days: number;   // config.LATE_DAYS (45): the outer bound the 31-45 / 46-90 bands split on
+    bands: string[];          // the band keys in order
+    percentile: string;       // the method, in words
+    caveats: string[];        // fixed strings: observed elapsed days, not compliance; notification dates and extensions
+                              // not in the data; amended and negative-lag handling
+  };
+  totals: DelayGroup;         // every published trade
+  by_chamber: { rep: DelayGroup; sen: DelayGroup };
+                              // by the chamber of the filing as recorded by the dataset (Trade rows in trades/<id>.json
+                              // carry no chamber, so this split cannot be re-derived from them, and it is not
+                              // necessarily the member's chamber when a member served in both)
+  by_year: { [year: string]: DelayGroup };   // calendar year of the transaction date; "none" when it is missing
+                              // (as trade_summary.by_year); a trade with a date but no availability date is in its
+                              // year and counted undated; keys ascending, "none" last
+  members: Table<"id" | "count" | "dated" | "b0_30" | "b31_45" | "b46_90" | "b91_365" | "b366_plus" | "negative"
+                 | "undated" | "amended" | "median" | "p90" | "max" | "first_year" | "last_year">;
+                              // one row per member with at least one published trade, sorted by id; b* are the five
+                              // bands in order; first_year / last_year = earliest / latest transaction year, null
+                              // when no trade has a transaction date; names come from members.json
+};
+```
+
+Rules:
+
+- Built from the same current-version trade rows published in `trades/<id>.json`, so a member's row can be re-derived
+  from that file (`lag_days`, `date`, `amended` columns). `lag_days = available - date` in days; see Trade.
+- Percentile method (nearest rank): sort the n dated, non-negative lags ascending; the p-th percentile is the value at
+  1-based position `ceil(p * n / 100)`. Median is p = 50 (the lower middle value for even n). No interpolation.
+- Output is deterministic: members sorted by id, `by_year` keys ascending, sorted JSON keys.
+- Data strings carry no ranking labels and no wording about violations. The `late` boolean in Trade is unchanged and
+  means only `lag_days > 45`.
+- Validation (`pipeline/validate_delays.py`): schema; bands + negative + undated == count in every group; each member
+  row equals the row re-derived from its trade file and its count equals both the file's row count and
+  `MemberFile.trade_summary.count`; trades over 45 days equal `trade_summary.late`; totals equal the sum of member
+  rows and the figures re-derived from all trade files; chambers sum to totals; by_year groups equal the re-derived
+  figures and sum to totals; every member id exists in `members.json`.
+
 ## Rules the pipeline must keep
 
 - Amendments: use the current event version (`supersededAt` is null); keep `version` and `amended`.
@@ -767,3 +867,40 @@ pos_unexplained_disappearance, pos_band_change_no_trade, pos_share_with_trades,
 margin_loan_years`. Missing first/latest comparison values are null.
 The holdings validator runs the positions checks alongside the main validator: snapshot sums and citations, trade
 identity, transition rules and summaries, first/latest change and leverage.
+
+## Congress.gov bill sponsorship pilot (`pipeline/congress/`, unreviewed, unpublished)
+
+A switched-off pilot, not a published source. It runs only with `PT_ENABLE_CONGRESS=1`, covers five hand-listed
+current members (`pipeline/congress/download.py`, `PILOT_MEMBERS`), and writes no plug-in file: nothing under
+`pipeline/build/edges`, `orgs` or `sources`, so the assembler never reads it and no field below appears in
+`web/public/data`. It exists to test access, identity and review on a small set before any bulk ingestion (plan gate
+"New sources"). The contract below is provisional and changes freely until a human has reviewed the sample.
+
+Source: Congress.gov API v3 (`https://api.congress.gov/v3/`), member `sponsored-legislation` and
+`cosponsored-legislation` lists, current (119th) Congress only. Cited with its access date; the cache holds the raw
+response text (`pipeline/.cache/congress/`, gitignored).
+
+**Fact table** `pipeline/build/congress/member_bills.jsonl` (one row per member, role and bill; key-sorted JSON):
+`member` (bioguide id), `role` (`sponsor` | `cosponsor`), `bill_id` (`<congress>-<type>-<number>`, from the item's own
+fields), `congress`, `bill_type` (lower-case code: hr, s, hres, sres, hjres, sjres, hconres, sconres), `number`,
+`introduced`, `policy_area`, `title`, `latest_action_date`, `congress_url` (Congress.gov bill page built from type and
+number), `api_url`. Missing values are null.
+
+Rules:
+- **Identity is exact.** A row belongs to a member only because the request that returned it was made for that
+  bioguide id and the returned member record carries the same id. The member must be current and, when
+  `pipeline/build/spine.json` exists, present in it; otherwise the run stops. No name is read or compared.
+- Items from another Congress and amendments (`amendmentNumber`, a Senate item kind that is not a bill) are dropped
+  and counted in `report.json` (`dropped`). The API lists every Congress ordered by last update, with no Congress
+  filter, so every page is read and the 119th is selected by the item's `congress` field.
+- A list longer than `MAX_PAGES` would be recorded as truncated (`state.json`), never cut silently.
+- Co-sponsorship is not turned into `legislates_with`. That edge type is declared in the contract and the site's
+  wording, but no stage builds it today, and a rule for it (which bills, how many shared, a baseline) is an owner
+  decision. `report.json` carries `shared_bills_by_pair` (bills on which two pilot members both appear) as a plain
+  count of facts; it is not a tie and has no evidence link.
+
+**Review sample.** `--sample` writes `pipeline/build/congress/congress-sample.csv` (up to 3 rows per member and role,
+fixed seed) and, only when none exists, the template `docs/validation/congress-sample.csv`. Columns: `member, role,
+bill_id, introduced, policy_area, title, congress_url, api_url` then the reviewer columns `checked_by,
+matches_source, comment`, which are empty until a person opens `congress_url` and confirms the member is listed as
+sponsor or cosponsor. No review has happened. A reviewed copy is never overwritten.

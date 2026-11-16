@@ -236,6 +236,18 @@ realTest("wall and organisation pages do not scroll sideways at phone width", as
   await p.close();
 });
 
+test("member case file and full file do not scroll sideways at phone width", async () => {
+  // The year timeline's hidden labels once escaped its scroll box and let phones pan the whole page.
+  const id = realData ? "P000197" : "X000001";
+  const p = await page(390, 844);
+  for (const url of [`/m/${id}`, `/m/${id}/records`]) {
+    await p.goto(base + url, { waitUntil: "networkidle" });
+    const overflow = await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    assert.ok(overflow <= 0, `${url} scrolls sideways by ${overflow}px`);
+  }
+  await p.close();
+});
+
 realTest("wall by year: a year loads, members and summaries change, and 2008 trades say so in words", async () => {
   const p = await page();
   // The local prerender can be visible before the slider's client handler hydrates.
@@ -504,6 +516,68 @@ realTest("annual positions, financial history and transition CSV agree with the 
 });
 
 // Runs last: the main journeys not covered above, then the check over every page this file opened.
+// ---- one investigation across the board, the case file and the full file (shared view state in the URL)
+// These use the invented sample member X000001 (and one of its tie ids), so they skip on a real-data build.
+const SAMPLE_ONLY = "needs the sample fixtures (member X000001)";
+
+test("the year range carries from the case file to the full file through the view switcher", async (t) => {
+  if (realData) return t.skip(SAMPLE_ONLY);
+  const p = await page();
+  await p.goto(base + "/m/X000001?y=2016-2020");
+  const sw = p.getByTestId("view-switch");
+  await sw.waitFor();
+  assert.match(await p.getByTestId("view-filter-label").innerText(), /Filtered to 2016–2020/);
+  assert.equal(await sw.locator("a[aria-current=page]").innerText(), "Case file");
+  await sw.getByRole("link", { name: "Full file", exact: true }).click();
+  await p.waitForURL(/\/m\/X000001\/records\?.*y=2016-2020/);
+  await p.getByTestId("records-ready").waitFor({ timeout: 60000 });
+  assert.match(await p.getByTestId("view-filter-label").innerText(), /Filtered to 2016–2020/);
+  assert.match(await p.getByTestId("rec-ties-years").innerText(), /2016–2020/);
+  await p.getByTestId("view-clear-years").click();
+  await p.waitForFunction(() => !location.search.includes("y="));
+  assert.equal(await p.getByTestId("view-filter-label").count(), 0);
+  await p.close();
+});
+
+test("a tie selected on the case file puts e= in the URL and survives the switch to the board", async (t) => {
+  if (realData) return t.skip(SAMPLE_ONLY);
+  const p = await page();
+  await p.goto(base + "/m/X000001");
+  await p.locator("table.ties tbody tr[data-edge]").first().waitFor();
+  await p.locator("table.ties tbody tr[data-edge] button", { hasText: "Evidence" }).first().click();
+  await p.waitForURL(/[?&]e=[0-9a-f]{12}/);
+  const e = new URL(p.url()).searchParams.get("e");
+  await p.getByTestId("evidence-drawer").waitFor();
+  await p.getByTestId("view-switch").getByRole("link", { name: "Board", exact: true }).click();
+  await p.waitForURL(/\/\?.*m=X000001/);
+  assert.equal(new URL(p.url()).searchParams.get("e"), e);
+  // The board opens that string's drawer, or says the tie is not drawn there (the board draws only the largest ties).
+  await p.locator("[data-testid=evidence-drawer], [data-testid=board-tie-missing]").first().waitFor({ timeout: 15000 });
+  await p.close();
+});
+
+test("arriving with e highlights the tie's row in the full file", async (t) => {
+  if (realData) return t.skip(SAMPLE_ONLY);
+  const p = await page();
+  await p.goto(base + "/m/X000001/records?e=2c115a69f293");
+  await p.getByTestId("records-ready").waitFor({ timeout: 60000 });
+  await p.waitForSelector("[data-testid=rec-ties] tr.is-selected");
+  assert.equal(await p.locator("[data-testid=rec-ties] tr.is-selected").count(), 1);
+  assert.match(await p.getByTestId("rec-selected-tie").innerText(), /2c115a69f293/);
+  await p.close();
+});
+
+test("embeds can be framed, feeds are RSS, and ordinary pages still refuse framing", async () => {
+  const embed = await fetch(base + "/embed/m/X000001");
+  if (embed.status === 404) return; // a build without that member (real data)
+  assert.match(embed.headers.get("content-security-policy") ?? "", /frame-ancestors \*/);
+  assert.equal(embed.headers.get("x-frame-options"), null);
+  const about = await fetch(base + "/about");
+  assert.match(about.headers.get("content-security-policy") ?? "", /frame-ancestors 'none'/);
+  const feed = await fetch(base + "/feed/trades.xml");
+  assert.match(feed.headers.get("content-type") ?? "", /application\/rss\+xml/);
+});
+
 test("no Content-Security-Policy violations on any page", async () => {
   const p = await page();
   for (const url of ["/", "/wall", "/cases", "/orgs", "/method", "/about"]) {

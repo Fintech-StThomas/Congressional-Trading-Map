@@ -2,13 +2,14 @@
 import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import { Public_Sans, JetBrains_Mono, Courier_Prime } from "next/font/google";
-import { SITE } from "@/lib/copy";
+import { FEED, SITE } from "@/lib/copy";
 import { IS_SAMPLE, getMetaForLayout, metaBuilt } from "@/lib/data/server";
 import { date } from "@/lib/format";
 import { SearchBox } from "@/components/shared/SearchBox";
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 import { Wordmark } from "@/components/shared/Wordmark";
 import { CorrectionLink, CorrectionProvider } from "@/components/shared/CorrectionLink";
+import { FooterAsOf } from "@/components/shared/FooterAsOf";
 import { NavLinks } from "@/components/shared/NavLinks";
 import { Analytics } from "@vercel/analytics/next";
 import "@/styles/tokens.css";
@@ -26,6 +27,8 @@ export const metadata: Metadata = {
   description: SITE.description,
   openGraph: { title: SITE.name, description: SITE.description, type: "website", siteName: SITE.name },
   twitter: { card: "summary_large_image", title: SITE.name, description: SITE.description },
+  // Feed discovery: readers and browsers find the site-wide feed of trades made public (app/feed/trades.xml).
+  alternates: { types: { "application/rss+xml": [{ url: "/feed/trades.xml", title: FEED.siteTitle }] } },
   robots: IS_SAMPLE ? { index: false, follow: false } : undefined,
 };
 
@@ -77,10 +80,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               <span className="mono">{SITE.name}</span> maps ties named in filed public records. {SITE.disclaimer}
             </p>
             <p className="site-footer__meta">
-              <span>
-                Data as of <span className="mono">{built ? date(built) : "unknown"}</span>
-                {IS_SAMPLE ? " (sample)" : ""}
-              </span>
+              <FooterAsOf asOf={built ? date(built) : "unknown"} sample={IS_SAMPLE} />
               <Link href="/method">Sources and method</Link>
               <Link href="/about">About</Link>
               <span>Not investment advice</span>

@@ -1,12 +1,21 @@
 "use client";
 // "Trades" on the member page: every periodic transaction report row, filterable, sortable and windowed
 // (only visible rows are in the DOM). Starts with the newest rows from the server, then loads trades/<id>.json.
+// The shared view (year window, date basis, assumptions) narrows it: years count by the transaction date or the date
+// made public, never both, and trades without that date are listed apart, not placed in any year.
+import "@/styles/delays.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Trade, TradeFile } from "@/lib/types";
 import { decodeTradeFile, type TradeRow } from "@/lib/data/decode";
-import { amountText, count, date, NOT_DISCLOSED } from "@/lib/format";
+import Link from "next/link";
+import { amountText, count, date, days, NOT_DISCLOSED } from "@/lib/format";
+import { DELAYS, VIEW } from "@/lib/copy";
+import { isDefault, tradeCounts } from "@/lib/domain/assume";
+import { basisYear, splitByYears } from "@/lib/domain/datebasis";
+import { useView } from "@/components/shared/useViewState";
+import { delayGroupFromTrades, overCount } from "@/lib/domain/delays";
 import { getJSON } from "@/lib/data/fetch";
-import { safeHttpUrl } from "@/lib/urls";
+import { delaysHref, safeHttpUrl } from "@/lib/urls";
 import { ExternalIcon } from "@/components/shared/ExternalIcon";
 
 type Props = { initial: TradeRow[]; total: number; fullUrl: string };
@@ -68,7 +77,12 @@ export function TradesTable({ initial, total, fullUrl }: Props) {
   const [owner, setOwner] = useState("all");
   const [cls, setCls] = useState("all");
   const [late, setLate] = useState(false);
+  const [undatedFor, setUndatedFor] = useState<string | null>(null);
   const [top, setTop] = useState(0);
+  const view = useView();
+  // "Show only the undated" holds for the year window it was chosen under, and lapses when the window changes.
+  const yearsKey = view.years ? view.years.join("-") : "";
+  const undatedOnly = yearsKey !== "" && undatedFor === yearsKey;
   const scroller = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -86,14 +100,19 @@ export function TradesTable({ initial, total, fullUrl }: Props) {
     };
   }, [fullUrl, total, initial.length]);
 
-  const years = useMemo(() => [...new Set(trades.map((t) => t.date?.slice(0, 4) ?? "undated"))].sort().reverse(), [trades]);
+  // The shared view first: assumptions drop trades, the year window splits the rest into in-window and undated.
+  const counted = useMemo(() => (isDefault(view.assume) ? trades : trades.filter((t) => tradeCounts(t, view.assume))), [trades, view.assume]);
+  const windowed = useMemo(() => splitByYears(counted, view.years, view.basis), [counted, view.years, view.basis]);
+  const base = undatedOnly && view.years ? windowed.undated : windowed.shown;
+  const yearOfRow = (t: TradeRow) => basisYear(t, view.basis)?.toString() ?? "undated";
+  const years = useMemo(() => [...new Set(base.map((t) => basisYear(t, view.basis)?.toString() ?? "undated"))].sort().reverse(), [base, view.basis]);
   const owners = useMemo(() => [...new Set(trades.map((t) => t.owner))], [trades]);
   const classes = useMemo(() => [...new Set(trades.map((t) => t.asset_class))], [trades]);
 
   const rows = useMemo(() => {
-    const f = trades.filter(
+    const f = base.filter(
       (t) =>
-        (year === "all" || (t.date?.slice(0, 4) ?? "undated") === year) &&
+        (year === "all" || yearOfRow(t) === year) &&
         (owner === "all" || t.owner === owner) &&
         (cls === "all" || t.asset_class === cls) &&
         (!late || t.late === true),
@@ -102,13 +121,16 @@ export function TradesTable({ initial, total, fullUrl }: Props) {
       const c = cmp(a, b, sort.k);
       return a[sort.k] == null || b[sort.k] == null ? c : c * sort.dir;
     });
-  }, [trades, year, owner, cls, late, sort]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [base, view.basis, year, owner, cls, late, sort]);
 
   const lateCount = useMemo(() => rows.reduce((n, t) => n + (t.late ? 1 : 0), 0), [rows]);
+  // Observed days from the transaction date to public availability, over every loaded trade (not the filtered rows).
+  const timing = useMemo(() => delayGroupFromTrades(trades), [trades]);
 
   useEffect(() => {
     scroller.current?.scrollTo({ top: 0 });
-  }, [year, owner, cls, late, sort]);
+  }, [year, owner, cls, late, sort, view.years, view.basis, view.assume, undatedOnly]);
 
   if (!total) return <p className="empty">No periodic transaction reports on file for this member&rsquo;s household. Reports exist only from July 2012.</p>;
 
@@ -118,6 +140,23 @@ export function TradesTable({ initial, total, fullUrl }: Props) {
 
   return (
     <div className="trades" data-testid="trades-table">
+      {status === "ok" && (
+        <p className="trades__timing" data-testid="trades-timing">
+          {DELAYS.memberLine}: median {days(timing.median)}, 90th percentile {days(timing.p90)}.{" "}
+          {count(overCount(timing.bands))} of {count(timing.dated)} trades with both dates were public over 45 days after the transaction
+          {timing.undated > 0 ? `; ${count(timing.undated)} with no date` : ""}.{" "}
+          <Link href={delaysHref()}>{DELAYS.memberLink}</Link>
+        </p>
+      )}
+      {view.years && windowed.undated.length > 0 && (
+        <p className="view-undated" data-testid="trades-undated">
+          {VIEW.undated(windowed.undated.length, view.basis)}{" "}
+          <button type="button" className="linkbtn" aria-pressed={undatedOnly} onClick={() => setUndatedFor(undatedOnly ? null : yearsKey)} data-testid="trades-undated-toggle">
+            {undatedOnly ? VIEW.hideUndated : VIEW.showUndated(windowed.undated.length)}
+          </button>
+        </p>
+      )}
+      {counted.length < trades.length && <p className="view-undated" data-testid="trades-leftout">{VIEW.leftOut(trades.length - counted.length)}</p>}
       <div className="filters">
         <label>
           <span>Year</span>
@@ -148,14 +187,14 @@ export function TradesTable({ initial, total, fullUrl }: Props) {
         </label>
         <label className="check">
           <input type="checkbox" checked={late} onChange={(e) => setLate(e.target.checked)} />
-          <span>Late only</span>
+          <span>{DELAYS.overFilter}</span>
         </label>
         <p className="filters__count mono" aria-live="polite">
           {status === "loading"
             ? `Loading all ${count(total)} trades…`
             : status === "error"
               ? `Showing ${count(trades.length)} of ${count(total)}; the rest failed to load.`
-              : `${count(rows.length)} ${rows.length === 1 ? "trade" : "trades"} · ${count(lateCount)} disclosed late`}
+              : `${count(rows.length)} ${rows.length === 1 ? "trade" : "trades"} · ${count(lateCount)} public over 45 days after the trade`}
           {status === "ok" && owners.length > 0 && <OwnerMix trades={rows} />}
         </p>
       </div>
@@ -198,7 +237,7 @@ export function TradesTable({ initial, total, fullUrl }: Props) {
                 <td className="mono">{t.available ? date(t.available) : <Nd />}</td>
                 <td className="num mono">
                   {t.lag_days == null ? <Nd /> : <>{count(t.lag_days)} d</>}
-                  {t.late && <span className="late" title="Disclosed more than 45 days after the trade">late</span>}
+                  {t.late && <span className="late" title={DELAYS.overTitle}>{DELAYS.overChip}</span>}
                 </td>
                 <td className={`owner owner--${t.owner}`}>{t.owner === "unspecified" ? <Nd text="not stated" /> : OWNER_LABEL[t.owner]}</td>
                 <td>

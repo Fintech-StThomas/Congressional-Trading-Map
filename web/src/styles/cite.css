@@ -1,0 +1,188 @@
+/* "Cite this" panel, the coverage note and the printed citation (components/shared/CiteButton.tsx, CoverageNote.tsx).
+   Tokens only. Red is reserved for ties, so nothing here uses it. The drawer is paper, the pages are dark. */
+.cite {
+  display: inline-block;
+  max-width: 100%;
+  font-size: 13.5px;
+}
+.cite--block {
+  display: block;
+  margin-top: 12px;
+}
+.cite__panel {
+  margin-top: 8px;
+  padding: 12px;
+  max-width: 62ch;
+  border: 1px solid var(--rule);
+  border-radius: var(--r);
+  background: var(--surface);
+  color: var(--text);
+}
+.cite__title {
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 650;
+}
+.cite__title:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.cite__intro,
+.cite__links,
+.cite__note {
+  margin: 0 0 8px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+.cite__label {
+  display: block;
+  margin: 0 0 4px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.cite__text {
+  display: block;
+  width: 100%;
+  min-height: 11em;
+  padding: 8px;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-sm);
+  background: var(--bg-2);
+  color: var(--text);
+  font: 12px/1.45 var(--mono);
+  resize: vertical;
+}
+.cite__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0;
+}
+.cite__msg {
+  min-height: 1.4em;
+  margin: 0 0 6px;
+  font-size: 12.5px;
+  color: var(--text);
+}
+.cite__links a {
+  color: inherit;
+  word-break: break-all;
+}
+.cite__url {
+  font: 12px/1.4 var(--mono);
+}
+/* In the evidence drawer the ground is paper. */
+.drawer .cite__panel {
+  background: var(--paper-2);
+  border-color: var(--paper-edge);
+  color: var(--ink);
+}
+.drawer .cite__intro,
+.drawer .cite__links,
+.drawer .cite__note {
+  color: var(--ink-2);
+}
+.drawer .cite__text {
+  background: var(--paper);
+  border-color: var(--paper-edge);
+  color: var(--ink);
+}
+.drawer .cite__msg {
+  color: var(--ink);
+}
+.drawer .cite .btn {
+  background: var(--paper);
+  color: var(--ink);
+  border-color: var(--paper-edge);
+}
+.drawer .cite .btn:hover {
+  background: var(--paper-2);
+  border-color: var(--ink-3);
+}
+@media (max-width: 480px) {
+  .cite__actions .btn {
+    flex: 1 1 100%;
+    justify-content: center;
+    white-space: normal;
+    height: auto;
+    min-height: 34px;
+  }
+}
+
+/* Coverage note: always visible, next to the measure it qualifies. */
+.covnote {
+  margin: 8px 0 12px;
+  padding: 8px 12px;
+  max-width: 72ch;
+  border-left: 3px solid var(--rule);
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.covnote__k {
+  margin: 0 0 2px;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  color: var(--text);
+}
+.covnote ul {
+  margin: 0;
+  padding-left: 1.1em;
+}
+.covnote li + li {
+  margin-top: 3px;
+}
+.drawer .covnote {
+  background: var(--paper-2);
+  color: var(--ink-2);
+  border-left-color: var(--ink-3);
+}
+.drawer .covnote__k {
+  color: var(--ink);
+}
+
+/* The printed citation block: hidden on screen, plain black on white in print. */
+.cite-print {
+  display: none;
+}
+@media print {
+  .cite-print {
+    display: block;
+    margin-top: 14pt;
+    padding-top: 8pt;
+    border-top: 1px solid #000;
+    color: #000;
+    break-inside: avoid;
+  }
+  .cite-print h2 {
+    margin: 0 0 4pt;
+    font: 650 10pt var(--sans);
+    color: #000;
+  }
+  .cite-print pre {
+    margin: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font: 8.5pt/1.4 var(--mono);
+    color: #000;
+  }
+  .covnote {
+    background: #fff;
+    border: 1px solid #777;
+    border-left-width: 3px;
+    color: #000;
+    break-inside: avoid;
+  }
+  .covnote__k {
+    color: #000;
+  }
+}
+
+/* Inside the records table bar the panel takes its own row. */
+.rec__bar .cite {
+  flex: 1 1 100%;
+  order: 9;
+}

@@ -1,0 +1,144 @@
+/* The shared view of one member: the "View: Board · Case file · Full file" switcher, the filter bar and the printed
+   line. Colours come from tokens.css; nothing here uses the red, which means a tie and nothing else. Focus rings
+   come from the global :focus-visible rule. */
+.viewswitch {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 14px;
+  font-size: 13px;
+}
+.viewswitch__k {
+  color: var(--text-3);
+}
+.viewswitch ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.viewswitch a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--rule);
+  border-radius: var(--r);
+  color: var(--text-2);
+  text-decoration: none;
+}
+.viewswitch a:hover {
+  border-color: var(--text-3);
+  color: var(--text);
+}
+.viewswitch a[aria-current="page"] {
+  background: var(--surface-2);
+  border-color: var(--text-2);
+  color: var(--text);
+  font-weight: 600;
+}
+.viewswitch--board {
+  margin: 8px 0 0;
+}
+
+.viewbar {
+  margin: 0 0 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--rule-soft);
+  border-radius: var(--r);
+  background: var(--surface);
+}
+.viewbar__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 24px;
+}
+.viewbar__basis {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.viewbar__k {
+  font-size: 13px;
+  color: var(--text-2);
+}
+.viewbar__label {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: var(--text);
+}
+.viewbar__note {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+
+.view-undated {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.view-selected {
+  margin: 8px 0 0;
+  font-size: 13px;
+}
+
+/* Timeline: years outside the window are dimmed, never hidden. */
+.timeline__axis {
+  margin: 0 0 8px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.timeline__cell.is-dim,
+.timeline__year.is-dim {
+  opacity: 0.35;
+}
+.timeline__year.is-in {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* Full file: the selected tie's row and the control that selects one. */
+.rec__scroll tr.is-selected td {
+  background: var(--surface-2);
+  box-shadow: inset 0 1px 0 var(--text-3), inset 0 -1px 0 var(--text-3);
+}
+.rec__pick {
+  font: inherit;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--text-2);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.rec__pick[aria-pressed="true"] {
+  color: var(--text);
+  font-weight: 600;
+}
+
+@media (max-width: 719px) {
+  .viewbar__row {
+    gap: 12px;
+  }
+}
+@media print {
+  .view-printline {
+    margin: 0 0 8pt;
+    font-size: 9.5pt;
+    color: #222;
+  }
+}
+
+.rec__yearnote {
+  margin: 0;
+  flex-basis: 100%;
+  order: 5;
+  font-size: 12.5px;
+  color: var(--text-2);
+}

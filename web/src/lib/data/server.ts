@@ -1,206 +1,74 @@
-// Server-only data access. Two modes, chosen by DATA_BASE_URL (see remote.ts and README "Data modes"):
-//   unset (local): reads the static JSON with fs at build time (never at request time).
-//                  Real data: web/public/data (written by the pipeline). Fallback: web/fixtures/data (see source.ts).
-//   set (remote):  fetches each file from DATA_BASE_URL with Next's fetch cache (revalidated every
-//                  REVALIDATE_SECONDS), at build time for the few prebuilt pages and on first request for
-//                  the rest. Nothing is read from web/public/data.
-// Every accessor is async so both modes share one API.
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import type { Board, Case, Edge, MemberFileWire, MemberSummary, Meta, OrgSummary, TradeFile } from "../types.ts";
-import { toBoardMember, type BoardMember, type NameBook } from "../domain/names.ts";
-import type { HoldingsFile } from "../domain/holdings.ts";
-import { pickBoardSplit } from "../domain/pick.ts";
+// Server-only data access. Three modes, chosen at build time (see mode.ts and README "Data modes"):
+//   local (default)              fs reads of public/data or the fixtures, at build time only
+//   legacy remote (DATA_BASE_URL) mutable files fetched from the bucket's data/ tree, revalidated
+//   pinned (RELEASE_BASE_URL)    every read bound to one immutable release of the bucket's releases/ tree
+// Every data read goes through a `Data` reader (reader.ts) bound to exactly one release:
+//   latestData()      the active release (pinned: resolved once per render from releases/current.json)
+//   releaseData(id)   one explicit release, or null when it is unavailable; never falls back to the latest.
+import { cache } from "react";
+import type { Meta } from "../types.ts";
 import { metaBuilt as builtFrom } from "./meta.ts";
-import { isRealDataBuild } from "./source.ts";
-import { REVALIDATE_SECONDS, remoteDataBase, remoteFileUrl } from "./remote.ts";
-import { isMemberId } from "./ids.ts";
-import { singleFlight } from "./flight.ts";
+import { createReader, type Data } from "./reader.ts";
+import { IS_BUILD, IS_PINNED, IS_REMOTE, RELEASE_BASE } from "./mode.ts";
+import { REVALIDATE_SECONDS } from "./remote.ts";
+import { isReleaseId, parsePointer, releasePointerUrl } from "./release.ts";
 
-const ROOT = process.cwd();
-const REAL_DIR = join(ROOT, "public", "data");
-const FIXTURE_DIR = join(ROOT, "fixtures", "data");
+export { IS_BUILD, IS_PINNED, IS_REMOTE, IS_SAMPLE, DATA_DIR, REMOTE_BASE, RELEASE_BASE } from "./mode.ts";
+export { orgNodesOf, type Data, type MemberBoard } from "./reader.ts";
 
-/** DATA_BASE_URL as seen at build time (next.config.ts inlines it as PT_REMOTE_DATA), or null in local mode. */
-export const REMOTE_BASE = remoteDataBase(process.env.PT_REMOTE_DATA ?? process.env.DATA_BASE_URL);
-export const IS_REMOTE = REMOTE_BASE !== null;
-/** Remote data is the published tree, never the fixtures. */
-export const IS_SAMPLE = IS_REMOTE ? false : !isRealDataBuild(ROOT);
-export const DATA_DIR = IS_SAMPLE ? FIXTURE_DIR : REAL_DIR;
-/** True while `next build` runs (prerendering); false at request time. */
-export const IS_BUILD = process.env.NEXT_PHASE === "phase-production-build";
+/** Local and legacy remote modes have one reader, bound to no release. */
+const unpinned: Data | null = IS_PINNED ? null : createReader(null);
 
-const cache = new Map<string, unknown>();
-/** Per-member files are read once each per page; keep them out of the in-memory cache. */
-const uncached = (rel: string) => /^(members|trades|holdings|orgs)\//.test(rel);
-
-// ---------------------------------------------------------------- local mode
-
-function readLocal<T>(rel: string, fallback?: T): T {
-  if (cache.has(rel)) return cache.get(rel) as T;
-  const p = join(DATA_DIR, rel);
-  if (!existsSync(/*turbopackIgnore: true*/ p)) {
-    if (fallback !== undefined) return fallback;
-    throw new Error(`Missing data file: ${p}`);
-  }
-  const value = JSON.parse(readFileSync(/*turbopackIgnore: true*/ p, "utf8")) as T;
-  if (!uncached(rel)) cache.set(rel, value);
-  return value;
-}
-
-// ---------------------------------------------------------------- remote mode
-
-/** One GET through Next's fetch cache. undefined on 404 (a missing optional file); throws on anything else. */
-async function fetchRemote(rel: string): Promise<Response | undefined> {
-  const url = remoteFileUrl(REMOTE_BASE as string, rel);
+/** The pointer, fetched and validated. Fails closed: a missing, unreachable or malformed pointer is an error, never a guess. */
+async function resolveLatest(): Promise<Data> {
+  if (unpinned) return unpinned;
+  const url = releasePointerUrl(RELEASE_BASE as string);
   let res: Response;
   try {
     res = await fetch(url, { next: { revalidate: REVALIDATE_SECONDS } });
   } catch (err) {
-    throw new Error(`[data] could not fetch ${url}: ${(err as Error).message}`);
+    throw new Error(`[data] could not fetch the release pointer ${url}: ${(err as Error).message}`);
   }
-  if (res.status === 404) return undefined;
-  if (!res.ok) throw new Error(`[data] ${res.status} ${res.statusText} from ${url}`);
-  return res;
+  if (!res.ok) throw new Error(`[data] ${res.status} ${res.statusText} from the release pointer ${url}`);
+  let pointer;
+  try {
+    pointer = parsePointer(await res.json());
+  } catch (err) {
+    throw new Error(`[data] the release pointer ${url} is invalid: ${(err as Error).message}`);
+  }
+  return createReader(pointer.release_id);
 }
 
 /**
- * The data build's identity, from meta.json's ETag (or Last-Modified). Fetching it on every read also
- * gives every route that reads data the revalidation period, whether or not the file below comes
- * from the in-memory cache.
+ * The reader for the active release. React-cached, so the layout, page and generateMetadata of one render share one
+ * pointer resolution. Route handlers (where React does not memoise) must call it once per request and use only
+ * that reader.
  */
-async function remoteStamp(): Promise<{ stamp: string; res: Response }> {
-  const res = await fetchRemote("meta.json");
-  if (!res) throw new Error(`[data] meta.json is missing under DATA_BASE_URL (${REMOTE_BASE})`);
-  const stamp = res.headers.get("etag") ?? res.headers.get("last-modified") ?? String(Math.floor(Date.now() / (REVALIDATE_SECONDS * 1000)));
-  return { stamp, res };
+export const latestData: () => Promise<Data> = cache(resolveLatest);
+
+async function resolveRelease(id: string): Promise<Data | null> {
+  // The shape is checked before any fetch; outside pinned mode there are no releases.
+  if (!IS_PINNED || !isReleaseId(id)) return null;
+  const reader = createReader(id);
+  // A release is available when its meta.json is: a 404 means never published or withdrawn.
+  return (await reader.readData<unknown>("meta.json", null)) === null ? null : reader;
 }
 
-let stampSeen = "";
-
-async function readRemote<T>(rel: string, fallback?: T): Promise<T> {
-  const { stamp, res: metaRes } = await remoteStamp();
-  if (stamp !== stampSeen) {
-    // A new data build: drop everything parsed from the previous one.
-    cache.clear();
-    memberIndex = orgIndex = null;
-    stampSeen = stamp;
-  }
-  const key = `remote:${rel}`;
-  if (!uncached(rel) && cache.has(key)) return cache.get(key) as T;
-  const value = await singleFlight(`${stamp}|${rel}`, async (): Promise<T | undefined> => {
-    const res = rel === "meta.json" ? metaRes : await fetchRemote(rel);
-    if (!res) return undefined;
-    try {
-      return (await res.clone().json()) as T;
-    } catch (err) {
-      throw new Error(`[data] ${rel} from DATA_BASE_URL is not JSON: ${(err as Error).message}`);
-    }
-  });
-  if (value === undefined) {
-    if (fallback !== undefined) return fallback;
-    throw new Error(`Missing data file: ${remoteFileUrl(REMOTE_BASE as string, rel)}`);
-  }
-  if (!uncached(rel)) cache.set(key, value);
-  return value;
-}
-
-// ---------------------------------------------------------------- both modes
-
-async function read<T>(rel: string, fallback?: T): Promise<T> {
-  return IS_REMOTE ? readRemote<T>(rel, fallback) : readLocal<T>(rel, fallback);
-}
-
-/** A file that may be missing (a member with no trades or holdings): null on 404, never an error. */
-async function readOptional<T>(rel: string): Promise<T | null> {
-  return read<T | null>(rel, null);
-}
-
-export function getMembers(): Promise<MemberSummary[]> {
-  return read<MemberSummary[]>("members.json");
-}
-
-let memberIndex: Map<string, MemberSummary> | null = null;
-export async function getMemberIndex(): Promise<Map<string, MemberSummary>> {
-  const members = await getMembers();
-  if (!memberIndex) memberIndex = new Map(members.map((m) => [m.id, m]));
-  return memberIndex;
-}
+/** The reader for one explicit release, or null when it is unavailable. Never falls back to the latest release. */
+export const releaseData: (id: string) => Promise<Data | null> = cache(resolveRelease);
 
 /**
- * Is this a member of the dataset? The id's shape is checked first (no I/O); in remote mode it must then be in
- * members.json, which is fetched once per data build and held in memory. Per-member files are fetched only
- * for ids that pass, so junk ids never reach the bucket.
- */
-export async function isKnownMember(id: string): Promise<boolean> {
-  if (!isMemberId(id)) return false;
-  return !IS_REMOTE || (await getMemberIndex()).has(id);
-}
-
-export async function getMemberFile(id: string): Promise<MemberFileWire | null> {
-  if (!(await isKnownMember(id))) return null;
-  if (!IS_REMOTE) {
-    try {
-      return readLocal<MemberFileWire>(`members/${id}.json`);
-    } catch {
-      return null;
-    }
-  }
-  return readOptional<MemberFileWire>(`members/${id}.json`);
-}
-
-export async function getTradeFile(id: string): Promise<TradeFile | null> {
-  if (!(await isKnownMember(id))) return null;
-  if (IS_REMOTE) return readOptional<TradeFile>(`trades/${id}.json`);
-  const p = join(DATA_DIR, "trades", `${id}.json`);
-  if (!existsSync(/*turbopackIgnore: true*/ p)) return null;
-  return JSON.parse(readFileSync(/*turbopackIgnore: true*/ p, "utf8")) as TradeFile;
-}
-
-export function getBoard(): Promise<Board> {
-  return read<Board>("board.json", { states: {} });
-}
-
-export function getCases(): Promise<Case[]> {
-  return read<Case[]>("cases.json", []);
-}
-
-export function getOrgs(): Promise<OrgSummary[]> {
-  return read<OrgSummary[]>("orgs.json", []);
-}
-
-let orgIndex: Map<string, OrgSummary> | null = null;
-export async function getOrgIndex(): Promise<Map<string, OrgSummary>> {
-  const orgs = await getOrgs();
-  if (!orgIndex) orgIndex = new Map(orgs.map((o) => [o.id, o]));
-  return orgIndex;
-}
-
-export function getMemberTies(): Promise<Edge[]> {
-  return read<Edge[]>("member-ties.json", []);
-}
-
-export function getMeta(): Promise<Meta> {
-  return read<Meta>("meta.json", {});
-}
-
-/**
- * meta.json for the layout: at request time a failed fetch gives {} (the footer says "unknown") so the
- * page's own error state can show; at build time it fails the build like any other read.
+ * meta.json of the latest release for the layout: at request time a failed fetch gives {} (the footer says
+ * "unknown") so the page's own error state can show; at build time it fails the build like any other read.
  */
 export async function getMetaForLayout(): Promise<Meta> {
-  if (!IS_REMOTE || IS_BUILD) return getMeta();
+  if (!IS_REMOTE || IS_BUILD) return (await latestData()).getMeta();
   try {
-    return await getMeta();
+    return await (await latestData()).getMeta();
   } catch (err) {
     console.error(err);
     return {};
   }
-}
-
-/** Any data file by path, or the fallback when it is missing (files newer than some builds and the fixtures). */
-export function readData<T>(rel: string, fallback: T): Promise<T> {
-  return read<T>(rel, fallback);
 }
 
 /** Build date as an ISO string (see meta.ts metaBuilt). */
@@ -220,80 +88,4 @@ export async function mapLimit<A, B>(items: readonly A[], limit: number, fn: (a:
   };
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
   return out;
-}
-
-/** Every name an edge list refers to, for labelling in the browser. */
-export async function nameBookFor(edges: Edge[], extraMembers: string[] = []): Promise<NameBook> {
-  const mi = await getMemberIndex();
-  const oi = await getOrgIndex();
-  const book: NameBook = { members: {}, orgs: {} };
-  const addM = (id: string) => {
-    const m = mi.get(id);
-    if (m) book.members[id] = toBoardMember(m);
-  };
-  extraMembers.forEach(addM);
-  for (const e of edges) {
-    for (const n of [e.from, e.to]) {
-      if (n.kind === "member") addM(n.id);
-      else {
-        const o = oi.get(n.id);
-        if (o) book.orgs[n.id] = o;
-      }
-    }
-  }
-  return book;
-}
-/** OrgSummary-shaped entries from a member file's `nodes`, for labelling. */
-export function orgNodesOf(file: MemberFileWire, oi: Map<string, OrgSummary>): Record<string, OrgSummary> {
-  const out: Record<string, OrgSummary> = {};
-  for (const [id, n] of Object.entries(file.nodes ?? {})) {
-    if (n.kind === "member") continue;
-    const o = oi.get(id);
-    out[id] = { id, name: n.name, kind: n.kind, ticker: n.ticker, cik: o?.cik ?? null, sector: o?.sector ?? null, degree: o?.degree ?? 0 };
-  }
-  return out;
-}
-
-/** `edges` holds the strings plus up to 3 spenders against (told apart by pick.ts isAgainst); `againstMore` counts the rest. */
-export type MemberBoard = { edges: Edge[]; nodes: Record<string, OrgSummary>; members: Record<string, BoardMember>; more: number; againstMore: number };
-
-/** The strings the board draws for one member, chosen by `pickBoard` from every edge in the file. */
-export async function memberBoard(id: string): Promise<MemberBoard> {
-  const file = await getMemberFile(id);
-  if (!file) return { edges: [], nodes: {}, members: {}, more: 0, againstMore: 0 };
-  const split = pickBoardSplit(id, file.edges);
-  const edges = [...split.strings, ...split.against];
-  const all = orgNodesOf(file, await getOrgIndex());
-  const nodes: Record<string, OrgSummary> = {};
-  const members: Record<string, BoardMember> = {};
-  const mi = await getMemberIndex();
-  const drawn = new Set<string>();
-  for (const e of edges)
-    for (const n of [e.from, e.to]) {
-      if (n.id === id) continue;
-      drawn.add(n.id);
-      if (n.kind === "org" && all[n.id]) nodes[n.id] = all[n.id];
-      const member = n.kind === "member" ? mi.get(n.id) : undefined;
-      if (member) members[n.id] = toBoardMember(member);
-    }
-  const m = file.member;
-  const more = Math.max(0, (m.counts?.orgs ?? 0) + (m.counts?.members ?? 0) - drawn.size);
-  return { edges, nodes, members, more, againstMore: split.againstMore };
-}
-
-/**
- * A member's holdings file (House annual reports), or null. PT_HOLDINGS_DIR points
- * at another folder of holdings/<id>.json files (testing against unmerged data).
- */
-export async function getHoldings(id: string): Promise<HoldingsFile | null> {
-  if (!(await isKnownMember(id))) return null;
-  if (IS_REMOTE) return readOptional<HoldingsFile>(`holdings/${id}.json`);
-  const dir = process.env.PT_HOLDINGS_DIR || join(DATA_DIR, "holdings");
-  const p = join(dir, `${id}.json`);
-  if (!existsSync(/*turbopackIgnore: true*/ p)) return null;
-  try {
-    return JSON.parse(readFileSync(/*turbopackIgnore: true*/ p, "utf8")) as HoldingsFile;
-  } catch {
-    return null;
-  }
 }

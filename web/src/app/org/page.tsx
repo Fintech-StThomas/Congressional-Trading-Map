@@ -1,8 +1,9 @@
 // The static shell behind every /o/<id> (see the rewrite in next.config.ts).
 import type { Metadata } from "next";
-import { getMeta } from "@/lib/data/server";
+import { latestData } from "@/lib/data/server";
 import { sourceNames } from "@/lib/data/meta";
 import { OrgView } from "@/components/org/OrgView";
+import { ReleasePin } from "@/components/shared/ReleasePin";
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 
 // Served for every /o/<id> through a rewrite in next.config.ts: one static
@@ -10,9 +11,13 @@ import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 export const metadata: Metadata = { title: "Organisation" };
 
 export default async function OrgPage() {
+  const data = await latestData();
   return (
-    <ErrorBoundary label="organisation page">
-      <OrgView sources={sourceNames(await getMeta())} />
-    </ErrorBoundary>
+    <>
+      <ReleasePin release={data.release} />
+      <ErrorBoundary label="organisation page">
+        <OrgView sources={sourceNames(await data.getMeta())} />
+      </ErrorBoundary>
+    </>
   );
 }

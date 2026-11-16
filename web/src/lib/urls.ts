@@ -1,13 +1,32 @@
 // Every link the site builds: its own routes, the data files, official record pages,
 // and the guard for links that come from the data. Pure; tests/urls.test.mjs loads it directly.
 
-import { CORRECTIONS } from "./copy.ts";
+import { CORRECTIONS, SITE } from "./copy.ts";
+import { clientRelease } from "./data/pin.ts";
 
 /** Where the browser fetches data files from: /data (real build) or /sample-data (fixtures), set by next.config.ts. */
 export const DATA_BASE = process.env.NEXT_PUBLIC_DATA_BASE ?? "/data";
 
+/** A data file of one release, as the browser fetches it (pinned mode; next.config.ts proxies it to the bucket). */
+export function releaseDataUrl(release: string, rel: string): string {
+  return `/releases/${release}/${rel}`;
+}
+
+/** A generated JSON endpoint of one release: releaseRouteUrl(id, "board-data/CA") -> /r/<id>/board-data/CA. */
+export function releaseRouteUrl(release: string, path: string): string {
+  return `/r/${release}/${path}`;
+}
+
+/** A data file as the browser fetches it: from the release the page is pinned to (lib/data/pin.ts), else /data. */
 export function dataUrl(rel: string): string {
-  return `${DATA_BASE}/${rel}`;
+  const release = clientRelease();
+  return release ? releaseDataUrl(release, rel) : `${DATA_BASE}/${rel}`;
+}
+
+/** A generated JSON endpoint (/board-data/<state>, /board-member/<id>, /search-index) for the pinned release, else the latest one. */
+export function routeDataUrl(path: string): string {
+  const release = clientRelease();
+  return release ? releaseRouteUrl(release, path) : `/${path}`;
 }
 
 /**
@@ -31,12 +50,50 @@ export function memberHref(id: string): string {
   return `/m/${id}`;
 }
 
+/** The site-wide disclosure-timing page. */
+export function delaysHref(): string {
+  return "/delays";
+}
+
+/** A member's RSS feed of new filings: "/feed/m/K000389.xml". */
+export function memberFeedHref(id: string): string {
+  return `/feed/m/${id}.xml`;
+}
+
+/** How to embed a member's card on another site. */
+export function embedHelpHref(): string {
+  return "/embed";
+}
+
 export function recordsHref(id: string): string {
   return `/m/${id}/records`;
 }
 
+/** The permalink of a member's case file in one data release (never replaced by the latest data). */
+export function releaseMemberHref(release: string, id: string): string {
+  return `/r/${release}/m/${id}`;
+}
+
+/** The permalink of a member's full file in one data release. */
+export function releaseRecordsHref(release: string, id: string): string {
+  return `/r/${release}/m/${id}/records`;
+}
+
+/** The release comparison for one member: "/changes?m=K000389&from=<release>&to=<release>" (the releases are optional). */
+export function changesHref(member: string, from?: string | null, to?: string | null): string {
+  const q = new URLSearchParams({ m: member });
+  if (from) q.set("from", from);
+  if (to) q.set("to", to);
+  return `/changes?${q.toString()}`;
+}
+
 export function orgHref(id: string): string {
   return `/o/${encodeURIComponent(id)}`;
+}
+
+/** The saved-boards page, with a share fragment (`#b=…`, see lib/domain/saved-share.ts) when it opens a shared board. */
+export function savedHref(fragment = ""): string {
+  return `/saved${fragment}`;
 }
 
 /** The board at a state, member, organisation and optional focused card: "/?s=CA&m=K000389". */
@@ -71,4 +128,21 @@ export function safeHttpUrl(url: unknown): string | null {
   if (typeof url !== "string") return null;
   const u = url.trim();
   return /^https?:\/\/[^\s"'<>]+$/i.test(u) ? u : null;
+}
+
+/** The absolute address of a site path (for citations that leave the site): siteUrl("/m/K000389") on the live site. */
+export function siteUrl(path: string): string {
+  return `${SITE.url}${path}`;
+}
+
+/** The connection finder: "/connect?a=<node>&b=<node>&h=2&d=1&hub=1". Only the options that differ from the defaults are written. */
+export function connectHref(p: { a?: string | null; b?: string | null; hops?: number; derived?: boolean; hubs?: boolean } = {}): string {
+  const q = new URLSearchParams();
+  if (p.a) q.set("a", p.a);
+  if (p.b) q.set("b", p.b);
+  if (p.hops && p.hops !== 2) q.set("h", String(p.hops));
+  if (p.derived) q.set("d", "1");
+  if (p.hubs) q.set("hub", "1");
+  const s = q.toString();
+  return s ? `/connect?${s}` : "/connect";
 }

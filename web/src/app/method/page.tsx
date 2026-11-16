@@ -1,11 +1,13 @@
 // /method: sources and revisions from meta.json, the rule for each kind of tie, coverage and limits.
 import type { Metadata } from "next";
-import { IS_SAMPLE, getMeta, metaBuilt } from "@/lib/data/server";
+import { ReleasePin } from "@/components/shared/ReleasePin";
+import { IS_SAMPLE, latestData, metaBuilt } from "@/lib/data/server";
 import { metaSources } from "@/lib/data/meta";
 import { correctionsLogUrl, safeHttpUrl } from "@/lib/urls";
 import { FAMILY_LABEL, TYPE_LABEL, TYPE_RULE } from "@/lib/domain/edges";
 import { count, date } from "@/lib/format";
-import { CORRECTIONS, CORRECTIONS_POLICY, SITE } from "@/lib/copy";
+import Link from "next/link";
+import { CORRECTIONS, CORRECTIONS_POLICY, EXPORT, FEED, SITE } from "@/lib/copy";
 import { CorrectionLink } from "@/components/shared/CorrectionLink";
 import type { EdgeType } from "@/lib/types";
 import { LineSample } from "@/components/shared/LineSample";
@@ -53,7 +55,8 @@ function FlatCounts({ obj }: { obj: Record<string, unknown> }) {
 }
 
 export default async function MethodPage() {
-  const meta = await getMeta();
+  const data = await latestData();
+  const meta = await data.getMeta();
   const built = metaBuilt(meta);
   const sources = metaSources(meta);
   const exclusions = meta.exclusions;
@@ -62,6 +65,7 @@ export default async function MethodPage() {
 
   return (
     <div className="page page--read method">
+      <ReleasePin release={data.release} />
       <h1>Method and sources</h1>
       <p className="lede">
         {SITE.name} draws a string between a member of Congress and an organisation or another member only when a filed public record names both, or when a published
@@ -193,6 +197,22 @@ export default async function MethodPage() {
         </p>
         <p>FEC data may not be used to solicit contributions or for commercial purposes (52 U.S.C. 30111(a)(4)).</p>
         <p><strong>Not investment advice.</strong> Nothing on this site is a recommendation to buy or sell any security.</p>
+      </section>
+
+      <section className="section" id="feeds" aria-labelledby="feeds-h">
+        <h2 id="feeds-h">Feeds, embeds and exports</h2>
+        <p>{FEED.siteNote(60)}</p>
+        <p>
+          Feeds: <a href="/feed/trades.xml">trades recently made public</a> (RSS) and one per member at <span className="mono">/feed/m/&lt;id&gt;.xml</span>. Each item is dated by the day the report
+          became public, never the day the feed was built, and carries its source and data release. {FEED.noDate}
+        </p>
+        <p>
+          Embeds: <Link href="/embed">a member card</Link> for another page. Its source line, data release and build date are part of the card and cannot be switched off. Exports:{" "}
+          <Link href="/export">a research export</Link> with the published rows exactly as filed, each source file&apos;s address and SHA-256, and the citation. {EXPORT.hashNote}
+        </p>
+        <p>
+          Everything above is subject to the use restrictions in 5 U.S.C. 13107(c) quoted under &ldquo;Use of this data&rdquo;. It reports what filings say and makes no finding of wrongdoing.
+        </p>
       </section>
 
       <section className="section" id="corrections" aria-labelledby="corrections-h">

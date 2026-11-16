@@ -1,13 +1,17 @@
 "use client";
 // "Ties" on the member page: family filters, the ties table, spending against kept apart, and the evidence drawer.
-import { useCallback, useMemo, useRef, useState } from "react";
+// The year window, the family filter and the selected tie come from the shared view state in the URL, so they
+// follow the reader between the board, this page and the full file.
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Edge } from "@/lib/types";
 import type { NameBook } from "@/lib/domain/names";
-import { FAMILIES, FAMILY_LABEL, sortEdges, type Family } from "@/lib/domain/edges";
+import { FAMILIES, FAMILY_LABEL, inYears, otherEnd, sortEdges, type Family } from "@/lib/domain/edges";
 import { TieTable } from "@/components/shared/TieTable";
 import { isAgainst } from "@/lib/domain/pick";
 import { EvidenceDrawer } from "@/components/shared/EvidenceDrawer";
 import { getJSON } from "@/lib/data/fetch";
+import { updateView, useView } from "@/components/shared/useViewState";
+import { YEAR_MAX, YEAR_MIN } from "@/lib/years";
 
 type Props = {
   edges: Edge[];
@@ -27,19 +31,40 @@ export function TieSection({ edges: initial, selfId, book: initialBook, sources,
   const [book] = useState(initialBook);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
-  const [families, setFamilies] = useState<Set<Family>>(() => new Set(FAMILIES));
-  const [open, setOpen] = useState<Edge | null>(null);
+  const view = useView();
+  const families = useMemo(() => new Set<Family>(view.families ?? FAMILIES), [view.families]);
+  const range = useMemo<[number, number]>(() => view.years ?? [YEAR_MIN, YEAR_MAX], [view.years]);
+  // The selected tie is the URL's `e`; clicking Evidence writes it (a new history entry), closing clears it.
+  const open = useMemo(() => (view.edge ? edges.find((e) => e.id === view.edge) ?? null : null), [view.edge, edges]);
   const trigger = useRef<HTMLElement | null>(null);
+  const clicked = useRef<string | null>(null);
+  const select = useCallback((e: Edge, t: HTMLElement) => {
+    trigger.current = t;
+    clicked.current = e.id;
+    const o = otherEnd(e, selfId);
+    updateView({ edge: e.id, org: o.kind === "org" ? o.id : null }, { push: true });
+  }, [selfId]);
   const cases = useMemo(() => new Set(caseEdges ?? []), [caseEdges]);
   const present = useMemo(() => FAMILIES.filter((f) => edges.some((e) => e.family === f)), [edges]);
   // Spending against the member is not a tie: listed in its own section below.
-  const shown = useMemo(() => sortEdges(edges.filter((e) => families.has(e.family) && !isAgainst(e))), [edges, families]);
-  const against = useMemo(() => sortEdges(edges.filter(isAgainst)), [edges]);
+  const shown = useMemo(() => sortEdges(edges.filter((e) => families.has(e.family) && !isAgainst(e) && inYears(e, range))), [edges, families, range]);
+  const against = useMemo(() => sortEdges(edges.filter((e) => isAgainst(e) && inYears(e, range))), [edges, range]);
 
   const close = useCallback(() => {
-    setOpen(null);
+    updateView({ edge: null, org: null }, { push: true });
     trigger.current?.focus();
   }, []);
+
+  // Arriving with `e` in the URL: bring that row into view (not when the reader just clicked it), and load the
+  // whole list when the tie is not among the largest ones first listed.
+  useEffect(() => {
+    if (!view.edge) return;
+    if (open) {
+      if (clicked.current === view.edge) return;
+      document.querySelector(`[data-edge="${view.edge}"]`)?.scrollIntoView({ block: "center" });
+    } else if (fullUrl && !loading && !failed && total != null && total > edges.length) void loadAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view.edge, open]);
 
   async function loadAll() {
     if (!fullUrl) return;
@@ -69,14 +94,13 @@ export function TieSection({ edges: initial, selfId, book: initialBook, sources,
                 type="button"
                 className="chip"
                 aria-pressed={on}
-                onClick={() =>
-                  setFamilies((prev) => {
-                    const next = new Set(prev);
-                    if (next.has(f)) next.delete(f);
-                    else next.add(f);
-                    return next;
-                  })
-                }
+                onClick={() => {
+                  const next = new Set(families);
+                  if (next.has(f)) next.delete(f);
+                  else next.add(f);
+                  // All families on is the page's own default, so it is not written to the URL.
+                  updateView({ families: next.size === FAMILIES.length ? null : FAMILIES.filter((x) => next.has(x)) });
+                }}
               >
                 {FAMILY_LABEL[f]} <span className="mono">{n}</span>
               </button>
@@ -88,10 +112,8 @@ export function TieSection({ edges: initial, selfId, book: initialBook, sources,
         edges={shown}
         selfId={selfId}
         book={book}
-        onOpen={(e, t) => {
-          trigger.current = t;
-          setOpen(e);
-        }}
+        onOpen={select}
+        range={view.years ?? undefined}
         activeId={open?.id}
         caseEdges={cases}
         caption="Ties and their records"
@@ -102,7 +124,7 @@ export function TieSection({ edges: initial, selfId, book: initialBook, sources,
         <div className="tablezone" data-testid="ties-against">
           <h3>Spent against this member</h3>
           <p className="section__note">Independent spending by groups opposing this member. Not a relationship with the member.</p>
-          <TieTable edges={against} selfId={selfId} book={book} onOpen={(e, t) => { trigger.current = t; setOpen(e); }} activeId={open?.id} caption="Spent against this member" />
+          <TieTable edges={against} selfId={selfId} book={book} range={view.years ?? undefined} onOpen={select} activeId={open?.id} caption="Spent against this member" />
         </div>
       )}
       {total != null && total > edges.length && fullUrl && (
@@ -114,7 +136,7 @@ export function TieSection({ edges: initial, selfId, book: initialBook, sources,
           {failed && <span role="alert"> The full list failed to load; try again.</span>}
         </p>
       )}
-      <EvidenceDrawer edge={open} book={book} sources={sources} onClose={close} />
+      <EvidenceDrawer edge={open} book={book} sources={sources} range={view.years ?? undefined} onClose={close} />
     </div>
   );
 }

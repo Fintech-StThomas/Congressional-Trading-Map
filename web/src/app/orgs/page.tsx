@@ -1,8 +1,9 @@
 // /orgs: organisation rankings, built from org-index.json.
 import type { Metadata } from "next";
-import { readData } from "@/lib/data/server";
+import { latestData } from "@/lib/data/server";
 import { decodeOrgIndex } from "@/lib/domain/party";
 import { OrgsBrowse } from "@/components/org/OrgsBrowse";
+import { ReleasePin } from "@/components/shared/ReleasePin";
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 import { YEAR_MIN } from "@/lib/years";
 
@@ -14,10 +15,12 @@ export const metadata: Metadata = {
 type Raw = Parameters<typeof decodeOrgIndex>[0];
 
 export default async function OrgsPage() {
-  const data = decodeOrgIndex(await readData<Raw>("org-index.json", null));
+  const release = await latestData();
+  const data = decodeOrgIndex(await release.readData<Raw>("org-index.json", null));
   const empty = data.byMembers.length === 0 && data.byDollars.length === 0;
   return (
     <div className="page page--narrow orgspage">
+      <ReleasePin release={release.release} />
       <h1>Organisations</h1>
       <p className="lede">
         {empty

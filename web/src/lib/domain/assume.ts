@@ -8,14 +8,18 @@ export type Assumptions = {
   noFunds: boolean;
   /** Drop trades whose disclosed range starts under $15,000. */
   noSmall: boolean;
-  /** Only trades disclosed more than 45 days late. */
+  /** Only trades public more than 45 days after the stated transaction date. */
   lateOnly: boolean;
 };
 
 export const DEFAULT_ASSUMPTIONS: Assumptions = { self: true, family: true, unstated: true, noFunds: false, noSmall: false, lateOnly: false };
 export const SMALL_TRADE = 15000;
 
-export type TradeLite = { owner: string; asset_class: string; low: number | null; late: boolean | null; org: string | null };
+export type TradeLite = {
+  owner: string; asset_class: string; low: number | null; late: boolean | null; org: string | null;
+  /** Transaction date and date made public, when the loader keeps them (the timeline counts by either). */
+  date?: string | null; available?: string | null;
+};
 
 export function isDefault(a: Assumptions): boolean {
   return (Object.keys(DEFAULT_ASSUMPTIONS) as (keyof Assumptions)[]).every((k) => a[k] === DEFAULT_ASSUMPTIONS[k]);
@@ -119,7 +123,7 @@ export const SWITCHES: { key: keyof Assumptions; label: string; hint: string }[]
   { key: "unstated", label: "Include unstated owner", hint: "Trades whose filing does not say whose they are" },
   { key: "noFunds", label: "Exclude funds, bonds and unlabelled assets", hint: "Drops asset classes fund and bond, and trades whose filing gives no asset type" },
   { key: "noSmall", label: "Exclude trades under $15,000", hint: "Drops trades whose disclosed range starts below $15,000" },
-  { key: "lateOnly", label: "Late disclosures only", hint: "Keeps only trades the public could see more than 45 days after the trade" },
+  { key: "lateOnly", label: "Public over 45 days after the trade only", hint: "Keeps only trades the public could see more than 45 days after the stated transaction date. Observed days, not a compliance finding" },
 ];
 
 /** One line: what changed. */

@@ -8,7 +8,9 @@ const LINKS = [
   { href: "/wall", label: "Wall" },
   { href: "/cases", label: "Cases" },
   { href: "/orgs", label: "Organisations" },
+  { href: "/delays", label: "Timing" },
   { href: "/method", label: "Method" },
+  { href: "/saved", label: "Saved" },
 ] as const;
 
 export function NavLinks() {

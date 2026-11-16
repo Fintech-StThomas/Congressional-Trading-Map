@@ -9,7 +9,7 @@ function isColumnar(v: unknown): v is Columnar {
   return Boolean(v && typeof v === "object" && Array.isArray((v as Columnar).cols) && Array.isArray((v as Columnar).rows));
 }
 
-function fromColumns<T>(c: Columnar): T[] {
+export function fromColumns<T>(c: Columnar): T[] {
   const { cols, rows } = c;
   const out: T[] = new Array(rows.length);
   for (let i = 0; i < rows.length; i++) {

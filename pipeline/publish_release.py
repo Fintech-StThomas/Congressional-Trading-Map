@@ -1,4 +1,4 @@
-"""Archive validated bytes under releases/; optionally activate with a conditional pointer write."""
+"""Archive validated bytes under releases/; optionally activate with a conditional pointer write, then record history."""
 from __future__ import annotations
 
 import argparse
@@ -9,37 +9,17 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .publish_r2 import MissingConfig, PublishError, _code, _transient, client_from_env, content_type, retry
+from .release_history import build_time_of, record_activation
 from .release_manifest import (
     ReleaseManifestError, build_manifest, canonical_json, decode_json, validate_manifest,
     validate_meta, validate_pointer, validate_release_id,
 )
+from .release_store import (  # noqa: F401 - re-exported for callers and tests
+    CURRENT, IMMUTABLE_CACHE, INDEX, POINTER_CACHE, PREFIX, get_object, is_withdrawn, now_utc, status,
+)
 
-PREFIX = "releases/"
-CURRENT = PREFIX + "current.json"
-IMMUTABLE_CACHE = "public, max-age=31536000, immutable"
-POINTER_CACHE = "no-cache, max-age=0, must-revalidate"
-
-
-def _status(exc: Exception, statuses: tuple[int, ...], codes: tuple[str, ...]) -> bool:
-    response = getattr(exc, "response", None) or {}
-    return (response.get("ResponseMetadata", {}).get("HTTPStatusCode") in statuses
-            or response.get("Error", {}).get("Code") in codes)
-
-
-def _get(client: Any, bucket: str, key: str, sleep: Callable) -> tuple[bytes, dict] | None:
-    def read():
-        try:
-            response = client.get_object(Bucket=bucket, Key=key)
-        except Exception as exc:
-            if _status(exc, (404,), ("NoSuchKey", "NotFound")):
-                return None
-            raise
-        stream = response["Body"]
-        try:
-            return stream.read(), response
-        finally:
-            stream.close()
-    return retry(read, "read archive object", sleep)
+_status = status
+_get = get_object
 
 
 def _headers(response: dict, ctype: str, cache: str) -> None:
@@ -106,8 +86,16 @@ def _capture(client: Any, bucket: str, sleep: Callable) -> tuple[bytes, str] | N
     return body, etag
 
 
+def _refuse_withdrawn(client: Any, bucket: str, release_id: str, sleep: Callable) -> None:
+    if is_withdrawn(client, bucket, release_id, sleep):
+        raise PublishError("release was withdrawn; it cannot be created or activated")
+
+
 def _activate(client: Any, bucket: str, manifest: dict, descriptor: bytes,
-              previous: tuple[bytes, str] | None, sleep: Callable) -> None:
+              previous: tuple[bytes, str] | None, sleep: Callable, build_time: str,
+              now: Callable = now_utc) -> None:
+    # Checked again immediately before the pointer moves, to shrink the window with a concurrent withdrawal.
+    _refuse_withdrawn(client, bucket, manifest["release_id"], sleep)
     desired = canonical_json({"schema_version": 1, "release_id": manifest["release_id"],
                               "manifest_sha256": hashlib.sha256(descriptor).hexdigest()})
     condition = {"IfMatch": previous[1]} if previous else {"IfNoneMatch": "*"}
@@ -136,6 +124,17 @@ def _activate(client: Any, bucket: str, manifest: dict, descriptor: bytes,
         raise PublishError("current release changed concurrently; activation refused")
     # Exact readback resolves an ambiguous response without unconditionally rewriting current.
     _verify(_get(client, bucket, CURRENT, sleep), _identity(desired), "application/json", POINTER_CACHE)
+    _record_history(client, bucket, manifest["release_id"], build_time, sleep, now)
+
+
+def _record_history(client: Any, bucket: str, release_id: str, build_time: str, sleep: Callable, now: Callable) -> None:
+    """The pointer has already moved; an index failure must say so and stay repairable by re-running."""
+    try:
+        record_activation(client, bucket, release_id, build_time, now=now, sleep=sleep)
+    except Exception as exc:
+        reason = str(exc) if isinstance(exc, (PublishError, ReleaseManifestError)) else _code(exc)
+        raise PublishError(f"the current pointer WAS activated to {release_id}, but the release history index "
+                           f"was not updated ({reason}); re-run the same command to repair the index") from None
 
 
 def _check_tree(root: Path, manifest: dict) -> None:
@@ -144,11 +143,12 @@ def _check_tree(root: Path, manifest: dict) -> None:
 
 
 def publish(client: Any, bucket: str, root: Path, *, activate: bool = False,
-            sleep: Callable = time.sleep) -> dict:
+            sleep: Callable = time.sleep, now: Callable = now_utc) -> dict:
     """Publish a complete immutable archive; archive-only is the safe default."""
     previous = _capture(client, bucket, sleep) if activate else None
     manifest = build_manifest(root)
     validate_manifest(manifest)
+    _refuse_withdrawn(client, bucket, manifest["release_id"], sleep)
     prefix = PREFIX + manifest["release_id"] + "/"
     uploaded = 0
     for rel, expected in manifest["files"].items():
@@ -161,14 +161,17 @@ def publish(client: Any, bucket: str, root: Path, *, activate: bool = False,
     _create(client, bucket, prefix + "release.json", descriptor, "application/json", sleep)
     _check_tree(root, manifest)
     if activate:
-        _activate(client, bucket, manifest, descriptor, previous, sleep)
+        build_time = build_time_of((root / "meta.json").read_bytes())
+        _activate(client, bucket, manifest, descriptor, previous, sleep, build_time, now)
     return {"release_id": manifest["release_id"], "files": len(manifest["files"]),
-            "uploaded": uploaded, "activated": activate}
+            "uploaded": uploaded, "activated": activate, "indexed": activate}
 
 
-def activate_release(client: Any, bucket: str, release_id: str, *, sleep: Callable = time.sleep) -> dict:
+def activate_release(client: Any, bucket: str, release_id: str, *, sleep: Callable = time.sleep,
+                     now: Callable = now_utc) -> dict:
     """Promote or roll back only after fully verifying an existing completed archive."""
     validate_release_id(release_id)
+    _refuse_withdrawn(client, bucket, release_id, sleep)
     previous = _capture(client, bucket, sleep)
     prefix = PREFIX + release_id + "/"
     got = _get(client, bucket, prefix + "release.json", sleep)
@@ -180,12 +183,15 @@ def activate_release(client: Any, bucket: str, release_id: str, *, sleep: Callab
     if canonical_json(manifest) != descriptor:
         raise PublishError("release descriptor is not canonically encoded")
     _verify(got, _identity(descriptor), "application/json", IMMUTABLE_CACHE)
+    build_time = ""
     for rel, expected in manifest["files"].items():
         body = _verify(_get(client, bucket, prefix + rel, sleep), expected, content_type(rel), IMMUTABLE_CACHE)
         if rel == "meta.json":
             validate_meta(body)
-    _activate(client, bucket, manifest, descriptor, previous, sleep)
-    return {"release_id": release_id, "files": len(manifest["files"]), "uploaded": 0, "activated": True}
+            build_time = build_time_of(body)
+    _activate(client, bucket, manifest, descriptor, previous, sleep, build_time, now)
+    return {"release_id": release_id, "files": len(manifest["files"]), "uploaded": 0, "activated": True,
+            "indexed": True}
 
 
 def main(argv: list[str] | None = None) -> int:

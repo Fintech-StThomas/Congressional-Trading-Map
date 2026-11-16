@@ -3,7 +3,7 @@
 // so each page carries only its 50 rows.
 import Link from "next/link";
 import { CASE_NOT_SHOWN, CASES_COPY, caseHoldingWords, caseRuleText, noCasesText } from "@/lib/copy";
-import { getCases, getMemberIndex, getMeta, getOrgIndex } from "@/lib/data/server";
+import { latestData } from "@/lib/data/server";
 import { caseMinTypes } from "@/lib/data/meta";
 import { TYPE_LABEL } from "@/lib/domain/edges";
 import { CHAMBERS, COMBOS, PARTIES, caseMatches, casesHref, pageOf, pageWindow, type CaseFilter, type CasesQuery } from "@/lib/domain/casepages";
@@ -11,9 +11,11 @@ import { count, money, seat, yearRange } from "@/lib/format";
 import { boardHref, memberHref, orgHref } from "@/lib/urls";
 import { Print, PartyTag } from "@/components/shared/Print";
 import { PageJump } from "./PageJump";
+import { ReleasePin } from "@/components/shared/ReleasePin";
 
 export async function CasesView({ q }: { q: CasesQuery }) {
-  const [cases, members, orgs, meta] = await Promise.all([getCases(), getMemberIndex(), getOrgIndex(), getMeta()]);
+  const data = await latestData();
+  const [cases, members, orgs, meta] = await Promise.all([data.getCases(), data.getMemberIndex(), data.getOrgIndex(), data.getMeta()]);
   const minTypes = caseMinTypes(meta);
   const pg = pageOf(cases, members, q);
   const filtered = Boolean(q.ties || q.chamber || q.party);
@@ -37,6 +39,7 @@ export async function CasesView({ q }: { q: CasesQuery }) {
 
   return (
     <div className="page page--narrow">
+      <ReleasePin release={data.release} />
       <h1>Open cases</h1>
       <p className="lede">
         {caseRuleText(minTypes)} Each fact comes from a filed record; together they are a reason to read the filings. They are not a finding, and they say nothing about why.

@@ -2,7 +2,8 @@
 // organisation ties. No Node APIs. File locations come from lib/urls.ts.
 import type { Edge, MemberSummary, OrgSummary } from "../types.ts";
 import type { BoardMember } from "../domain/names.ts";
-import { dataUrl } from "../urls.ts";
+import { dataUrl, routeDataUrl } from "../urls.ts";
+import { clientRelease } from "./pin.ts";
 
 /** True on a fixtures build (every page then carries the SAMPLE DATA stamp). Set by next.config.ts. */
 export const IS_SAMPLE_CLIENT = process.env.NEXT_PUBLIC_SAMPLE === "1";
@@ -32,20 +33,26 @@ type RawIndex = {
   o: [string, string, OrgSummary["kind"], number, string | null][];
 };
 
-let indexPromise: Promise<SearchIndex> | null = null;
+// Keyed by release (null: unpinned), so a page pinned to another release never reuses a different release's index.
+let indexPromise: { release: string | null; promise: Promise<SearchIndex> } | null = null;
 
-/** The compact member and organisation index built at /search-index (every member, the 6,000 largest orgs). */
+/** The compact member and organisation index built at /search-index (every member, the 6,000 largest orgs) for the pinned release. */
 export function loadSearchIndex(): Promise<SearchIndex> {
-  if (!indexPromise) {
-    indexPromise = getJSON<RawIndex>("/search-index").then((raw) => ({
+  const release = clientRelease();
+  if (!indexPromise || indexPromise.release !== release) {
+    const promise: Promise<SearchIndex> = getJSON<RawIndex>(routeDataUrl("search-index")).then((raw) => ({
       members: raw.m.map(([id, name, last, party, state, chamber, district, current, photo, cases]) => ({
         id, name, last, party, state, chamber, district, current: current === 1, photo: photo === 1, cases,
       })),
       orgs: raw.o.map(([id, name, kind, degree, ticker]) => ({ id, name, kind, degree, ticker })),
     }));
-    indexPromise.catch(() => (indexPromise = null));
+    const entry = { release, promise };
+    indexPromise = entry;
+    promise.catch(() => {
+      if (indexPromise === entry) indexPromise = null;
+    });
   }
-  return indexPromise;
+  return indexPromise.promise;
 }
 
 /**

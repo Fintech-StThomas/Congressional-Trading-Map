@@ -81,6 +81,18 @@ export function andList(xs: string[]): string {
   return `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`;
 }
 
+/** "12.5%" from a fraction, "n/a" when there is no denominator (null); never 0%. */
+export function percent(frac: number | null | undefined): string {
+  if (frac == null) return "n/a";
+  const p = frac * 100;
+  return `${p >= 10 || p === 0 ? p.toFixed(0) : p.toFixed(1)}%`;
+}
+
+/** "12 days" / "1 day"; null is "n/a" (a missing figure is never 0 days). */
+export function days(n: number | null | undefined): string {
+  return n == null ? "n/a" : `${num.format(n)} ${n === 1 ? "day" : "days"}`;
+}
+
 // ---------------------------------------------------------------- dates
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -92,6 +104,11 @@ export function date(iso: string | null | undefined): string {
   if (!y) return iso;
   if (!m) return String(y);
   return d ? `${d} ${MONTHS[m - 1]} ${y}` : `${MONTHS[m - 1]} ${y}`;
+}
+
+/** A data release id for people: its first 12 hex digits (the full id stays in links and the provenance line). */
+export function releaseShort(release: string): string {
+  return release.slice(0, 12);
 }
 
 /** "2014–2016" from two ISO dates, one year when they match. */
@@ -153,4 +170,27 @@ export function seat(m: Seat, long = true): string {
   if (territory || m.district == null) return long ? `${title}, ${st}` : `Rep. · ${m.state}`;
   if (m.district === 0) return long ? `${title}, ${st} at large` : `Rep. · ${m.state}-AL`;
   return long ? `${title}, ${st} ${ordinal(m.district)}` : `Rep. · ${m.state}-${m.district}`;
+}
+
+// ---------------------------------------------------------------- shares and year lists (coverage notes)
+
+/** "21%" from a 0-1 share; "under 1%" and "over 99%" instead of a rounded 0% or 100% that would claim none or all. */
+export function percentText(share: number): string {
+  const p = share * 100;
+  if (p > 0 && p < 0.5) return "under 1%";
+  if (p < 100 && p >= 99.5) return "over 99%";
+  return `${Math.round(p)}%`;
+}
+
+/** "2014–2016, 2019" from a list of years: consecutive years join into one range. */
+export function yearRanges(years: number[]): string {
+  const ys = [...new Set(years)].sort((a, b) => a - b);
+  const out: string[] = [];
+  for (let i = 0; i < ys.length; ) {
+    let j = i;
+    while (j + 1 < ys.length && ys[j + 1] === ys[j] + 1) j++;
+    out.push(j > i ? `${ys[i]}–${ys[j]}` : String(ys[i]));
+    i = j + 1;
+  }
+  return out.join(", ");
 }

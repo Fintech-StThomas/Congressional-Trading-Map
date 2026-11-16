@@ -5,6 +5,7 @@
 //   otherwise                        -> fixtures, copied to public/sample-data
 //                                       and served from /sample-data
 //   DATA_BASE_URL set                -> remote mode: nothing copied, nothing read
+//   RELEASE_BASE_URL set             -> pinned mode (releases of the bucket): same, nothing copied, nothing read
 //   VERCEL or CI set, no DATA_BASE_URL, no real build, PT_DATA != fixtures
 //                                    -> fails: a hosted build never publishes the sample site by accident
 //                                       (same rule as sampleFallbackError in src/lib/data/source.ts)
@@ -36,8 +37,12 @@ function isRealDataBuild() {
 // server and proxied for the browser, so nothing is copied or read here; public/data, if present, is
 // left alone and is not used (next.config.ts puts the /data rewrite ahead of public files).
 const remote = (process.env.DATA_BASE_URL ?? "").trim();
+const pinned = (process.env.RELEASE_BASE_URL ?? "").trim();
 
-if (remote) {
+if (pinned) {
+  rmSync(sampleOut, { recursive: true, force: true });
+  console.log(`[data] pinned mode: data from the releases at RELEASE_BASE_URL=${pinned}; public/data is not read or served`);
+} else if (remote) {
   rmSync(sampleOut, { recursive: true, force: true });
   console.log(`[data] remote mode: data from DATA_BASE_URL=${remote}; public/data is not read or served`);
 } else if (isRealDataBuild()) {
@@ -46,7 +51,7 @@ if (remote) {
 } else {
   if ((process.env.VERCEL || process.env.CI) && process.env.PT_DATA !== "fixtures") {
     console.error(
-      `[data] refusing to build the SAMPLE site on ${process.env.VERCEL ? "Vercel" : "CI"}: DATA_BASE_URL is not set and ` +
+      `[data] refusing to build the SAMPLE site on ${process.env.VERCEL ? "Vercel" : "CI"}: neither DATA_BASE_URL nor RELEASE_BASE_URL is set and ` +
         "web/public/data holds no real build. Set DATA_BASE_URL to the published data " +
         "(https://pub-b6acb08f97e345d68ebc4629e915f8ab.r2.dev/data), or set PT_DATA=fixtures to build the sample site on purpose.",
     );

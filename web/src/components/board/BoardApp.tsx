@@ -8,11 +8,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Edge, NodeRef } from "@/lib/types";
 import type { MapGeometry } from "@/lib/board/geo";
 import { inYears, sortEdges, type Family } from "@/lib/domain/edges";
+import { withView } from "@/lib/domain/viewstate";
 import { stateName } from "@/lib/format";
 import { resolveTie } from "@/lib/data/fetch";
 import type { BoardMember } from "@/lib/domain/names";
 import type { TieEdge } from "@/lib/data/decode";
-import { YEAR_MAX, YEAR_MIN } from "@/lib/years";
+import { boardHref } from "@/lib/urls";
+import { ViewPrintLine } from "@/components/shared/ViewBar";
+import { VIEW_EVENT, currentView } from "@/components/shared/useViewState";
 import { AGAINST_SHOWN, isAgainst } from "@/lib/domain/pick";
 import { TieTable } from "@/components/shared/TieTable";
 import { EvidenceDrawer } from "@/components/shared/EvidenceDrawer";
@@ -25,7 +28,9 @@ import { AgainstZone } from "./AgainstZone";
 import { Slip } from "./Slip";
 import { CaseList, Delegation, OrgSide, StateList } from "./SidePanel";
 import { StateTable } from "./StateTable";
+import { TieMissing } from "./TieMissing";
 import { useBoardData } from "./useBoardData";
+import { useBoardFilters, useSelectedEdge, writeSelectedEdge } from "./useBoardView";
 import { EMPTY, type CaseLite, type Featured, type Sel, type StateChunk } from "./types";
 
 export type { CaseLite, Featured, StateChunk } from "./types";
@@ -53,17 +58,9 @@ function readLocation(): Sel | null {
   return sel.s || sel.m || sel.o ? sel : null;
 }
 
+/** A board URL for a selection. The shared view (years, families, assumptions, date basis) travels with it; the selected tie does not. */
 function toQuery(sel: Sel): string {
-  const q = new URLSearchParams();
-  if (sel.s) q.set("s", sel.s);
-  if (sel.m) q.set("m", sel.m);
-  if (sel.o) q.set("o", sel.o);
-  if (sel.focus) q.set("focus", sel.focus);
-  // Assumption switches travel with every board URL.
-  const as = new URLSearchParams(window.location.search).get("as");
-  if (as) q.set("as", as);
-  const s = q.toString();
-  return s ? `/?${s}` : "/";
+  return withView(boardHref({ s: sel.s ?? undefined, m: sel.m ?? undefined, o: sel.o ?? undefined, focus: sel.focus ?? undefined }), { ...currentView(), edge: null, org: null });
 }
 
 export function BoardApp(props: Props) {
@@ -78,8 +75,8 @@ export function BoardApp(props: Props) {
 
   const [sel, setSel] = useState<Sel>(featuredSel);
   const [isFeatured, setIsFeatured] = useState(Boolean(featured));
-  const [families, setFamilies] = useState<Set<Family>>(() => new Set<Family>(["money", "holding", "people"]));
-  const [range, setRange] = useState<[number, number]>([YEAR_MIN, YEAR_MAX]);
+  // Years, tie families and the selected tie live in the URL (the shared view state), so they follow the reader.
+  const { view: shared, families, range, setRange, toggleFamily } = useBoardFilters();
   const [view, setView] = useState<"board" | "table">("board");
   const [panel, setPanel] = useState<"delegation" | "cases">("delegation");
   const [open, setOpen] = useState<Edge | null>(null);
@@ -98,6 +95,7 @@ export function BoardApp(props: Props) {
     const url = toQuery(next);
     if (replace) window.history.replaceState(null, "", url);
     else window.history.pushState(null, "", url);
+    window.dispatchEvent(new Event(VIEW_EVENT));
   }, []);
 
   useEffect(() => {
@@ -224,19 +222,27 @@ export function BoardApp(props: Props) {
         .finally(() => setResolving(false));
     }
   }, []);
+  // The selected tie is also the URL's `e`: written when a string is opened, read when the page or history arrives with one.
+  const pickEdge = useCallback((e: Edge) => {
+    showEdge(e);
+    writeSelectedEdge(e, selfId, Boolean(sel.m));
+  }, [showEdge, selfId, sel.m]);
   const openEdge = useCallback(
     (e: Edge, el: Element, group?: Edge[]) => {
       trigger.current = el;
       setOpenGroup(group && group.length > 1 ? group : null);
-      showEdge(e);
+      pickEdge(e);
     },
-    [showEdge],
+    [pickEdge],
   );
   const closeEdge = useCallback(() => {
     setOpen(null);
+    writeSelectedEdge(null, selfId, Boolean(sel.m));
     const t = trigger.current as HTMLElement | SVGElement | null;
     t?.focus?.();
-  }, []);
+  }, [selfId, sel.m]);
+  const hideEdge = useCallback(() => setOpen(null), []);
+  const { missing } = useSelectedEdge(allStrings, open, showEdge, hideEdge, Boolean(center) && !loading);
 
   const recenter = useCallback(
     (n: NodeRef) => {
@@ -289,18 +295,13 @@ export function BoardApp(props: Props) {
         view={view}
         go={go}
         selectState={selectState}
-        onToggleFamily={(f) =>
-          setFamilies((prev) => {
-            const next = new Set(prev);
-            if (next.has(f)) next.delete(f);
-            else next.add(f);
-            return next;
-          })
-        }
+        onToggleFamily={toggleFamily}
         onRange={setRange}
         onToggleView={() => setView((v) => (v === "board" ? "table" : "board"))}
       />
 
+      <ViewPrintLine />
+      {missing && center?.kind === "member" && <TieMissing member={center.member.id} />}
       <div className="board__main">
         {center?.kind === "member" && (
           <div className="board__assume">
@@ -325,7 +326,7 @@ export function BoardApp(props: Props) {
                 book={book}
                 caseNodes={caseNodes}
                 excluded={excluded}
-                focusNode={sel.focus}
+                focusNode={sel.focus ?? shared.org}
                 drawKey={drawKey}
                 range={range}
                 activeEdge={open?.id ?? null}
@@ -406,7 +407,7 @@ export function BoardApp(props: Props) {
         </aside>
       </div>
 
-      <EvidenceDrawer edge={open} book={book} sources={sources} range={range} onClose={closeEdge} loading={resolving} siblings={openGroup ?? undefined} onPick={showEdge} />
+      <EvidenceDrawer edge={open} book={book} sources={sources} range={range} onClose={closeEdge} loading={resolving} siblings={openGroup ?? undefined} onPick={pickEdge} />
     </div>
   );
 }

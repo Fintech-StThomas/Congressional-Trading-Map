@@ -15,6 +15,10 @@ import { YEAR_MAX, YEAR_MIN } from "@/lib/years";
 import { YearBars } from "./YearBars";
 import { LineSample } from "./LineSample";
 import { ExternalIcon } from "./ExternalIcon";
+import { TieCite } from "./TieCite";
+import { TieSave } from "@/components/saved/Savers";
+import { CoverageNote } from "./CoverageNote";
+import { edgeFacts } from "@/lib/domain/coverage";
 
 type Props = {
   edge: Edge | null;
@@ -154,6 +158,12 @@ export function EvidenceDrawer({ edge, book, sources, range, onClose, loading, s
             <dd className="mono">{date(edge.last)}</dd>
           </div>
         </dl>
+        {!loading && (
+          <div className="cite-save-row">
+            <TieCite key={edge.id} edge={edge} names={{ from: nodeName(edge.from, book), to: nodeName(edge.to, book) }} sources={sources} range={range} ledgerOnly={shown === 0} />
+            <TieSave key={`save-${edge.id}`} edge={edge} book={book} names={{ from: nodeName(edge.from, book), to: nodeName(edge.to, book) }} sources={sources} range={range} ledgerOnly={shown === 0} />
+          </div>
+        )}
         {inRange && filtered && (
           <p className="drawer__range mono">
             {filtered[0]}–{filtered[1]} only: {amountText(inRange) ?? NOT_DISCLOSED}, {plural(inRange.n, "record")}
@@ -179,6 +189,8 @@ export function EvidenceDrawer({ edge, book, sources, range, onClose, loading, s
         )}
 
         {edge.note && <p className="drawer__note">{edge.note}</p>}
+
+        {!loading && <CoverageNote facts={edgeFacts(edge, shown === 0)} label="Coverage for this tie" testId="tie-coverage" />}
 
         <h3>What the record says</h3>
         <p className="drawer__rule">{TYPE_RULE[edge.type]}</p>

@@ -4,21 +4,30 @@
 // same-origin /data/... (rewritten to it in next.config.ts), and nothing reads web/public/data.
 // Pure (no Node or Next imports) so next.config.ts, the server code and tests share one rule.
 
-/** How long fetched data and the pages built from it stay fresh, in seconds (one hour; the data changes once a day). */
-export const REVALIDATE_SECONDS = 3600;
+/**
+ * How long fetched data and the pages built from it stay fresh, in seconds (one hour; the data changes once a day).
+ * PT_REVALIDATE_SECONDS (a positive integer) overrides it, for tests that watch the latest data move; unset in production.
+ */
+export const REVALIDATE_SECONDS = ((): number => {
+  const n = Number(typeof process !== "undefined" ? process.env.PT_REVALIDATE_SECONDS : undefined);
+  return Number.isInteger(n) && n > 0 ? n : 3600;
+})();
 
-/** The normalised base URL (no trailing slash), or null when remote mode is off. Throws on a malformed value. */
-export function remoteDataBase(raw: string | undefined | null): string | null {
+/**
+ * The normalised base URL (no trailing slash), or null when remote mode is off. Throws on a malformed value.
+ * `name` is the environment variable the value came from, for the error message (release.ts reuses the rule).
+ */
+export function remoteDataBase(raw: string | undefined | null, name = "DATA_BASE_URL"): string | null {
   const v = (raw ?? "").trim();
   if (!v) return null;
   let u: URL;
   try {
     u = new URL(v);
   } catch {
-    throw new Error(`DATA_BASE_URL is not a URL: ${JSON.stringify(v)}`);
+    throw new Error(`${name} is not a URL: ${JSON.stringify(v)}`);
   }
-  if (u.protocol !== "https:" && u.protocol !== "http:") throw new Error(`DATA_BASE_URL must be http(s): ${JSON.stringify(v)}`);
-  if (u.search || u.hash) throw new Error(`DATA_BASE_URL must not carry a query or fragment: ${JSON.stringify(v)}`);
+  if (u.protocol !== "https:" && u.protocol !== "http:") throw new Error(`${name} must be http(s): ${JSON.stringify(v)}`);
+  if (u.search || u.hash) throw new Error(`${name} must not carry a query or fragment: ${JSON.stringify(v)}`);
   return v.replace(/\/+$/, "");
 }
 

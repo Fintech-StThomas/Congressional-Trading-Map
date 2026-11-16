@@ -34,6 +34,7 @@ commit and retrieval times. To get the published data without running the pipeli
 | `PT_CACHE_ONLY=1` | reuse every cached download regardless of age (reproducible rebuilds, offline work) |
 | `PT_OUT_DIR` | publish somewhere other than `web/public/data/` (dry runs, comparisons) |
 | `PT_ENABLE_LDA=1`, `LDA_API_KEY` | switch the lobbying stage on (off by default; "off" also removes stale `lda.*` plug-in files) |
+| `PT_ENABLE_CONGRESS=1`, `CONGRESS_API_KEY` | switch the Congress.gov sponsorship pilot on (off by default; unpublished, see "Congress.gov pilot") |
 
 To check that a change is a pure refactor, rebuild into a copy and compare hashes:
 `PT_CACHE_ONLY=1 PT_OUT_DIR=/tmp/out HF_REVISION=<sha> HF_HOLDINGS_REVISION=<sha> python -m pipeline.run` (the
@@ -70,10 +71,15 @@ Times and peak memory (resident set of the whole process, which only grows) from
 | `edges_trades` | `edges_trades.py` | `trades.parquet`, `ticker_orgs.json`, `companies.json` | `trades_resolved.parquet`, `edges/trades.jsonl`, `orgs/trades.jsonl` | 23 s | 1.5 GB |
 | `edges_committees` | `edges_committees.py` | `committees.json` | `edges/committees.jsonl` | 1 s | |
 | `lda` | `lda/` | LDA API pages (off unless `PT_ENABLE_LDA=1`) | `edges/lda.jsonl`, `orgs/lda.jsonl`, `sources/lda.json` | 0 s | |
+| `congress` | `congress/` | cached Congress.gov pages (off unless `PT_ENABLE_CONGRESS=1`) | `build/congress/` only (no plug-in file) | 0 s | |
 | `holdings` | `holdings/` | HF `ZipLime/congress-trading` (by commit), build files | `web/public/data/holdings/`, `holdings-index.json`, `edges/holdings_owns.jsonl`, `orgs/holdings.jsonl`, `sources/holdings.json`, `holdings_rows.json` | 21-23 s | 1.7 GB |
 | `assemble` | `assemble/` | every plug-in file, `trades_resolved.parquet` | every other file in `web/public/data/` (staging dir, then swap) | 84 s | 4.2 GB |
 | `holdings_publish` | `run.py` | the newly published member files | the holdings files again, with this build's overlaps; `meta.json.reports.holdings` | 21-23 s | |
 | `validate` | `validate.py` | `web/public/data/`, `trades*.parquet` | `validation_sample.csv` | 13 s | |
+
+`delays.json` (disclosure timing) is written by the `assemble` stage from `assemble/delays.py`, from the same current-version
+trade rows as `trades/<id>.json`; `validate.py` calls `validate_delays.py`, which re-derives it from the published trade
+files. Contract: data dictionary, "Disclosure timing"; audit: `docs/validation/disclosure-timing-audit.md`.
 
 Whole run: 322-332 s, peak 4.3 GB (before this review: 294 s, 5.9 GB).
 
@@ -90,6 +96,7 @@ pipeline/
   fec/                download -> load (parse) -> refs (identities) -> build (rules, edges, orgs) -> run (write, checks)
   holdings/           source (download) -> run (parse, resolve, emit) -> rules (redaction) -> validate
   lda/                download -> build (parse) -> match (identities) -> edges -> run (write, checks); off by default
+  congress/           download -> facts (parse, exact ids) -> run (fact table, review sample); off by default, unpublished
   assemble/           plugins (load, merge) cases budget orgs wall members publish, run (the orchestrator)
   validate.py         output checks; holdings/validate.py for holdings
   publish_r2.py       upload web/public/data to Cloudflare R2 (changed files only); run by the daily workflow
@@ -114,6 +121,18 @@ a `.meta.json` sidecar with sha256 and Last-Modified) -> **parse** (assert row c
    `edges/`, `orgs/` and `sources/`, and drops (and counts) edges with unknown endpoints or unlisted sources.
 5. Add thresholds to `config.py`, rules to the data dictionary, tests to `tests/test_<source>.py`, and run
    `python -m pipeline.run` to 0 validation failures.
+
+## Congress.gov pilot (off, unreviewed, unpublished)
+
+`pipeline/congress/` tests a bills source on five hand-listed current members before any bulk ingestion. With
+`PT_ENABLE_CONGRESS=1` set, `python -m pipeline.congress.run --download --sample` fetches their sponsored and cosponsored
+legislation from the Congress.gov API (about 40 requests, cached raw under `pipeline/.cache/congress/`), writes a
+member -> bill fact table and `report.json` to `pipeline/build/congress/`, and a review CSV that is copied to
+`docs/validation/congress-sample.csv` once, with empty reviewer columns. Without the variable it prints one line and does
+nothing; the `congress` stage in `run.py` is then a no-op, and even when enabled it reads the cache only and writes no
+file the assembler reads, so nothing reaches `web/public/data`. Members are matched by exact bioguide id only. No human
+has reviewed the sample. Contract: data dictionary, "Congress.gov bill sponsorship pilot". Survey of the other
+candidate sources: `docs/SOURCE-EXPANSION.md`.
 
 ## Overrides
 
@@ -144,6 +163,14 @@ Actions are pinned to commit SHAs; each secret is given only to the step that ne
 `LDA_API_KEY`, `SEC_USER_AGENT`; the publish step: the `R2_*` secrets) and never printed. Downloads are cached
 between runs (`pipeline/.cache`), and each source refetches on its own schedule, so the cache never freezes data;
 the run needs no previous build.
+
+After the legacy publish step, an opt-in step "Archive immutable release" runs `python -m pipeline.publish_release
+--dir web/public/data --activate`. It runs only when the repository variable `PT_PUBLISH_RELEASES` is exactly `1`
+and only on the default branch of the main repository; the R2 secrets are passed to that step alone. It is off by
+default. If it fails, the legacy data is already published and unaffected. Activation order, rollback and
+withdrawal: [`docs/RELEASE-OPERATIONS.md`](../docs/RELEASE-OPERATIONS.md). A separate manual workflow,
+`.github/workflows/release-staging.yml` (`workflow_dispatch`, default branch only), runs the provider check or a
+rollback to a named release.
 
 Manual dispatch has one input, `cache_only` (boolean, default off): the same run with `PT_CACHE_ONLY=1`, so the tree
 is rebuilt from the restored download cache with no downloads, then validated and published (about 5 minutes of
@@ -183,14 +210,35 @@ python -m pipeline.publish_release --release <existing-release-id> --activate
 The first command stages and verifies the release without changing `releases/current.json`. Activation updates
 that single pointer only after verification and only if its captured ETag still matches (or it is still absent).
 The third command verifies an existing release before promoting it or rolling back to it. All commands require
-the same four R2 credentials as the legacy publisher; there is no silent credential skip. No command deletes
+the same four R2 credentials as the legacy publisher; there is no silent credential skip. Neither publish command deletes
 archives or overwrites a conflicting immutable object. Interrupted uploads can be rerun; matching objects are
 read and reused without retransmitting their bodies. The descriptor is the final immutable object written.
 
-The daily workflow still calls the legacy publisher. These commands have been exercised against fake S3, not
-the production provider. Before enabling them in production, complete PR checks, verify R2 conditional writes
-on a staging prefix/bucket, define privacy withdrawal and retention, and deploy compatible release-pinned
-readers. Tests: `python -m pytest -q pipeline/tests/test_release_manifest.py pipeline/tests/test_publish_release.py`.
+Successful activation also maintains the mutable history list `releases/index.json` (newest first, one entry per
+release, at most 400, written with the same conditional discipline as the pointer; shape in the data dictionary).
+The pointer stays the only authority. If the index update fails after the pointer moved, the command exits 1 and
+says that the pointer WAS activated; re-running the same command repairs the index and is idempotent.
+
+Two more commands, both using the same `R2_*` variables:
+
+```bash
+python -m pipeline.release_provider_check
+python -m pipeline.withdraw_release --release <id> --reason privacy|legal|other --confirm <id>
+```
+
+`release_provider_check` verifies, under a disposable `release-provider-check/<random id>/` prefix, that the
+provider rejects a second `If-None-Match: *` create and a stale `If-Match`, and round-trips `Content-Type`,
+`Cache-Control` and bytes; it deletes only the keys it created, prints PASS/FAIL per check, and exits 0 only when
+all pass (2 when configuration is missing). `withdraw_release` is for discovered privacy or legal exposure only: it
+refuses the current release, writes the tombstone `releases/withdrawn/<id>.json`, deletes every object under
+`releases/<id>/` and removes the index entry; re-running finishes an interrupted withdrawal; `publish_release`
+refuses withdrawn releases. It is the only command that deletes archive objects.
+
+The daily workflow's archive step is gated off by default, and its commands have been exercised against fake S3,
+not the production provider. Before enabling `PT_PUBLISH_RELEASES`, run the provider check and follow the
+activation checklist in `docs/RELEASE-OPERATIONS.md`; release-pinned readers must be deployed before the site
+reads the archive. Tests: `python -m pytest -q pipeline/tests/test_release_manifest.py pipeline/tests/test_publish_release.py
+pipeline/tests/test_release_history.py pipeline/tests/test_withdraw_release.py pipeline/tests/test_release_provider_check.py`.
 
 The bucket is where the data lives: the production site reads it (`DATA_BASE_URL`), and `web/public/data/` is not
 in git. Public base URL: `https://pub-b6acb08f97e345d68ebc4629e915f8ab.r2.dev/data`. `pipeline/publish_r2.py` uploads the tree to Cloudflare R2 through the S3-compatible API

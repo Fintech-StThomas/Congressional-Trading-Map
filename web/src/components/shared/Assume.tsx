@@ -5,7 +5,8 @@ import "@/styles/reach.css";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { dataUrl } from "@/lib/urls";
 import { getJSON } from "@/lib/data/fetch";
-import { applyAssumptions, DEFAULT_ASSUMPTIONS, decodeAssumptions, encodeAssumptions, isDefault, isOwnOnly, OWN_SWITCH, ownOnly, readout, SWITCHES, type AssumptionEffect, type Assumptions, type TradeLite } from "@/lib/domain/assume";
+import { applyAssumptions, DEFAULT_ASSUMPTIONS, decodeAssumptions, encodeAssumptions, isDefault, isOwnOnly, OWN_SWITCH, ownOnly, readout, SWITCHES, tradeCounts, type AssumptionEffect, type Assumptions, type TradeLite } from "@/lib/domain/assume";
+import { VIEW_EVENT } from "./useViewState";
 import { Switch } from "./ChipSelect";
 
 const NONE: TradeLite[] = [];
@@ -17,6 +18,7 @@ function decodeLite(t: TradeWire): TradeLite[] {
   return t.rows.map((r) => ({
     owner: String(r[at.owner] ?? "unspecified"), asset_class: String(r[at.asset_class] ?? "unknown"),
     low: (r[at.low] as number | null) ?? null, late: (r[at.late] as boolean | null) ?? null, org: (r[at.org] as string | null) ?? null,
+    date: (r[at.date] as string | null) ?? null, available: (r[at.available] as string | null) ?? null,
   }));
 }
 
@@ -31,12 +33,16 @@ function writeUrl(a: Assumptions) {
   if (v) u.searchParams.set("as", v);
   else u.searchParams.delete("as");
   window.history.replaceState(window.history.state, "", u.pathname + u.search + u.hash);
+  // The other views of the shared state (links, filters, the printed line) read the URL again.
+  window.dispatchEvent(new Event(VIEW_EVENT));
 }
 
 export type AssumptionState = {
   assume: Assumptions;
   setAssume: (a: Assumptions) => void;
   effect: AssumptionEffect | null;
+  /** The trades that count under the assumptions (with their dates), once loaded; null while default or loading. */
+  kept: TradeLite[] | null;
   status: "idle" | "loading" | "error" | "n/a";
   line: string;
 };
@@ -73,9 +79,10 @@ export function useAssumptions(member: string | null, hasTrades: boolean, edges:
   }, []);
   const list = member ? (hasTrades ? trades[member] : NONE) : undefined;
   const effect = useMemo(() => (active && list ? applyAssumptions(list, edges, caseOrgs, assume) : null), [active, list, edges, caseOrgs, assume]);
+  const kept = useMemo(() => (active && list ? list.filter((t) => tradeCounts(t, assume)) : null), [active, list, assume]);
   const status = !member ? "n/a" : failed === member ? "error" : active && !list ? "loading" : "idle";
   const line = status === "error" ? "The trades failed to load; assumptions are not applied." : readout(effect, assume);
-  return { assume, setAssume, effect, status, line };
+  return { assume, setAssume, effect, kept, status, line };
 }
 
 /** The switches, in a disclosure so they never crowd the board. */

@@ -1,0 +1,258 @@
+/* /delays: disclosure timing. Neutral tokens only; no red (red means a tie), no colour-only meaning:
+   every figure is also text. Tables scroll in a focusable region on narrow screens and print in full. */
+.delays .dl-caveat {
+  margin: 18px 0 0;
+  max-width: 76ch;
+  padding: 12px 16px;
+  border: 1px solid var(--rule);
+  border-left: 4px solid var(--text-2);
+  border-radius: var(--r);
+  background: var(--surface);
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+.dl-caveat h2 {
+  font-size: 14px;
+  margin: 0 0 4px;
+  color: var(--text);
+}
+.dl-caveat ul,
+.dl-list {
+  margin: 4px 0 0;
+  padding-left: 20px;
+}
+.dl-caveat li,
+.dl-list li {
+  margin: 3px 0;
+}
+.dl-sec {
+  margin-top: 40px;
+  scroll-margin-top: 12px;
+}
+.dl-sec h2 {
+  font-size: 19px;
+  margin: 0 0 4px;
+}
+.dl-sec ul {
+  max-width: 76ch;
+}
+.dl-sec p {
+  max-width: 76ch;
+}
+.dl-sub {
+  margin: 4px 0 10px;
+  font-size: 13.5px;
+  color: var(--text-3);
+}
+.dl-unavailable {
+  margin-top: 24px;
+  max-width: 76ch;
+  padding: 14px 16px;
+  border: 1px dashed var(--rule);
+  border-radius: var(--r);
+  color: var(--text-2);
+}
+.dl-unavailable h2 {
+  font-size: 17px;
+  margin: 0 0 4px;
+  color: var(--text);
+}
+.dl-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13px;
+}
+.dl-table th,
+.dl-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--rule-soft);
+  text-align: left;
+  vertical-align: baseline;
+  color: var(--text-2);
+}
+.dl-table thead th {
+  background: var(--surface-2);
+  color: var(--text);
+  font-weight: 600;
+  border-bottom: 1px solid var(--rule);
+}
+.dl-table tbody th,
+.dl-table tfoot th {
+  font-weight: 500;
+  color: var(--text);
+}
+.dl-table .dl-num {
+  text-align: right;
+  white-space: nowrap;
+}
+.dl-note {
+  display: block;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-3);
+}
+.dl-apart th,
+.dl-apart td {
+  font-style: italic;
+}
+.dl-bands {
+  max-width: 900px;
+}
+.dl-barcell {
+  width: 38%;
+  min-width: 100px;
+}
+.dl-bar {
+  display: block;
+  height: 10px;
+  min-width: 1px;
+  background: var(--pat-ink);
+  border-radius: 1px;
+}
+.dl-bar--apart {
+  background: none;
+  border: 1px dashed var(--pat-ink);
+}
+.dl-scroll {
+  overflow: auto;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-sm);
+  background: var(--bg-2);
+}
+.dl-scroll:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.dl-groups,
+.dl-membertable {
+  min-width: 760px;
+}
+.dl-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 14px;
+  margin-bottom: 10px;
+}
+.dl-search {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.dl-search input {
+  box-sizing: border-box;
+  width: min(260px, 80vw);
+  height: 32px;
+  padding: 0 8px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-sm);
+}
+.dl-search input:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 0;
+}
+.dl-count {
+  margin: 0 0 6px auto;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.dl-membertable thead th {
+  padding: 0;
+  position: sticky;
+  top: 0;
+}
+.dl-membertable thead th button {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  min-height: 36px;
+  padding: 4px 10px;
+  cursor: pointer;
+  color: var(--text);
+}
+.dl-membertable thead th.dl-num button {
+  justify-content: flex-end;
+}
+.dl-membertable thead th button:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+.dl-arrow {
+  width: 1ch;
+  color: var(--text-3);
+}
+.dl-membertable tbody th a {
+  color: var(--text);
+}
+.dl-none {
+  text-align: center;
+  color: var(--text-3);
+}
+.dl-more {
+  margin: 10px 0 0;
+  font-size: 13.5px;
+  color: var(--text-2);
+}
+
+@media print {
+  .dl-filters,
+  .dl-more {
+    display: none;
+  }
+  .dl-scroll {
+    overflow: visible;
+    border: 0;
+    background: none;
+  }
+  .dl-groups,
+  .dl-membertable {
+    min-width: 0;
+    font-size: 8pt;
+  }
+  .dl-table th,
+  .dl-table td {
+    color: #111;
+    background: none;
+    padding: 2px 4px;
+  }
+  .dl-membertable thead th {
+    position: static;
+  }
+  .dl-membertable thead th button {
+    color: #111;
+  }
+  .dl-bar {
+    background: #111;
+  }
+  .dl-bar--apart {
+    border-color: #111;
+  }
+  .delays .dl-caveat {
+    background: none;
+    border-color: #111;
+    color: #111;
+  }
+  .dl-table tr {
+    break-inside: avoid;
+  }
+}
+
+/* Member page: the one-line timing summary above the trades table. */
+.trades__timing {
+  margin: 0 0 10px;
+  max-width: 90ch;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.trades__timing a {
+  color: var(--text);
+}

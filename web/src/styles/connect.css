@@ -1,0 +1,339 @@
+/* /connect: documented connections. Neutral tokens only: red means a tie and nothing else, and no meaning rests on colour
+   alone (every mark has words). Controls stack at 390px, nothing depends on hover, and the results print in full. */
+.connect .cnotes__incomplete {
+  margin: 14px 0 0;
+  max-width: 76ch;
+  padding: 10px 14px;
+  border: 1px solid var(--rule);
+  border-left: 4px solid var(--text-2);
+  border-radius: var(--r);
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 14.5px;
+  line-height: 1.5;
+}
+
+/* form */
+.cform {
+  margin-top: 22px;
+  display: grid;
+  gap: 16px;
+}
+.cform__ends {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 10px 12px;
+  align-items: end;
+}
+.cform__swap {
+  margin-bottom: 3px;
+}
+.cpick {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  position: relative;
+}
+.cpick__label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.cpick__box {
+  position: relative;
+}
+.cpick__box input {
+  width: 100%;
+}
+.cpick__chosen {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 38px;
+  padding: 4px 6px 4px 12px;
+  border: 1px solid var(--rule);
+  border-radius: var(--r);
+  background: var(--surface);
+}
+.cpick__name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.cpick__list {
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  max-height: 320px;
+  overflow: auto;
+  border: 1px solid var(--rule);
+  border-radius: var(--r);
+  background: var(--surface-2);
+  box-shadow: var(--shadow-card);
+}
+.cpick__list li {
+  display: grid;
+  gap: 1px;
+  padding: 7px 10px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.cpick__list li.is-active {
+  background: var(--paper);
+  color: var(--ink);
+}
+.cpick__list li.is-active .cpick__osub {
+  color: var(--ink-2);
+}
+.cpick__none {
+  color: var(--text-2);
+  cursor: default !important;
+}
+.cpick__olabel {
+  font-weight: 600;
+}
+.cpick__osub {
+  font-size: 12px;
+  color: var(--text-3);
+}
+.cform__opts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 28px;
+  align-items: flex-start;
+  margin: 0;
+  padding: 10px 14px 12px;
+  border: 1px solid var(--rule-soft);
+  border-radius: var(--r);
+}
+.cform__opts legend {
+  padding: 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.cform__opt {
+  display: grid;
+  gap: 4px;
+  font-size: 14px;
+}
+.cform__opt--check {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  max-width: 36ch;
+}
+.cform__opt small {
+  display: block;
+  margin-top: 2px;
+  font-size: 12.5px;
+  color: var(--text-3);
+  line-height: 1.4;
+}
+
+/* results */
+.cresults {
+  margin-top: 26px;
+}
+.cresults__status,
+.cresults__count {
+  color: var(--text-2);
+  font-size: 14px;
+}
+.cresults__more {
+  margin-top: 12px;
+  color: var(--text-2);
+}
+.cpaths {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 18px;
+}
+.cpath {
+  border: 1px solid var(--rule);
+  border-radius: var(--r);
+  background: var(--surface);
+  padding: 16px 18px 14px;
+  break-inside: avoid;
+}
+.cpath__head {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-3);
+  text-transform: none;
+  letter-spacing: 0.01em;
+}
+.cpath__route {
+  margin: 4px 0 0;
+  font-size: 18px;
+  font-weight: 650;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.cpath__flag {
+  margin: 8px 0 0;
+  font-size: 13.5px;
+  color: var(--text-2);
+}
+.cpath__time {
+  margin: 8px 0 0;
+  padding-left: 10px;
+  border-left: 3px solid var(--rule);
+  font-size: 14px;
+  color: var(--text-2);
+}
+.cpath__time--none,
+.cpath__time--unknown {
+  border-left-style: dashed;
+}
+.cpath__timeNote {
+  color: var(--text-3);
+}
+.cpath__steps {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 14px;
+}
+.cstep__head {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.cstep__hops {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.chop {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 12px;
+  align-items: start;
+  padding: 8px 12px;
+  border: 1px solid var(--rule-soft);
+  border-radius: var(--r-sm);
+  background: var(--bg-2);
+}
+.chop--stat {
+  border-style: dashed;
+}
+.chop.is-active {
+  border-color: var(--text-2);
+}
+.chop__says {
+  margin: 0;
+  grid-column: 1;
+  overflow-wrap: anywhere;
+}
+.chop__says a {
+  font-weight: 600;
+}
+.chop__meta {
+  margin: 0;
+  grid-column: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.chop__why {
+  margin: 2px 0 0;
+  grid-column: 1;
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+.chop__ev {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+.chop__tag,
+.cpath__flag .tag {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--text-2);
+}
+.chop__sum {
+  font-style: italic;
+  color: var(--text-3);
+}
+.cpath__note {
+  margin: 14px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--rule-soft);
+  font-size: 13.5px;
+  color: var(--text-2);
+  max-width: 76ch;
+}
+
+/* notes */
+.cnotes {
+  margin-top: 26px;
+  max-width: 76ch;
+  font-size: 14px;
+  color: var(--text-2);
+}
+.cnotes__h {
+  margin: 10px 0 4px;
+  font-size: 14px;
+  color: var(--text);
+}
+.cnotes ul,
+.cnotes ol {
+  margin: 4px 0 0;
+  padding-left: 20px;
+}
+.cnotes--rank summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--text);
+}
+
+@media (max-width: 640px) {
+  .cform__ends {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .cform__swap {
+    justify-self: start;
+    margin: 0;
+  }
+  .chop {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .chop__ev {
+    grid-column: 1;
+    grid-row: auto;
+    justify-self: start;
+    margin-top: 6px;
+  }
+  .cpath {
+    padding: 14px 12px 12px;
+  }
+  .cpath__route {
+    font-size: 16.5px;
+  }
+}
+
+@media print {
+  .cpath,
+  .chop {
+    border-color: #888;
+    background: #fff;
+  }
+  .cpick__list {
+    display: none;
+  }
+}

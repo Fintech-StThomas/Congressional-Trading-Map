@@ -50,3 +50,35 @@ export function securityHeaders(env: Env): { key: string; value: string }[] {
     { key: "Cross-Origin-Resource-Policy", value: "same-origin" },
   ];
 }
+
+// ---------------------------------------------------------------- embed responses (/embed/<anything>)
+// The member card is the only content meant to be framed by other sites. It is a self-contained HTML document with
+// inline CSS and no scripts, images, fonts, connections or forms, so its policy allows nothing but its own styles and
+// any ancestor; every other route keeps `securityHeaders` above, unchanged.
+
+/** The CSP of an embed response: nothing may load or run, styles are inline, any site may frame it. */
+export function embedContentSecurityPolicy(env: Env): string {
+  return [
+    "default-src 'none'",
+    "script-src 'none'",
+    "style-src 'unsafe-inline'",
+    "base-uri 'none'",
+    "form-action 'none'",
+    "frame-ancestors *",
+    ...(env.VERCEL ? ["upgrade-insecure-requests"] : []),
+  ].join("; ");
+}
+
+/** Headers for `/embed/:path+`: the main set with the CSP replaced and no X-Frame-Options (it would forbid the framing). */
+export function embedHeaders(env: Env): { key: string; value: string }[] {
+  return [
+    ...securityHeaders(env).filter((h) => h.key !== "X-Frame-Options" && h.key !== "Content-Security-Policy" && h.key !== "Cross-Origin-Resource-Policy"),
+    { key: "Content-Security-Policy", value: embedContentSecurityPolicy(env) },
+    { key: "Cross-Origin-Resource-Policy", value: "cross-origin" },
+  ];
+}
+
+/** The `source` of the main header rule: every path except /embed/<something>, so the embed rule is the only one that applies there. */
+export const NOT_EMBED_SOURCE = "/((?!embed/).*)";
+/** The `source` of the embed header rule. `/embed` itself (the help page) is a normal page and keeps the main headers. */
+export const EMBED_SOURCE = "/embed/:path+";
