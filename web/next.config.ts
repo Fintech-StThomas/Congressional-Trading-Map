@@ -120,6 +120,8 @@ export default async function config(phase: string): Promise<NextConfig> {
         ["/cases/:slug+", "/live/cases/:slug+"],
         [`/feed/m/:file(${MEMBER_ID_PATTERN}\\.xml)`, "/live/feed/m/:file"],
         ["/feed/trades.xml", "/live/feed/site/trades.xml"],
+        [`/feed/o/:file(${ORG_PATTERN}\\.xml)`, "/live/feed/o/:file"],
+        ["/new", "/live/new/week"],
         [`/embed/m/${m}`, "/live/embed/m/:id"],
       ].map(([source, destination]) => ({ source, destination }));
       const proxies = [...(pinned ? [releaseIndexRewrite(pinned), releasePointerRewrite(pinned), releaseRewrite(pinned)] : []), ...(remote ? [remoteRewrite(remote)] : [])];
@@ -133,7 +135,8 @@ export default async function config(phase: string): Promise<NextConfig> {
         { source: NOT_EMBED_SOURCE, headers: securityHeaders(process.env) },
         { source: EMBED_SOURCE, headers: embedHeaders(process.env) },
         // Feeds: readers recheck hourly and may serve stale for a day.
-        { source: "/feed/:path*", headers: [{ key: "Cache-Control", value: "public, max-age=3600, stale-while-revalidate=86400" }] },
+        // Not /feed/w.xml: that route sets its own header, and only on a 200, so a rejected query is never cached.
+        { source: "/feed/:path((?!w\\.xml$).*)", headers: [{ key: "Cache-Control", value: "public, max-age=3600, stale-while-revalidate=86400" }] },
         // The share card is fetched by other sites (social previews, chat unfurls): readable cross-origin.
         { source: "/:og(opengraph-image.*)", headers: [{ key: "Cross-Origin-Resource-Policy", value: "cross-origin" }] },
         // Same for each member's card (app/m/[id]/opengraph-image and its remote-mode twin under app/live/m).

@@ -21,7 +21,7 @@ export const READ_CONCURRENCY = 8;
 /** Feed readers recheck after a day (the data changes once a day). */
 export const FEED_TTL_MINUTES = 1440;
 
-export type FeedMember = Pick<MemberSummary, "id" | "name" | "party" | "state">;
+export type FeedMember = Pick<MemberSummary, "id" | "name" | "party" | "state"> & { chamber?: MemberSummary["chamber"]; district?: number | null };
 export type FeedTrade = { member: FeedMember; trade: TradeRow };
 
 /**
@@ -108,18 +108,32 @@ const tag = (name: string, text: string, attrs = "") => `<${name}${attrs}>${esca
 
 export type Channel = { title: string; link: string; self: string; description: string };
 
-/** The whole RSS 2.0 document. `lastBuildDate` is the data build time (omitted when the build time is unknown), never the render time. */
-export function buildFeed(channel: Channel, items: FeedTrade[], c: FeedContext): string {
+/** One feed item, already worded: `pubDate` is an ISO date (or timestamp); `guid` is stable and never a link. */
+export type FeedItem = { title: string; link: string; guid: string; pubDate: string; description: string };
+
+/** A trade as a feed item (title, link to the member's case file, guid = the trade id, description as itemDescription). */
+export function tradeItem({ member, trade }: FeedTrade, c: FeedContext, titlePrefix = ""): FeedItem {
+  return {
+    title: titlePrefix + itemTitle(member, trade),
+    link: siteUrl(memberHref(member.id)),
+    guid: trade.id,
+    pubDate: trade.available as string,
+    description: itemDescription(trade, c),
+  };
+}
+
+/** The whole RSS 2.0 document from ready items. `lastBuildDate` is the data build time (omitted when unknown), never the render time. */
+export function buildFeedFromItems(channel: Channel, items: FeedItem[], c: FeedContext): string {
   const lastBuild = rfc822(c.built);
-  const parts = items.map(({ member, trade }) => {
-    const pub = rfc822(trade.available) as string;
+  const parts = items.map((it) => {
+    const pub = rfc822(it.pubDate);
     return [
       "<item>",
-      tag("title", itemTitle(member, trade)),
-      tag("link", siteUrl(memberHref(member.id))),
-      tag("guid", trade.id, ' isPermaLink="false"'),
-      tag("pubDate", pub),
-      tag("description", itemDescription(trade, c)),
+      tag("title", it.title),
+      tag("link", it.link),
+      tag("guid", it.guid, ' isPermaLink="false"'),
+      pub ? tag("pubDate", pub) : "",
+      tag("description", it.description),
       "</item>",
     ].join("");
   });
@@ -138,6 +152,11 @@ export function buildFeed(channel: Channel, items: FeedTrade[], c: FeedContext):
     "</channel></rss>",
     "",
   ].join("");
+}
+
+/** The whole RSS 2.0 document for trades. */
+export function buildFeed(channel: Channel, items: FeedTrade[], c: FeedContext): string {
+  return buildFeedFromItems(channel, items.map((x) => tradeItem(x, c)), c);
 }
 
 /** The channel description: what the feed lists, the amounts rule, the disclaimer and the build. */

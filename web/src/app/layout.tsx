@@ -91,6 +91,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               <FooterAsOf asOf={built ? date(built) : "unknown"} built={built} sample={IS_SAMPLE} />
               <Link href="/method">Sources and method</Link>
               <Link href={statusHref()}>Data status</Link>
+              <Link href="/watch" data-testid="footer-following">Following</Link>
               <Link href="/about">About</Link>
               <span>Not investment advice</span>
               <span>No commercial use or solicitation (5 U.S.C. 13107(c))</span>

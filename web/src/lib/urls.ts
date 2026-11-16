@@ -71,6 +71,21 @@ export function memberFeedHref(id: string): string {
   return `/feed/m/${id}.xml`;
 }
 
+/** An organisation's RSS feed: "/feed/o/co%3A320193.xml" (the id is percent-encoded, as /o/ links are). */
+export function orgFeedHref(id: string): string {
+  return `/feed/o/${encodeURIComponent(id)}.xml`;
+}
+
+/** The trades-made-public-this-week page. */
+export function newHref(): string {
+  return "/new";
+}
+
+/** The page that lists what the reader follows (kept in their browser). */
+export function watchHref(): string {
+  return "/watch";
+}
+
 /** How to embed a member's card on another site. */
 export function embedHelpHref(): string {
   return "/embed";

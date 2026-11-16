@@ -385,6 +385,25 @@ const TRADES = {
   X000012: makeTrades("X000012", 7, ["co:9000008"]),
 };
 
+// Recent filings: a few 2026 trades are re-dated to become public in the week before the build date (2026-11-13), so the
+// new-this-week page and the feeds have rows. The lag stays as generated (so delay bands do not change); 2026-11-06 sits
+// just outside the 7 days to 13 Nov and 2026-11-07 just inside. No random numbers are drawn here.
+const RECENT = {
+  X000001: ["2026-11-13", "2026-11-12", "2026-11-10"],
+  X000003: ["2026-11-12", "2026-11-09"],
+  X000005: ["2026-11-13", "2026-11-07"],
+  X000002: ["2026-11-06"],
+};
+for (const [id, days] of Object.entries(RECENT)) {
+  const rows = TRADES[id].filter((t) => t.date?.startsWith("2026") && t.available < "2026-11-01" && t.lag_days != null);
+  days.forEach((available, i) => {
+    const t = rows[i];
+    t.available = available;
+    t.date = addDays(available, -t.lag_days);
+  });
+  TRADES[id].sort((a, b) => (b.date ?? b.available ?? "").localeCompare(a.date ?? a.available ?? ""));
+}
+
 // ---- cases ----------------------------------------------------------------------------
 const CASE_EXCLUDED = new Set(["sits_with", "legislates_with"]);
 const cases = [];

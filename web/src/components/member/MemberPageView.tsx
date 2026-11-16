@@ -35,6 +35,7 @@ import { AssumeCase, AssumeCount, AssumptionProvider, PageAssumptionBar } from "
 import { CiteEnvProvider } from "@/components/shared/CiteEnv";
 import { CoverageNote } from "@/components/shared/CoverageNote";
 import { MemberCite, MemberCitePrint, type MemberCiteProps } from "@/components/member/MemberCite";
+import { FollowButton } from "@/components/shared/FollowButton";
 import { MemberSave } from "@/components/saved/Savers";
 import { coverageFacts, coverageMeta, tradeValueStats } from "@/lib/domain/coverage";
 import "@/styles/cite.css";
@@ -196,6 +197,7 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
             <MemberSave member={cite.member} years={served(m.served)} party={m.party} counts={cite.counts} dates={cite.dates} limitations={cite.limitations} />
             <ConnectLink a={m.id} />
             <Link className="btn btn--small" href={memberFeedHref(m.id)} prefetch={false} data-testid="member-feed-link">Subscribe (RSS)</Link>
+            <FollowButton kind="member" id={m.id} name={m.name} />
             <Link className="btn btn--small" href={embedHelpHref()} data-testid="member-embed-link">Embed</Link>
           </div>
         </div>

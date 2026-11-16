@@ -660,6 +660,119 @@ test("an explainer opens on click, closes on Escape and outside click, and stays
   await p.close();
 });
 
+// ---- discovery: /new, organisation feeds, the watchlist feed and Follow (fixture ids; skipped on real data) ----
+
+test("/new lists trades made public in the 7 days to the build date, and its filters work", async () => {
+  if (realData) return;
+  const p = await page();
+  await p.goto(base + "/new");
+  await p.waitForSelector("[data-testid=new-count]");
+  const line = await p.getByTestId("new-count").innerText();
+  assert.match(line, /^\d+ trades? made public in the 7 days to 13 Nov 2026/);
+  const all = await p.getByTestId("new-row").count();
+  assert.ok(all >= 5, `fixture rows: ${all}`);
+  assert.equal(await p.getByText("Subscribe (RSS)").count(), 1);
+  await p.getByTestId("new-chamber").selectOption("rep");
+  const house = await p.getByTestId("new-row").count();
+  assert.ok(house > 0 && house < all);
+  assert.match(await p.getByTestId("new-count").innerText(), new RegExp(`^${house} trades? made public`));
+  await p.getByTestId("new-chamber").selectOption("all");
+  const options = await p.locator("[data-testid=new-action] option").evaluateAll((os) => os.map((o) => [o.value, o.textContent]));
+  assert.ok(options.length >= 2, "action options");
+  const [value, label] = options[1];
+  await p.getByTestId("new-action").selectOption(value);
+  assert.ok((await p.getByTestId("new-row").count()) <= all);
+  assert.ok((await p.locator("[data-testid=new-row] td[data-label=Action]").allInnerTexts()).every((t) => t.startsWith(label)));
+  // the header still fits at phone width
+  await p.setViewportSize({ width: 390, height: 844 });
+  assert.ok((await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)) <= 0);
+  assert.equal(await p.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "New" }).count(), 1);
+  await p.close();
+});
+
+test("an organisation feed is RSS with items; a malformed or unknown id is a 404", async () => {
+  if (realData) return;
+  const res = await fetch(base + "/feed/o/co%3A9000001.xml");
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get("content-type") ?? "", /application\/rss\+xml/);
+  const xml = await res.text();
+  assert.match(xml, /^<\?xml/);
+  assert.ok((xml.match(/<item>/g) ?? []).length >= 1);
+  assert.match(xml, /<channel><title>[^<]*<\/title>/);
+  assert.equal((await fetch(base + "/feed/o/nope.xml")).status, 404);
+  assert.equal((await fetch(base + "/feed/o/co%3A1.xml")).status, 404);
+});
+
+test("the watchlist feed returns RSS for valid ids and 400 for bad ones", async () => {
+  if (realData) return;
+  const ok = await fetch(base + "/feed/w.xml?m=X000001");
+  assert.equal(ok.status, 200);
+  assert.match(ok.headers.get("content-type") ?? "", /application\/rss\+xml/);
+  assert.match(ok.headers.get("cache-control") ?? "", /s-maxage=3600/);
+  assert.ok(((await ok.text()).match(/<item>/g) ?? []).length >= 1);
+  const both = await fetch(base + "/feed/w.xml?o=co%3A9000001&m=X000001");
+  assert.equal(both.status, 200);
+  const bad = await fetch(base + "/feed/w.xml?m=bad");
+  assert.equal(bad.status, 400);
+  assert.match(await bad.text(), /not valid/);
+  assert.equal((await fetch(base + "/feed/w.xml")).status, 400);
+  assert.equal((await fetch(base + "/feed/w.xml?m=X000001&x=1")).status, 400);
+});
+
+test("Follow on a member page lists the member on /watch with a feed link; the list can be cleared; storage can be blocked", async () => {
+  if (realData) return;
+  const p = await page();
+  await p.goto(base + "/m/X000001");
+  await p.getByTestId("follow-button").first().click();
+  await p.waitForSelector("[data-testid=follow-feed]");
+  assert.match((await p.getByTestId("follow-feed").getAttribute("href")) ?? "", /m=X000001/);
+  await p.getByTestId("follow-manage").click();
+  await p.waitForSelector("[data-testid=watch-item]");
+  assert.match(await p.getByTestId("watch-member").innerText().catch(() => p.getByTestId("watch-members").innerText()), /Ada Sampleworth/);
+  assert.match(await p.getByTestId("watch-feed-url").inputValue(), /\/feed\/w\.xml\?m=X000001$/);
+  assert.match(await p.getByTestId("watch-privacy").innerText(), /only in this browser/);
+  assert.equal(await p.locator('meta[name=robots][content*=noindex]').count(), 1);
+  await p.getByTestId("watch-remove").first().click();
+  assert.equal(await p.getByTestId("watch-item").count(), 0);
+  await p.close();
+  // org page: follow and feed discovery
+  const q = await page();
+  await q.goto(base + "/o/co%3A9000001");
+  await q.waitForSelector("[data-testid=org-feed-link]");
+  assert.match((await q.getByTestId("org-feed-link").getAttribute("href")) ?? "", /\/feed\/o\/co%3A9000001\.xml/);
+  assert.equal(await q.locator("link[data-org-feed][rel=alternate][type='application/rss+xml']").count(), 1);
+  await q.getByTestId("follow-button").click();
+  assert.match((await q.getByTestId("follow-feed").getAttribute("href")) ?? "", /o=co%3A9000001/);
+  await q.close();
+  // blocked storage: works in memory with a notice
+  const blocked = await page();
+  await blocked.addInitScript(() => {
+    Object.defineProperty(window, "localStorage", { get() { throw new Error("blocked"); } });
+  });
+  await blocked.goto(base + "/m/X000001");
+  await blocked.getByTestId("follow-button").first().click();
+  await blocked.waitForSelector("[data-testid=follow-memory]");
+  assert.match((await blocked.getByTestId("follow-feed").getAttribute("href")) ?? "", /m=X000001/);
+  await blocked.close();
+});
+
+test("saved boards link to Following and can follow everything on a board; the footer links to it", async () => {
+  if (realData) return;
+  const p = await page();
+  await p.goto(base + "/saved");
+  assert.equal(await p.getByTestId("saved-following-link").count(), 1);
+  assert.equal(await p.getByTestId("footer-following").count(), 1);
+  await p.goto(base + "/m/X000001");
+  await p.getByTestId("save-member-button").click();
+  await p.getByTestId("save-member-name").fill("Watch test");
+  await p.getByTestId("save-member-confirm").click();
+  await p.goto(base + "/saved");
+  await p.getByTestId("board-follow-all").click();
+  assert.match(await p.getByTestId("board-follow-msg").innerText(), /Now following 1 more/);
+  assert.match((await p.getByTestId("board-export-feed").getAttribute("href")) ?? "", /m=X000001/);
+  await p.close();
+});
+
 test("no Content-Security-Policy violations on any page", async () => {
   const p = await page();
   for (const url of ["/", "/wall", "/cases", "/orgs", "/method", "/about"]) {

@@ -193,14 +193,18 @@ test("a latest page and every request it makes carry one release id (A)", async 
   assert.equal(await p.getByTestId("release-banner").count(), 0, "the latest page has no permalink banner");
 
   // Search loads /r/<A>/search-index.
+  // (Each wait starts before its action, so a fast response cannot slip past it.)
+  const searched = p.waitForResponse((r) => r.url().includes("/search-index"));
   await p.getByRole("search").getByRole("combobox").fill("Ada");
-  await p.waitForResponse((r) => r.url().includes("/search-index"));
+  await searched;
   // The full file loads the member file from /releases/<A>/.
+  const file = p.waitForResponse((r) => r.url().includes(`/releases/${A}/members/${MEMBER}.json`));
   await p.goto(`${site}/m/${MEMBER}/records`);
-  await p.waitForResponse((r) => r.url().includes(`/releases/${A}/members/${MEMBER}.json`));
+  await file;
   // The board loads a state's strings from /r/<A>/board-data/<state>.
+  const board = p.waitForResponse((r) => r.url().includes("/board-data/VT"));
   await p.goto(`${site}/?s=VT&m=X000008`);
-  await p.waitForResponse((r) => r.url().includes("/board-data/VT"));
+  await board;
 
   assert.ok(pinned.some((x) => x === `/r/${A}/search-index`), pinned.join("\n"));
   assert.ok(pinned.some((x) => x === `/releases/${A}/members/${MEMBER}.json`));
@@ -253,10 +257,13 @@ test("after the latest pointer moves to B, the permalink to A still shows A", as
   await p.goto(`${site}/r/${A}/m/${MEMBER}`);
   assert.ok((await p.locator("h1").first().innerText()).includes(NAME_A));
   assert.ok(!(await p.content()).includes(NAME_B));
+  // Start waiting before each action: on a fast run the response can arrive before a wait registered afterwards.
+  const searched = p.waitForResponse((r) => r.url().includes("/search-index"));
   await p.getByRole("search").getByRole("combobox").fill("Ada");
-  await p.waitForResponse((r) => r.url().includes("/search-index"));
+  await searched;
+  const opened = p.waitForResponse((r) => r.url().includes(`/releases/${A}/members/${MEMBER}.json`));
   await p.getByRole("link", { name: "Open the full file" }).click();
-  await p.waitForResponse((r) => r.url().includes(`/releases/${A}/members/${MEMBER}.json`));
+  await opened;
   assert.deepEqual([...idsIn(pinned)], [A]);
   assert.deepEqual(unpinned, []);
   // The latest page, opened in the same browser, is B and its fetches are B's.

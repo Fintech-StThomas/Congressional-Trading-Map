@@ -6,6 +6,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { SAVED } from "@/lib/copy";
 import { deleteBoard, LIMITS, moveItem, removeItem, renameBoard, setBoardNote, setItemNote, type Board } from "@/lib/domain/saved";
 import { apply, nowIso } from "./store";
+import { BoardFollow } from "./BoardFollow";
 import { CompareTable } from "./CompareTable";
 import { ExportPanel } from "./ExportPanel";
 import { ItemCard } from "./ItemCard";
@@ -69,6 +70,7 @@ export function BoardPanel({ board, pinned, onDeleted }: { board: Board; pinned:
       <div className="no-print">
         <NoteField id={`${uid}-bnote`} label={SAVED.boardNoteLabel} value={board.note} onSave={(t) => apply((s) => setBoardNote(s, board.id, t, nowIso()))} testId="saved-board-note" />
         <p className="saved-count">{SAVED.boardCount(board.items.length)}</p>
+        <BoardFollow board={board} />
         {board.items.length === 0 ? (
           <p className="saved-empty">{SAVED.noItems}</p>
         ) : (
