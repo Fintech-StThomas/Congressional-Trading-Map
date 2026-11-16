@@ -83,7 +83,8 @@ export default async function config(phase: string): Promise<NextConfig> {
     reactStrictMode: true,
     poweredByHeader: false,
     // Local mode prerenders every page from the JSON at build time and nothing reads the data at request
-    // time; remote mode fetches it. Either way, keep the files out of any server bundle.
+    // time; remote mode fetches it. Either way, keep raw files out of server traces.
+    // Map geometry is a static JSON import compiled into the server JS, not an fs read.
     outputFileTracingExcludes: { "*": ["public/**", "fixtures/**", ".cache/**"] },
     env: {
       NEXT_PUBLIC_DATA_BASE: hasRealData ? "/data" : "/sample-data",

@@ -1,7 +1,7 @@
-// Server-only: projects the us-atlas TopoJSON once at build time so the
-// browser receives finished SVG path strings and no mapping library.
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+// Server-side projection, cached per process: bundle the TopoJSON so both build
+// and ISR renders work without a public/ directory in the serverless function.
+// The browser receives finished SVG paths and no mapping library or raw topology.
+import topology from "../../../public/geo/us-states.json" with { type: "json" };
 import { geoAlbersUsa, geoPath } from "d3-geo";
 import { feature, mesh } from "topojson-client";
 import type { Topology, GeometryCollection } from "topojson-specification";
@@ -47,18 +47,17 @@ const NUDGE: Record<string, [number, number]> = {
   FL: [12, 6], LA: [-10, -4], MI: [10, 18], KY: [6, 2], VA: [6, 4], ID: [0, 18], CA: [-8, 0], NY: [4, 4], HI: [10, 8], AK: [0, 6],
 };
 
-function loadTopology(): Topology | null {
-  const candidates = [join(process.cwd(), "public", "geo", "us-states.json"), join(process.cwd(), ".cache", "us-states.json")];
-  for (const p of candidates) if (existsSync(/*turbopackIgnore: true*/ p)) return JSON.parse(readFileSync(/*turbopackIgnore: true*/ p, "utf8")) as Topology;
-  return null;
-}
-
 let cached: MapGeometry | null = null;
 
 export function getMapGeometry(): MapGeometry {
-  if (cached) return cached;
-  const topo = loadTopology();
-  if (!topo) return (cached = { states: [], nation: "", borders: "" });
+  return cached ??= projectMapGeometry(topology as unknown as Topology);
+}
+
+/** Fail the build (or ISR render) rather than publish incomplete map geometry. */
+export function projectMapGeometry(topo: Topology): MapGeometry {
+  if (topo.type !== "Topology" || !topo.objects?.states || !topo.objects.nation) {
+    throw new Error("[geo] State and nation topology are required");
+  }
   const projection = geoAlbersUsa().scale(1300).translate([MAP_W / 2, MAP_H / 2]);
   const path = geoPath(projection).digits(1);
   const statesObj = topo.objects.states as GeometryCollection<{ name: string }>;
@@ -87,8 +86,16 @@ export function getMapGeometry(): MapGeometry {
   states.sort((a, b) => a.name.localeCompare(b.name));
   const nation = topo.objects.nation ? path(feature(topo, topo.objects.nation as GeometryCollection)) ?? "" : "";
   const borders = path(mesh(topo, statesObj, (a, b) => a !== b)) ?? "";
-  cached = { states, nation, borders };
-  return cached;
+  const expected = Object.entries(FIPS).filter(([fips]) => Number(fips) < 60).map(([, code]) => code);
+  const codes = new Set(states.map((state) => state.code));
+  if (states.length !== expected.length || codes.size !== expected.length || expected.some((code) => !codes.has(code)) ||
+      !nation || !borders || /NaN|Infinity/.test(nation + borders) || states.some((state) =>
+        !state.d || /NaN|Infinity/.test(state.d) ||
+        ![state.cx, state.cy, state.lx, state.ly, ...state.box].every(Number.isFinite) ||
+        state.box[2] <= state.box[0] || state.box[3] <= state.box[1])) {
+    throw new Error("[geo] Expected valid outlines for all 50 states and DC, nation and borders");
+  }
+  return { states, nation, borders };
 }
 
 function round(n: number) {
