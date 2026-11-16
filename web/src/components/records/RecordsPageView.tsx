@@ -8,6 +8,7 @@ import { metaSources } from "@/lib/data/meta";
 import { date, seat } from "@/lib/format";
 import { memberHref, recordsHref, releaseMemberHref, releaseRecordsHref } from "@/lib/urls";
 import { CORRECTIONS, RELEASE, SITE, USE_NOTICE } from "@/lib/copy";
+import { coverageMeta } from "@/lib/domain/coverage";
 import { RecordsView } from "@/components/records/RecordsView";
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 import { CorrectionLink, CorrectionProvider } from "@/components/shared/CorrectionLink";
@@ -81,6 +82,8 @@ export async function RecordsPageView({ data, id, pinned }: { data: Data; id: st
           built={built}
           pageUrl={release ? releaseRecordsHref(release, m.id) : recordsHref(m.id)}
           siteName={SITE.name}
+          release={data.release}
+          cmeta={coverageMeta(meta)}
         />
       </ErrorBoundary>
       <footer className="provenance">

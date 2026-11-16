@@ -254,3 +254,41 @@ export type Meta = {
   rules?: { [key: string]: string };
   [key: string]: unknown;
 };
+
+// ---------------------------------------------------------------------------
+// Disclosure timing (delays.json). Data dictionary: "Disclosure timing (`delays.json`)".
+// Observed elapsed days between the transaction date as filed and the date the report became
+// public. Not a finding about whether any filing was on time or lawful.
+// ---------------------------------------------------------------------------
+
+export type DelayBands = { "0-30": number; "31-45": number; "46-90": number; "91-365": number; "over-365": number };
+
+export type DelayGroup = {
+  count: number;              // trades in the group
+  dated: number;              // count - undated (includes negative lags)
+  bands: DelayBands;          // trades by lag_days; the band keys are fixed text; 31-45 ends at the threshold (45)
+  negative: number;           // lag_days < 0: in no band, no statistic
+  undated: number;            // lag_days is null: never counted as 0 days
+  amended: number;            // current version of an event with more than one version; also inside the buckets above
+  median: number | null;      // nearest-rank percentiles over dated, non-negative trades; all null when that set is empty
+  p90: number | null;
+  max: number | null;
+};
+
+export type DelayMemberCol =
+  | "id" | "count" | "dated" | "b0_30" | "b31_45" | "b46_90" | "b91_365" | "b366_plus" | "negative"
+  | "undated" | "amended" | "median" | "p90" | "max" | "first_year" | "last_year";
+
+export type Delays = {
+  definition: {
+    measured: string;
+    threshold_days: number;
+    bands: string[];
+    percentile: string;
+    caveats: string[];
+  };
+  totals: DelayGroup;
+  by_chamber: { rep: DelayGroup; sen: DelayGroup };
+  by_year: { [year: string]: DelayGroup };   // calendar year of the transaction date; "none" when missing
+  members: { cols: DelayMemberCol[]; rows: unknown[][] };
+};

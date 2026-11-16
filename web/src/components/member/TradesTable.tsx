@@ -1,12 +1,16 @@
 "use client";
 // "Trades" on the member page: every periodic transaction report row, filterable, sortable and windowed
 // (only visible rows are in the DOM). Starts with the newest rows from the server, then loads trades/<id>.json.
+import "@/styles/delays.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Trade, TradeFile } from "@/lib/types";
 import { decodeTradeFile, type TradeRow } from "@/lib/data/decode";
-import { amountText, count, date, NOT_DISCLOSED } from "@/lib/format";
+import Link from "next/link";
+import { amountText, count, date, days, NOT_DISCLOSED } from "@/lib/format";
+import { DELAYS } from "@/lib/copy";
+import { delayGroupFromTrades, overCount } from "@/lib/domain/delays";
 import { getJSON } from "@/lib/data/fetch";
-import { safeHttpUrl } from "@/lib/urls";
+import { delaysHref, safeHttpUrl } from "@/lib/urls";
 import { ExternalIcon } from "@/components/shared/ExternalIcon";
 
 type Props = { initial: TradeRow[]; total: number; fullUrl: string };
@@ -105,6 +109,8 @@ export function TradesTable({ initial, total, fullUrl }: Props) {
   }, [trades, year, owner, cls, late, sort]);
 
   const lateCount = useMemo(() => rows.reduce((n, t) => n + (t.late ? 1 : 0), 0), [rows]);
+  // Observed days from the transaction date to public availability, over every loaded trade (not the filtered rows).
+  const timing = useMemo(() => delayGroupFromTrades(trades), [trades]);
 
   useEffect(() => {
     scroller.current?.scrollTo({ top: 0 });
@@ -118,6 +124,14 @@ export function TradesTable({ initial, total, fullUrl }: Props) {
 
   return (
     <div className="trades" data-testid="trades-table">
+      {status === "ok" && (
+        <p className="trades__timing" data-testid="trades-timing">
+          {DELAYS.memberLine}: median {days(timing.median)}, 90th percentile {days(timing.p90)}.{" "}
+          {count(overCount(timing.bands))} of {count(timing.dated)} trades with both dates were public over 45 days after the transaction
+          {timing.undated > 0 ? `; ${count(timing.undated)} with no date` : ""}.{" "}
+          <Link href={delaysHref()}>{DELAYS.memberLink}</Link>
+        </p>
+      )}
       <div className="filters">
         <label>
           <span>Year</span>
@@ -148,14 +162,14 @@ export function TradesTable({ initial, total, fullUrl }: Props) {
         </label>
         <label className="check">
           <input type="checkbox" checked={late} onChange={(e) => setLate(e.target.checked)} />
-          <span>Late only</span>
+          <span>{DELAYS.overFilter}</span>
         </label>
         <p className="filters__count mono" aria-live="polite">
           {status === "loading"
             ? `Loading all ${count(total)} trades…`
             : status === "error"
               ? `Showing ${count(trades.length)} of ${count(total)}; the rest failed to load.`
-              : `${count(rows.length)} ${rows.length === 1 ? "trade" : "trades"} · ${count(lateCount)} disclosed late`}
+              : `${count(rows.length)} ${rows.length === 1 ? "trade" : "trades"} · ${count(lateCount)} public over 45 days after the trade`}
           {status === "ok" && owners.length > 0 && <OwnerMix trades={rows} />}
         </p>
       </div>
@@ -198,7 +212,7 @@ export function TradesTable({ initial, total, fullUrl }: Props) {
                 <td className="mono">{t.available ? date(t.available) : <Nd />}</td>
                 <td className="num mono">
                   {t.lag_days == null ? <Nd /> : <>{count(t.lag_days)} d</>}
-                  {t.late && <span className="late" title="Disclosed more than 45 days after the trade">late</span>}
+                  {t.late && <span className="late" title={DELAYS.overTitle}>{DELAYS.overChip}</span>}
                 </td>
                 <td className={`owner owner--${t.owner}`}>{t.owner === "unspecified" ? <Nd text="not stated" /> : OWNER_LABEL[t.owner]}</td>
                 <td>

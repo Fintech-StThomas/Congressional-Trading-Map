@@ -11,7 +11,7 @@ import { count, date, money, PARTY_NAMES, plural, seat, served, stateName, yearR
 import { boardHref, memberHref, recordsHref, releaseRecordsHref } from "@/lib/urls";
 import { toBoardMember, type NameBook } from "@/lib/domain/names";
 import { caseMinTypes, metaSources, sourceNames } from "@/lib/data/meta";
-import { CASE_NOT_SHOWN, CORRECTIONS, caseRuleText, RELEASE, SITE } from "@/lib/copy";
+import { CASE_NOT_SHOWN, CORRECTIONS, caseRuleText, RELEASE, SITE, TIMING } from "@/lib/copy";
 import type { Edge, OrgSummary } from "@/lib/types";
 import { Print, PartyTag } from "@/components/shared/Print";
 import { TieSection } from "@/components/member/TieSection";
@@ -31,6 +31,11 @@ import { CorrectionLink, CorrectionProvider } from "@/components/shared/Correcti
 import { ReleasePin } from "@/components/shared/ReleasePin";
 import { ReleaseBanner } from "@/components/shared/ReleaseBanner";
 import { AssumeCase, AssumeCount, AssumptionProvider, PageAssumptionBar } from "@/components/shared/Assume";
+import { CiteEnvProvider } from "@/components/shared/CiteEnv";
+import { CoverageNote } from "@/components/shared/CoverageNote";
+import { MemberCite, MemberCitePrint, type MemberCiteProps } from "@/components/member/MemberCite";
+import { coverageFacts, coverageMeta, tradeValueStats } from "@/lib/domain/coverage";
+import "@/styles/cite.css";
 
 /** Page metadata for a member; a permalink is not indexed and names the latest page as canonical. */
 export async function memberMetadata(data: Data, id: string, pinned: boolean): Promise<Metadata> {
@@ -119,10 +124,26 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
   const nameOf = (x: string) => memberIndex.get(x)?.name ?? file.nodes?.[x]?.name ?? ledgerNames[x] ?? orgIndex.get(x)?.name ?? x;
 
   const release = pinned ? data.release : null;
+  // Coverage limits that apply to this member, shown beside the measures they qualify and recorded in citations.
+  const facts = coverageFacts({
+    member: m, coverage: file.coverage, tradeSummary: ts, edges: file.edges, ledgerTotals: file.ledger_totals,
+    holdings, meta: coverageMeta(meta), tradeValues: tradeValueStats(tradeFile),
+  });
+  const cite: MemberCiteProps = {
+    member: { id: m.id, name: m.name }, hasTrades: nTrades > 0, limitations: facts.map((f) => f.text),
+    counts: { trades: m.counts.trades, organisations: m.counts.orgs, members: m.counts.members, cases: m.counts.cases },
+    dates: { first: ts?.first ?? null, last: ts?.last ?? null },
+  };
+  // The release comes from the server for latest pages too: a latest page rendered from release R can name R's permalink.
+  const citeSources = metaSources(meta).map((s) => ({
+    id: s.id, name: typeof s.name === "string" ? s.name : s.id, url: typeof s.url === "string" ? s.url : null,
+    revision: s.revision ? String(s.revision) : null, retrieved: s.retrieved ? String(s.retrieved) : null,
+  }));
   const recordsLink = release ? releaseRecordsHref(release, m.id) : recordsHref(m.id);
 
   const page = (
     <AssumptionProvider member={m.id} hasTrades={nTrades > 0} edges={tradedEdges} caseOrgs={caseOrgs}>
+    <CiteEnvProvider release={data.release} built={built} sources={citeSources}>
     <article className="page dossier" data-testid="member-page">
       <ReleasePin release={data.release} />
       {release && <ReleaseBanner release={release} built={built} latestHref={memberHref(m.id)} />}
@@ -145,7 +166,7 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
             <div><dt>Organisations tied</dt><dd className="mono">{count(m.counts.orgs)}</dd></div>
             <div><dt>Members tied</dt><dd className="mono">{count(m.counts.members)}</dd></div>
             <div><dt>Cases</dt><dd className="mono"><AssumeCount kind="cases" total={m.counts.cases} /></dd></div>
-            {nTrades > 0 && <div><dt>Disclosed late</dt><dd className="mono">{count(lateCount)}</dd></div>}
+            {nTrades > 0 && <div><dt>{TIMING.countLabel}</dt><dd className="mono">{count(lateCount)}</dd></div>}
           </dl>
           {nTrades > 0 && (
             <div className="no-print dossier__assume">
@@ -159,6 +180,7 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
               <Link className="btn btn--paper" href={boardHref({ m: m.id })}>Open on the board</Link>
             )}
             <PrintButton />
+            <MemberCite {...cite} />
           </div>
         </div>
         <section className="dossier__cmte" aria-labelledby="cmte-h">
@@ -211,6 +233,7 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
           Every tie with its records attached, grouped by kind. Open a row to read the filings.
           {sorted.length > shown.length ? ` The ${shown.length} largest of ${sorted.length} are listed first.` : ""}
         </p>
+        <CoverageNote facts={facts} scopes={["money", "orgs"]} label="Coverage for ties and money" testId="coverage-ties" />
         <ErrorBoundary label="ties table">
           <TieSection
             edges={shown}
@@ -243,7 +266,7 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
         <Timeline tradeByYear={tradeByYear} moneyByYear={moneyByYear} coverage={file.coverage} served={m.served} />
       </section>
 
-      <HoldingsSection h={holdings} everHouse={m.terms.some((t) => t.chamber === "rep")} memberId={m.id} />
+      <HoldingsSection h={holdings} facts={facts} memberId={m.id} />
       {holdings && <PositionsPanel memberId={m.id} available={!!holdings.positions_summary} />}
 
       <section className="section" aria-labelledby="trades-h">
@@ -254,9 +277,10 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
               Of {count(nTrades)} trades, {count(ownTrades)} {ownTrades === 1 ? "is" : "are"} marked as the member&rsquo;s own or jointly owned; the rest belong to a spouse, a dependent child, or an owner the filing does not state.{" "}
             </>
           )}
-          Periodic transaction reports as filed. Amounts are the disclosed ranges. A report is late when the public could see it more than 45 days after the trade.
+          Periodic transaction reports as filed. Amounts are the disclosed ranges. {TIMING.tradesNote}
           Missing values say &ldquo;not disclosed&rdquo;; they are never filled in.
         </p>
+        <CoverageNote facts={facts} scopes={["trades", "owner", "values"]} label="Coverage for trades" testId="coverage-trades" />
         <ErrorBoundary label="trades table">
           <TradesTable initial={initialTrades} total={nTrades} fullUrl={data.fileUrl(`trades/${m.id}.json`)} />
         </ErrorBoundary>
@@ -265,6 +289,7 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
 
       <style>{`@media print { @page { @top-left { content: "${SITE.name} · ${caseNo}"; } } }`}</style>
       <CaseFile file={file} board={pickBoard(m.id, file.edges)} against={pickAgainst(file.edges)} names={nameOf} ledger={ledger} trades={initialTrades} sources={metaSources(meta)} built={built} orgName={orgName} caseMinTypes={minTypes} />
+      <MemberCitePrint {...cite} />
 
       <footer className="provenance">
         <h2>Provenance</h2>
@@ -290,6 +315,7 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
         </p>
       </footer>
     </article>
+    </CiteEnvProvider>
     </AssumptionProvider>
   );
   // The layout's correction links name the latest build; on a permalink they name this release's.

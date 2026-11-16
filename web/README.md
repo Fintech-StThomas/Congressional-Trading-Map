@@ -22,7 +22,8 @@ web/
     │   ├── member/       /m/<id> sections: ties, ledger, trades, holdings, timeline, printable case file; MemberPageView (the page body, shared by latest and permalink)
     │   ├── records/      /m/<id>/records (the full file); RecordsPageView (the page body)
     │   ├── cases/        /cases list, filters and pager
-    │   └── shared/       used by several pages: EvidenceDrawer, TieTable, Print, SearchBox, controls, Assume, ReleasePin (pins browser fetches to the page's release), ReleaseBanner, FooterAsOf
+    │   ├── delays/       /delays: disclosure timing (DelaysView, BandSummary, GroupsTable, MembersTable)
+    │   └── shared/       used by several pages: EvidenceDrawer, TieTable, Print, SearchBox, controls, Assume, ReleasePin (pins browser fetches to the page's release), ReleaseBanner, FooterAsOf; CiteButton / CiteEnv / TieCite / CitePrint ("Cite this"), CoverageNote (coverage beside a measure), download
     ├── lib/
     │   ├── types.ts      the contract's types, copied verbatim from the data dictionary
     │   ├── format.ts     every money figure, range, date, count and seat label
@@ -31,9 +32,10 @@ web/
     │   ├── years.ts      YEAR_MIN / YEAR_MAX (the data's current year) and holdings years
     │   ├── hash.ts       FNV hash (tilts, seeds) and the org shard name
     │   ├── data/         loading: server.ts (latestData / releaseData), reader.ts (a `Data` reader bound to one release), mode.ts (which mode), remote.ts (DATA_BASE_URL rule), release.ts (pure pinned-mode rules), pin.ts (the browser's release), recent.ts (bounded per-release memory), endpoints.ts + permalink.ts (JSON routes and /r guards), fetch.ts (browser), decode.ts (columnar → objects), meta.ts, source.ts
-    │   ├── domain/       rules: edges (tie vocabulary, amounts), pick (board strings), featured, assume, wallyears, party, holdings, records, names
+    │   ├── method.ts     METHOD_VERSION, recorded in every citation (bump when a calculation, tie rule or displayed-range rule changes)
+    │   ├── domain/       rules: edges (tie vocabulary, amounts), pick (board strings), featured, assume, wallyears, party, holdings, records, names, delays, citation (citation packets and their text), coverage (which coverage facts apply)
     │   └── board/        board geometry: layout (card placement, yarn curves), fray (worn yarn), geo (map projection)
-    └── styles/           tokens.css (colours, type, spacing) → globals → board → pages; reach, records, casefile per page
+    └── styles/           tokens.css (colours, type, spacing) → globals → board → pages; reach, records, casefile, delays, cite (cite panel, coverage note, printed citation) per page
 ```
 
 Rules of thumb: pure logic lives in `src/lib` and imports other lib files with an explicit `.ts` extension, so `node --test` can load it without a bundler; components never format numbers or build URLs themselves; anything a reader sees as fixed wording is in `lib/copy.ts`.
@@ -44,6 +46,9 @@ Rules of thumb: pure logic lives in `src/lib` and imports other lib files with a
 |---|---|---|
 | Open the site, see the featured example, pick a state and a member | `/`, `/?s=CA&m=<id>` | `app/page.tsx` (build-time props, featured ranking via `lib/domain/featured.ts`), `components/board/BoardApp.tsx` (selection + URL), `useBoardData.ts` (loads `/board-data/<state>`, `/board-member/<id>`, org shards), `BoardCanvas.tsx` + `yarn.tsx` + `lib/board/layout.ts` (drawing), `lib/domain/pick.ts` (which strings) |
 | Open a string's evidence | drawer on any page | `components/shared/EvidenceDrawer.tsx`, `lib/domain/edges.ts` (labels, amounts), `lib/copy.ts` (not shown) |
+| Cite a tie, a case file, the full file or one table | "Cite this" in the drawer, the member header, the full file and each table; printed with the case file | `components/shared/CiteButton.tsx` (panel, copy, JSON download), `TieCite.tsx`, `CiteEnv.tsx` (release + build time), `CitePrint.tsx`, `components/member/MemberCite.tsx`, `lib/domain/citation.ts` (packet, text), `lib/method.ts`, `lib/copy.ts` (`CITE`) |
+| See what the data does not cover, beside the number it qualifies | holdings, ties, trades, tie drawer, full file | `components/shared/CoverageNote.tsx`, `lib/domain/coverage.ts` (which facts apply; the PAC share comes only from `meta.reports.fec.pac_money_match`), `lib/copy.ts` (`COVERAGE`) |
+| Disclosure timing, site-wide and by member | `/delays` | `app/delays/page.tsx`, `components/delays/*`, `lib/domain/delays.ts`, `delays.json` read through `data.readData` |
 | Change assumptions (whose trades count) | `?as=own,…` | `lib/domain/assume.ts` (rules), `components/shared/Assume.tsx` (UI, URL) |
 | Read a member's case file | `/m/<id>` | `app/m/[id]/page.tsx`, `components/member/*` |
 | Download every record | `/m/<id>/records` | `components/records/RecordsView.tsx`, `DataTable.tsx`, `lib/domain/records.ts` (tables, CSV), `lib/domain/holdings.ts` |
@@ -174,6 +179,11 @@ Two captures of the same build differ by up to a few hundred pixels on the board
 | Colours, fonts, spacing | `src/styles/tokens.css` |
 | A link to an official record built from an id | `src/lib/urls.ts` (`recordUrlFor`) |
 | Columns in the full file or the CSV | `src/lib/domain/records.ts`, `src/lib/domain/holdings.ts` |
+| What a citation contains, its text, the JSON file name | `src/lib/domain/citation.ts` (tests: `tests/citation.test.mjs`); wording in `src/lib/copy.ts` (`CITE`) |
+| The calculation version recorded in citations | `src/lib/method.ts` (`METHOD_VERSION`): bump on any change to a calculation, tie rule or displayed-range rule |
+| Which coverage notes appear, and their wording | `src/lib/domain/coverage.ts` (tests: `tests/coverage.test.mjs`), `src/lib/copy.ts` (`COVERAGE`); placement in `MemberPageView.tsx`, `HoldingsSection.tsx`, `RecordsView.tsx`, `EvidenceDrawer.tsx` |
+| Trade timing wording on the member page | `src/lib/copy.ts` (`TIMING`) |
+| Fixture delays | `scripts/fixture-delays.mjs` derives `fixtures/data/delays.json` |
 
 ## Deploy on Vercel
 

@@ -692,6 +692,9 @@
   }
   .nav {
     margin-left: auto;
+    flex: 0 1 auto;
+    flex-wrap: wrap;
+    min-width: 0;
   }
   .nav a {
     padding: 6px 7px;

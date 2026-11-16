@@ -67,7 +67,7 @@ export function CaseFile({ file, board, against, names, ledger, trades, sources,
         <h3>Summary</h3>
         <table className="cf__counts">
           <tbody>
-            <tr><th>Household trades reported</th><td>{count(nTrades)}</td><th>Disclosed late (over 45 days)</th><td>{count(ts?.late ?? 0)}</td></tr>
+            <tr><th>Household trades reported</th><td>{count(nTrades)}</td><th>Public over 45 days after the transaction</th><td>{count(ts?.late ?? 0)}</td></tr>
             <tr><th>Organisations tied</th><td>{count(m.counts.orgs)}</td><th>Members tied</th><td>{count(m.counts.members)}</td></tr>
             <tr><th>Cases</th><td>{count(m.counts.cases)}</td><th>Ties with records attached</th><td>{count(file.edges.length)}</td></tr>
           </tbody>

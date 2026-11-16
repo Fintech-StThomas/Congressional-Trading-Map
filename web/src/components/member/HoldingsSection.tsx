@@ -4,7 +4,8 @@ import { FinancialProfile } from "./FinancialProfile";
 import { coverageWords, netWorthText, rowsOf, type HoldingsFile } from "@/lib/domain/holdings";
 import { signedShortMoney } from "@/lib/format";
 import { HOLDINGS_YEARS } from "@/lib/years";
-import { SENATE_NOTE } from "@/lib/copy";
+import { CoverageNote } from "@/components/shared/CoverageNote";
+import type { CoverageFact } from "@/lib/domain/coverage";
 
 type PortRow = { name: string; org: string | null; sector: string | null; rows: number; low: number; high: number | null; share_low: number | null; share_high: number | null; owners: string[] };
 type LiabRow = { creditor: string; type: string; owner: string; low: number | null; high: number | null; residence_secured: boolean };
@@ -63,12 +64,13 @@ function BandChart({ h }: { h: HoldingsFile }) {
   );
 }
 
-export function HoldingsSection({ h, everHouse, memberId }: { h: HoldingsFile | null; everHouse: boolean; memberId: string }) {
+export function HoldingsSection({ h, facts, memberId }: { h: HoldingsFile | null; facts: CoverageFact[]; memberId: string }) {
   if (!h) {
+    // No file: say what the data lacks (the Senate gap or a missing House report), never an empty section that reads as "holds nothing".
     return (
       <section className="section hold" aria-labelledby="hold-h">
         <h2 id="hold-h">Disclosed holdings</h2>
-        <p className="section__note" data-testid="holdings-note">{everHouse ? "No House annual report for this member is in the source data." : SENATE_NOTE}</p>
+        <CoverageNote facts={facts} scopes={["holdings"]} testId="holdings-note" />
       </section>
     );
   }
@@ -77,7 +79,6 @@ export function HoldingsSection({ h, everHouse, memberId }: { h: HoldingsFile | 
   const Y = h.years[latest];
   const port = rowsOf<PortRow>(h.portfolio);
   const liab = rowsOf<LiabRow>(Y.liabilities);
-  const missing = h.coverage.filter((c) => c.status !== "used");
   return (
     <section className="section hold" aria-labelledby="hold-h" data-testid="holdings">
       <h2 id="hold-h">Disclosed holdings</h2>
@@ -89,9 +90,7 @@ export function HoldingsSection({ h, everHouse, memberId }: { h: HoldingsFile | 
         <span className="hold__v mono">{netWorthText(Y.net_worth)}</span>
       </p>
       <BandChart h={h} />
-      {missing.length > 0 && (
-        <p className="hold__small">Missing years: {missing.map((c) => `${c.year} (${coverageWords(c.status)})`).join("; ")}.</p>
-      )}
+      <CoverageNote facts={facts} scopes={["holdings"]} testId="holdings-coverage" />
       <p className="hold__small">
         <strong>What the law leaves out:</strong> {h.net_worth_definition.excludes.join("; ")}.
       </p>

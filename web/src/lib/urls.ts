@@ -1,7 +1,7 @@
 // Every link the site builds: its own routes, the data files, official record pages,
 // and the guard for links that come from the data. Pure; tests/urls.test.mjs loads it directly.
 
-import { CORRECTIONS } from "./copy.ts";
+import { CORRECTIONS, SITE } from "./copy.ts";
 import { clientRelease } from "./data/pin.ts";
 
 /** Where the browser fetches data files from: /data (real build) or /sample-data (fixtures), set by next.config.ts. */
@@ -48,6 +48,11 @@ export function correctionsLogUrl(): string {
 
 export function memberHref(id: string): string {
   return `/m/${id}`;
+}
+
+/** The site-wide disclosure-timing page. */
+export function delaysHref(): string {
+  return "/delays";
 }
 
 export function recordsHref(id: string): string {
@@ -100,4 +105,9 @@ export function safeHttpUrl(url: unknown): string | null {
   if (typeof url !== "string") return null;
   const u = url.trim();
   return /^https?:\/\/[^\s"'<>]+$/i.test(u) ? u : null;
+}
+
+/** The absolute address of a site path (for citations that leave the site): siteUrl("/m/K000389") on the live site. */
+export function siteUrl(path: string): string {
+  return `${SITE.url}${path}`;
 }

@@ -8,7 +8,7 @@ export type Assumptions = {
   noFunds: boolean;
   /** Drop trades whose disclosed range starts under $15,000. */
   noSmall: boolean;
-  /** Only trades disclosed more than 45 days late. */
+  /** Only trades public more than 45 days after the stated transaction date. */
   lateOnly: boolean;
 };
 
@@ -119,7 +119,7 @@ export const SWITCHES: { key: keyof Assumptions; label: string; hint: string }[]
   { key: "unstated", label: "Include unstated owner", hint: "Trades whose filing does not say whose they are" },
   { key: "noFunds", label: "Exclude funds, bonds and unlabelled assets", hint: "Drops asset classes fund and bond, and trades whose filing gives no asset type" },
   { key: "noSmall", label: "Exclude trades under $15,000", hint: "Drops trades whose disclosed range starts below $15,000" },
-  { key: "lateOnly", label: "Late disclosures only", hint: "Keeps only trades the public could see more than 45 days after the trade" },
+  { key: "lateOnly", label: "Public over 45 days after the trade only", hint: "Keeps only trades the public could see more than 45 days after the stated transaction date. Observed days, not a compliance finding" },
 ];
 
 /** One line: what changed. */

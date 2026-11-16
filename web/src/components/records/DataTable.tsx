@@ -3,21 +3,16 @@
 import { useMemo, useRef, useState } from "react";
 import { filterRows, sortRows, toCSV, type Cell, type Col } from "@/lib/domain/records";
 import { safeHttpUrl } from "@/lib/urls";
+import { download } from "@/components/shared/download";
+import { CiteButton } from "@/components/shared/CiteButton";
+import type { Citation } from "@/lib/domain/citation";
 
 const ROW_H = 30;
 const VIEW_H = 520;
 const OVERSCAN = 12;
 
-export function download(name: string, text: string, type: string) {
-  const url = URL.createObjectURL(new Blob([text], { type }));
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = name;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
+/** Kept exported from here (components/delays imports it); the implementation is shared with the citation panel. */
+export { download };
 
 function host(u: string): string {
   try {
@@ -49,7 +44,13 @@ function show(v: Cell, kind: Col["kind"]): React.ReactNode {
  * A dense table for raw records: sortable headers, a filter per column, a row
  * count, CSV of the rows in view, and windowed rendering so 40,000 rows stay fast.
  */
-export function DataTable({ id, title, cols, rows, file }: { id: string; title: string; cols: Col[]; rows: Cell[][]; file: string }) {
+export type TableCite = {
+  /** Builds the citation for the rows in view; `ids` are read from the columns named in `idKeys`. */
+  build: (t: { title: string; filters: { column: string; value: string }[]; shown: number; total: number; ids: { edge_ids?: string[]; trade_ids?: string[]; filing_docs?: string[] } }, retrieved: string) => Citation;
+  idKeys: { edge_ids?: string; trade_ids?: string; filing_docs?: string };
+};
+
+export function DataTable({ id, title, cols, rows, file, cite }: { id: string; title: string; cols: Col[]; rows: Cell[][]; file: string; cite?: TableCite }) {
   const [sort, setSort] = useState<{ i: number; desc: boolean } | null>(null);
   const [filters, setFilters] = useState<Record<number, string>>({});
   const [top, setTop] = useState(0);
@@ -75,6 +76,24 @@ export function DataTable({ id, title, cols, rows, file }: { id: string; title: 
         <button type="button" className="btn btn--small" data-testid={`rec-${id}-csv`} onClick={() => download(`${file}.csv`, toCSV(cols, view), "text/csv;charset=utf-8")}>
           Download CSV{filtered ? " (filtered)" : ""}
         </button>
+        {cite && (
+          <CiteButton
+            testId={`cite-${id}`}
+            build={(retrieved) => {
+              const col = (key?: string) => (key ? cols.findIndex((c) => c.key === key) : -1);
+              const ids = (key?: string) => {
+                const i = col(key);
+                return i < 0 ? undefined : [...new Set(view.map((r) => r[i]).filter((v): v is string => typeof v === "string" && v !== ""))];
+              };
+              return cite.build({
+                title,
+                filters: Object.entries(filters).filter(([, q]) => q.trim()).map(([i, q]) => ({ column: cols[Number(i)].label, value: q.trim() })),
+                shown: view.length, total: rows.length,
+                ids: { edge_ids: ids(cite.idKeys.edge_ids), trade_ids: ids(cite.idKeys.trade_ids), filing_docs: ids(cite.idKeys.filing_docs) },
+              }, retrieved);
+            }}
+          />
+        )}
       </div>
       <div
         className="rec__scroll"

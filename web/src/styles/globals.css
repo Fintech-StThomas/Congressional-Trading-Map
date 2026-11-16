@@ -265,7 +265,14 @@ button {
 
 .nav {
   display: flex;
+  flex: none;
   gap: 4px;
+}
+/* Six links: drop the tagline before the links run out of room. Phones wrap the links (pages.css). */
+@media (max-width: 1400px) {
+  .brand__tagline {
+    display: none;
+  }
 }
 .nav a {
   text-decoration: none;

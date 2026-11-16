@@ -66,7 +66,7 @@ export function tieRows(file: Wire, name: Names): Cell[][] {
 
 export const TRADE_COLS_ALL: Col[] = [
   ["id", "Event id", "text", 110], ["version", "Version", "num", 70], ["amended", "Amended", "bool", 76], ["date", "Transaction date", "date", 100],
-  ["available", "Public from", "date", 100], ["lag_days", "Lag days", "num", 70], ["late", "Late", "bool", 56], ["owner", "Owner", "text", 90],
+  ["available", "Public from", "date", 100], ["lag_days", "Lag days", "num", 70], ["late", "Over 45 days", "bool", 90], ["owner", "Owner", "text", 90],
   ["action", "Action", "text", 76], ["partial", "Partial", "bool", 64], ["ticker", "Ticker", "text", 76], ["ticker_source", "Ticker source", "text", 90],
   ["asset", "Asset as filed", "text", 260], ["asset_class", "Asset class", "text", 84], ["low", "Low $", "num", 90], ["high", "High $", "num", 90],
   ["org", "Org id", "text", 100], ["doc", "Filing id", "text", 110], ["url", "Filing", "links", 120],

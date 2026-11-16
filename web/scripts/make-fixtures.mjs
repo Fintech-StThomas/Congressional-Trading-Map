@@ -10,6 +10,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { buildFixtureDelays } from "./fixture-delays.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const OUT = join(here, "..", "fixtures", "data");
@@ -598,6 +599,7 @@ for (const s of summaries.filter((x) => x.current)) {
 write("board.json", { states: boardStates });
 write("member-ties.json", edges.filter((e) => e.from.kind === "member" && e.to.kind === "member" && e.family !== "context"));
 write("cases.json", cases);
+write("delays.json", buildFixtureDelays(TRADES, (id) => MEMBERS.find((m) => m.id === id).chamber));
 
 const counts = {
   members: summaries.length,

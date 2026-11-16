@@ -235,3 +235,154 @@ export const RELEASE = {
     latestLink: "Go to the latest data",
   },
 } as const;
+
+// ---------------------------------------------------------------- disclosure timing (/delays)
+// Observed elapsed days between the transaction date as filed and the date the report became public.
+// Never a finding that any report was late or unlawful (docs/validation/disclosure-timing-audit.md).
+export const DELAYS = {
+  title: "Disclosure timing",
+  description:
+    "Observed days between each stock trade's date as filed and the date its report became public, in bands, for every member and site-wide. Elapsed days only: not a finding that any report was late or unlawful.",
+  lede:
+    "How many days passed between the transaction date written on each periodic transaction report and the date the report became publicly available, counted from the filings and the source dataset.",
+  /** The prominent neutral caveat. */
+  caveatTitle: "Read this first",
+  caveat: [
+    "These are observed elapsed days between the transaction date as filed and the date the report became public.",
+    "The law’s 30-day clock runs from the date the filer was notified of the transaction. That date is not in the data, so only the outer 45-day bound can be compared, and only as elapsed days.",
+    "Committee extensions or waivers are not in the data either.",
+    "Amended reports may carry the amendment’s date, so an amended trade can look later than its first appearance.",
+    "This is not a finding that any report was late, or that any person broke any rule.",
+  ],
+  /** Used when the data's own definition is missing or incomplete. */
+  fallbackMeasured: "days from the transaction date as filed to the date the report became publicly available",
+  fallbackCaveats: [
+    "Observed elapsed days, not a finding about whether any filing was on time or lawful.",
+    "Trades with no transaction date or no availability date are counted as undated, never as 0 days.",
+    "A negative value means the recorded availability date precedes the transaction date; it is counted separately.",
+  ],
+  measuredHeading: "How it is measured",
+  methodLink: "Method and sources",
+  auditSummary:
+    "Dates: the transaction date is as filed (empty on some rows; on some scanned filings the day of the month is approximate). The public date is the source dataset’s availability instant, read as a US Eastern calendar date. For an amended report the site shows the current version only, and it is not known whether that version’s availability date is the original filing’s or the amendment’s.",
+  bandsHeading: "Every trade, by days from transaction to public",
+  bandsNote: "Bands are not additive with “amended”: an amended trade is also counted in the band it falls in. Percentages are of all trades.",
+  bandLabels: {
+    "0-30": "0 to 30 days",
+    "31-45": "31 to 45 days",
+    "46-90": "46 to 90 days",
+    "91-365": "91 to 365 days",
+    "over-365": "Over 365 days",
+  },
+  undatedLabel: "No date in the filing",
+  undatedNote: "Counted apart, never as 0 days.",
+  negativeLabel: "Public before the stated transaction date",
+  negativeNote: "Likely an entry or extraction error; in no band and no statistic.",
+  amendedLabel: "Of which amended",
+  amendedNote: "Overlaps the rows above.",
+  overLabel: "Over 45 days",
+  chamberHeading: "By chamber of the filing",
+  chamberNote: "The chamber the source dataset records for the filing, which is not always the member’s chamber.",
+  yearHeading: "By year of the transaction",
+  yearNote: "“None” is trades with no transaction date.",
+  membersHeading: "By member",
+  membersNote:
+    "Members with at least one published trade. “Over 45 days” counts trades public more than 45 days after the stated transaction date; its share is of trades with both dates. Median, 90th percentile and longest are over trades with a non-negative day count.",
+  csvNote: "Observed elapsed days between the transaction date as filed and the date the report became public; not a finding that any report was late or unlawful.",
+  csvFile: "paper-trail-disclosure-timing",
+  unavailableTitle: "Not available in this data build yet",
+  unavailableBody:
+    "This data build does not include disclosure-timing figures. Nothing is shown rather than a zero. They appear after the next data build that includes them.",
+  /** Member page. */
+  memberLine: "Days from transaction to public",
+  memberLink: "How this is measured",
+  overTitle: "Public more than 45 days after the stated transaction date. Observed days, not a compliance finding.",
+  overChip: "over 45 days",
+  overFilter: "Over 45 days only",
+  overLabelLong: "Public over 45 days after the transaction",
+} as const;
+
+// ---------------------------------------------------------------- contextual coverage (plan packet R1.4)
+// Limits of the data, worded once and shown next to the measure they qualify (components/shared/CoverageNote.tsx,
+// facts chosen in lib/domain/coverage.ts). Each fact says one thing: how a match was made, whether a figure is
+// complete, whether it is current, or whether a tie is filed or derived are never merged. Missing is not zero.
+export const COVERAGE = {
+  heading: "What the data covers here",
+  senateHoldings:
+    "No annual-report holdings are in the data for senators: the source has House annual reports only. This is a gap in the data, not a sign that a senator holds nothing.",
+  houseNoReport:
+    "No House annual report for this member is in the source data. This is a gap in the data, not a sign that nothing is held.",
+  senateYears: "The annual-report holdings cover House service only. Years served as a senator are not in the data.",
+  holdingsMissing: (years: string) =>
+    `Annual reports are missing for ${years}. A missing year is a gap in the data, not a sign that nothing was held.`,
+  tradesPartial: (years: string) =>
+    `Trade coverage is partial for ${years} (a first part-year, the current year, or a filing that could not be extracted). A trade not listed in those years is not shown to be absent.`,
+  tradesNone: (years: string) =>
+    `No trade coverage in this build for ${years}. A count of zero there means no data, not no trading.`,
+  tradesNa: (years: string) =>
+    `No trade reports existed for ${years} (periodic reports begin in July 2012).`,
+  moneyPartial: (years: string) =>
+    `Money coverage is partial for ${years} (for example Senate paper filings before 2019, or a year still open). Missing money records are not shown to be absent.`,
+  moneyNone: (years: string) =>
+    `No money coverage in this build for ${years} (no FEC candidate id, or no loaded election cycle). A total of zero there means no data.`,
+  moneyNa: (years: string) => `No money records exist or apply for ${years}.`,
+  fresh: (built: string) => `Trades and money are listed as of the data build on ${built}. Reports filed later are not included.`,
+  freshUnknown: "The date of the data build is not recorded in this release, so how current the records are cannot be stated.",
+  owner: (n: number, total: string) =>
+    `${n} of ${total} trades state no owner on the filing. They are labelled unspecified and are never assumed to be the member’s own.`,
+  openEnded: (n: string) =>
+    `${n} trades are filed as open-ended ranges (“over” a figure). The top of the range is not known and none is filled in.`,
+  noValue: (n: string) => `${n} trades carry no value on the filing. They are shown as not disclosed, never as $0.`,
+  derivedMoney:
+    "Some money ties here are statistical derivations (shared donors), not filed records: they meet a published rule against a shuffled baseline.",
+  derivedTrades:
+    "Some trade ties here are statistical derivations (trading the same securities at the same time), not filed records: they meet a published rule against a shuffled baseline.",
+  orgsExact:
+    "A company is matched only on an exact identifier (a ticker as filed, checked against the SEC list) or an exact normalised name. Similar names are never matched.",
+  orgsReviewed:
+    "A match can also come from a hand-reviewed override list. Those are decided by a person, not found by the matching rule.",
+  orgsTicker: (noTicker: string | null, unresolved: string | null) =>
+    `${[noTicker ? `${noTicker} trades in this build carry no ticker` : null, unresolved ? `${unresolved} carry a ticker that does not resolve to a company` : null].filter(Boolean).join(" and ")}. They are not tied to any company.`,
+  pacShare: (share: string) =>
+    `Across all members in this build, ${share} of PAC dollars come from committees matched to a named public company. The rest are shown under the committee’s own name, which does not mean they are unrelated to a company.`,
+  tie: {
+    ledgerOnly: "This tie comes from the summary ledger, which totals filings without listing them one by one. No transaction-level filing is attached.",
+    derived: "This tie is a statistical derivation, not a filed record.",
+    weak: "The evidence for this tie is thin or incomplete.",
+    committee: "One end is a committee that is not matched to a named company; a committee is shown under its own name.",
+    partialList: "Only some of the underlying records are listed; the others are in the same source filings.",
+    noAmount: "No amount is disclosed for this tie; it is not zero.",
+    openEnded: "The amount is an open-ended range; its top is not known.",
+  },
+} as const;
+
+// ---------------------------------------------------------------- "Cite this" (plan packet R1.4)
+export const CITE = {
+  button: "Cite this",
+  panelTitle: "Cite this",
+  intro: "A plain-text citation and a structured packet for what is on screen now. Built in your browser; nothing is sent anywhere.",
+  textLabel: "Citation text",
+  copy: "Copy citation",
+  copied: "Citation copied to the clipboard.",
+  copyFailed: "Copying is not available in this browser. The citation text is selected: press Ctrl+C (Cmd+C on a Mac).",
+  download: "Download citation (JSON)",
+  downloaded: "Citation file downloaded.",
+  close: "Close",
+  permanentLabel: (short: string) => `Permanent link, fixed to data release ${short}`,
+  latestLabel: "Link to the latest data (changes as new data is published)",
+  noPermanent:
+    "No permanent link: this build is not served from an archived data release, so the link shows whatever data is current when it is opened. Record the data build date above.",
+  ledgerOnlyNote:
+    "Ledger-only tie: the summary ledger totals the filings without listing them, so no transaction-level filing is attached to this citation.",
+  printHeading: "How to cite this page",
+  attribution: (releaseText: string, built: string, retrieved: string) => `Paper Trail, ${releaseText}, built ${built}, retrieved ${retrieved}.`,
+  releaseText: (short: string) => `data release ${short}`,
+  noReleaseText: "data release not recorded",
+} as const;
+
+// ---------------------------------------------------------------- trade timing wording (neutral: observed days, not a compliance finding)
+export const TIMING = {
+  countLabel: "Public over 45 days after the trade",
+  tradesNote:
+    "Reports the public could first see more than 45 days after the stated transaction date are counted; these are observed days, not a compliance finding.",
+} as const;
