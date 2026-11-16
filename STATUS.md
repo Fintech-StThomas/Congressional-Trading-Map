@@ -3,7 +3,7 @@
 **Read this first.** It is the single shared picture of the project for every teammate and every AI assistant (Claude, ChatGPT or any other), in any session.
 **Rule:** whoever changes what is live, what is in progress, or what is planned updates this file in the same pull request. If this file and the code disagree, the code is right and this file must be fixed.
 
-Last updated: 2026-11-15 (America/Chicago)
+Last updated: 2026-11-16 (America/Chicago)
 
 ## What this is
 
@@ -102,6 +102,7 @@ web/ (Next.js on Vercel) reads the bucket: pages are built on first visit and re
 ## In progress
 
 - Product implementation is sequenced in [`docs/PRODUCT-PLAN.md`](docs/PRODUCT-PLAN.md): release reliability → immutable citations and coverage → disclosure/change analysis → investigation views and saved boards → distribution and source expansion. This supersedes the feature ordering below; that list remains the broader backlog.
+- Disclosure timing (plan packet R2.1, pipeline half) is implemented on the working branch: the pipeline writes and validates `delays.json` (elapsed days from transaction to public availability, as counts in bands; observed days, not a compliance finding). It is tested on synthetic rows only and has not run against a real build; the published bucket has no `delays.json` until the next daily job after merge. The date audit and its open questions are in `docs/validation/disclosure-timing-audit.md`. The site page for it is not built yet.
 - Pull request #8 adds deterministic release manifests and an opt-in immutable archive publisher. It is not wired into the daily job and production remains unchanged. Release-pinned readers, citation UI, contextual coverage, provider staging checks and a withdrawal policy remain required before activation.
 - The financial-history and security/CI continuation is now on `main`: House member pages include asset timelines, change since the first disclosed report and debt history; full files include transition CSV. Automated checks run on every PR, and this branch extends the site job to run Chromium/CSP tests.
 - The latest daily job inspected in this session succeeded (run 43784027285 on 2026-11-15 Central time). Branch protection could not be inspected with the available GitHub token.

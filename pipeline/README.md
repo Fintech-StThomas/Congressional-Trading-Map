@@ -75,6 +75,10 @@ Times and peak memory (resident set of the whole process, which only grows) from
 | `holdings_publish` | `run.py` | the newly published member files | the holdings files again, with this build's overlaps; `meta.json.reports.holdings` | 21-23 s | |
 | `validate` | `validate.py` | `web/public/data/`, `trades*.parquet` | `validation_sample.csv` | 13 s | |
 
+`delays.json` (disclosure timing) is written by the `assemble` stage from `assemble/delays.py`, from the same current-version
+trade rows as `trades/<id>.json`; `validate.py` calls `validate_delays.py`, which re-derives it from the published trade
+files. Contract: data dictionary, "Disclosure timing"; audit: `docs/validation/disclosure-timing-audit.md`.
+
 Whole run: 322-332 s, peak 4.3 GB (before this review: 294 s, 5.9 GB).
 
 ## Code layout

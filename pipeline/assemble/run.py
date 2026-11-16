@@ -3,7 +3,7 @@
 Reads pipeline/build/{spine.json, trades_resolved.parquet, edges/*.jsonl, orgs/*.jsonl, sources/*.json}. Writes
 every file in web/public/data/ except the holdings files (carried over), into a staging directory that is then
 swapped into place. Steps: load plug-ins -> index edges by member and org -> cases -> member files (written as they
-are built, so they are not all held in memory) -> org shards -> summary files -> meta.json -> swap.
+are built, so they are not all held in memory) -> org shards -> summary files (incl. delays.json) -> meta.json -> swap.
 """
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ from ..contract import TRADE_COLUMNS, Case, Edge, Trade
 from ..util import BUILD, PORTRAITS, print_table, read_json, utc_now, write_json
 from .budget import ledger_totals, member_end, member_ledger, org_ties, split_member_edges
 from .cases import find_cases
+from .delays import build_delays
 from .members import board_order, coverage, node_info, trade_row, trade_summary
 from .orgs import SplitStats, org_index, party_split, shard
 from .plugins import attach_evidence, load_edges, load_orgs, load_sources
@@ -167,6 +168,7 @@ def run() -> None:
         ("board.json", {"states": dict(sorted(states.items()))}),
         ("member-ties.json", member_ties), ("cases.json", cases),
         ("wall.json", wall_rows(summaries, member_edges)), ("org-index.json", org_index(used_orgs, org_edges, spine)),
+        ("delays.json", build_delays(trades)),
         ("wall-years.json", wall_years(spine, member_edges, member_cases, by_member_trades, this_year, trade_first)),
     ):
         write_json(staging / rel, obj)
