@@ -160,7 +160,7 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
         <span aria-hidden="true">/</span> <span aria-current="page">{m.name}</span>
       </nav>
       <ViewSwitch current="case" member={m.id} state={m.current ? m.state : null} release={release} />
-      <ViewPrintLine />
+      <ViewPrintLine casefile />
       <header className="dossier__head">
         <Print id={m.id} name={m.name} photo={m.photo} size="xl" />
         <div className="dossier__id">

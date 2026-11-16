@@ -118,6 +118,7 @@ export default async function config(phase: string): Promise<NextConfig> {
         [`/board-member/${m}`, "/live/board-member/:id"],
         ["/cases/:slug+", "/live/cases/:slug+"],
         [`/feed/m/:file(${MEMBER_ID_PATTERN}\\.xml)`, "/live/feed/m/:file"],
+        ["/feed/trades.xml", "/live/feed/site/trades.xml"],
         [`/embed/m/${m}`, "/live/embed/m/:id"],
       ].map(([source, destination]) => ({ source, destination }));
       const proxies = [...(pinned ? [releaseIndexRewrite(pinned), releaseRewrite(pinned)] : []), ...(remote ? [remoteRewrite(remote)] : [])];

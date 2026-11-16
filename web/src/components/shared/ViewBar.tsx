@@ -45,10 +45,11 @@ export function ViewBar({ showBasis = true, testId = "view-bar" }: { showBasis?:
 }
 
 /** What the numbers on this page are limited to, printed (hidden on screen, where the controls say it). */
-export function ViewPrintLine() {
+/** `casefile`: on the member page only `.casefile` blocks print (styles/casefile.css), so the line must carry it. */
+export function ViewPrintLine({ casefile = false }: { casefile?: boolean } = {}) {
   const view = useView();
   return (
-    <p className="print-only view-printline" data-testid="view-print-line">
+    <p className={`print-only view-printline${casefile ? " casefile" : ""}`} data-testid="view-print-line">
       {viewLine(view)}
       {viewNotes(view).map((n) => ` ${n}`)}
     </p>
