@@ -236,6 +236,18 @@ realTest("wall and organisation pages do not scroll sideways at phone width", as
   await p.close();
 });
 
+test("member case file and full file do not scroll sideways at phone width", async () => {
+  // The year timeline's hidden labels once escaped its scroll box and let phones pan the whole page.
+  const id = realData ? "P000197" : "X000001";
+  const p = await page(390, 844);
+  for (const url of [`/m/${id}`, `/m/${id}/records`]) {
+    await p.goto(base + url, { waitUntil: "networkidle" });
+    const overflow = await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    assert.ok(overflow <= 0, `${url} scrolls sideways by ${overflow}px`);
+  }
+  await p.close();
+});
+
 realTest("wall by year: a year loads, members and summaries change, and 2008 trades say so in words", async () => {
   const p = await page();
   // The local prerender can be visible before the slider's client handler hydrates.

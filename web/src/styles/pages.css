@@ -403,6 +403,9 @@
 
 .timeline {
   overflow-x: auto;
+  /* The containing block for the year headers' visually-hidden text, so the scroller clips it; without this it
+     escaped and let phones pan the whole member page sideways by the timeline's extra width. */
+  position: relative;
 }
 .timeline__grid {
   display: grid;

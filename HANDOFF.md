@@ -13,8 +13,16 @@ execution log at the end of `docs/PRODUCT-PLAN.md`.
   fresh checkout. Run them on a real build before merging; the new `delays.json` checks fail on any tree built
   before this branch, so the first daily job after merge is the real test.
 - Anything against the real R2 bucket, Vercel, or GitHub Actions (the two workflows were only parsed).
-- Browser checks beyond the sample fixtures: real-data smoke tests (`DATA_BASE_URL=... npm test`), print output,
-  clipboard, a real cross-site iframe for `/embed`, and an RSS validator for `/feed/*.xml`.
+- Real-data browser tests passed on 2026-11-16 against the live bucket (build `2026-11-15T15:02:21Z`): `npm test` 228 passed,
+  5 skipped (one needs `PT_HOLDINGS_DIR`; one needs position timelines, which that bucket build predates; three need the
+  sample fixtures), 0 failed. A manual pass covered citations, view switching, `/connect`, `/saved`, feeds, embed and the
+  share image with real members. Still unchecked: print output, clipboard, a real cross-site iframe for `/embed`, and an
+  RSS validator for `/feed/*.xml`.
+- The bucket's latest build (`2026-11-15T15:02:21Z`) is older than today's 07:41 UTC scheduled run should have produced,
+  and it has no `holdings/positions/` files: check whether the 2026-11-16 daily run failed before merging.
+- The public `r2.dev` address answered 429 (rate limited) on the first live-data build; a retry a few minutes later
+  passed. Vercel builds use the same address, so a custom domain on the bucket (STATUS "Optimisations") would make
+  builds more reliable.
 
 ## Next commands
 ```
