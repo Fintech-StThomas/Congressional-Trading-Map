@@ -3,9 +3,10 @@ import Link from "next/link";
 import { CONNECT } from "@/lib/copy";
 import { connectHref } from "@/lib/urls";
 
-export function ConnectLink({ a }: { a: string }) {
+/** `className` restyles the link (the member page lists it in its action menu). */
+export function ConnectLink({ a, className = "btn no-print" }: { a: string; className?: string }) {
   return (
-    <Link className="btn no-print" href={connectHref({ a })}>
+    <Link className={className} href={connectHref({ a })}>
       {CONNECT.link}
     </Link>
   );

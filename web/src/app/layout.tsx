@@ -13,7 +13,8 @@ import { CorrectionLink, CorrectionProvider } from "@/components/shared/Correcti
 import { FooterAsOf } from "@/components/shared/FooterAsOf";
 import { StaleBanner } from "@/components/shared/StaleBanner";
 import { NewerDataNote } from "@/components/shared/NewerDataNote";
-import { NavLinks } from "@/components/shared/NavLinks";
+import { SiteHeader } from "@/components/shared/SiteHeader";
+import { Notice } from "@/components/shared/Notice";
 import { Analytics } from "@vercel/analytics/next";
 import "@/styles/tokens.css";
 import "@/styles/globals.css";
@@ -55,30 +56,38 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           Skip to content
         </a>
         <header className="site-header">
-          <div className="site-header__inner">
-            <Link href="/" className="brand" aria-label={`${SITE.name}, home`}>
-              <Wordmark />
-              <span className="brand__name">{SITE.name}</span>
-              <span className="brand__tagline">{SITE.tagline}</span>
-            </Link>
-            <ErrorBoundary label="search" fallback={<span />}>
-              <SearchBox />
-            </ErrorBoundary>
-            <NavLinks />
-            {IS_SAMPLE && (
-              <span className="stamp" title="Every name, company, amount and link on this build is invented test data.">
-                Sample data
-              </span>
-            )}
-          </div>
-          {IS_SAMPLE && (
-            <p className="sample-band" role="note">
-              <strong>Sample data.</strong> Every member, company, amount and record link on this build is invented for testing. Nothing here describes a real person.
-            </p>
-          )}
+          <SiteHeader
+            brand={
+              <Link href="/" className="brand" aria-label={`${SITE.name}, home`}>
+                <Wordmark />
+                <span className="brand__name">{SITE.name}</span>
+                <span className="brand__tagline">{SITE.tagline}</span>
+              </Link>
+            }
+            search={
+              <ErrorBoundary label="search" fallback={<span />}>
+                <SearchBox />
+              </ErrorBoundary>
+            }
+            stamp={
+              IS_SAMPLE ? (
+                <span className="stamp" title="Every name, company, amount and link on this build is invented test data.">
+                  Sample data
+                </span>
+              ) : undefined
+            }
+          />
         </header>
-        <StaleBanner built={built} sample={IS_SAMPLE} />
-        <NewerDataNote built={built} release={release} />
+        {/* Under the header, always in this order: sample band, stale banner, newer-data note. A release banner (permalink pages) opens the page itself. */}
+        <div className="notices">
+          {IS_SAMPLE && (
+            <Notice tone="warning" band className="sample-band">
+              <strong>Sample data.</strong> Every member, company, amount and record link on this build is invented for testing. Nothing here describes a real person.
+            </Notice>
+          )}
+          <StaleBanner built={built} sample={IS_SAMPLE} />
+          <NewerDataNote built={built} release={release} />
+        </div>
         <main id="main" tabIndex={-1}>
           {children}
         </main>

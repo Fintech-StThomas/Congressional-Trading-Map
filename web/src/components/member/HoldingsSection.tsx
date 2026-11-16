@@ -68,7 +68,7 @@ export function HoldingsSection({ h, facts, memberId }: { h: HoldingsFile | null
   if (!h) {
     // No file: say what the data lacks (the Senate gap or a missing House report), never an empty section that reads as "holds nothing".
     return (
-      <section className="section hold" aria-labelledby="hold-h">
+      <section className="section hold" id="holdings" aria-labelledby="hold-h">
         <h2 id="hold-h">Disclosed holdings</h2>
         <CoverageNote facts={facts} scopes={["holdings"]} testId="holdings-note" />
       </section>
@@ -80,7 +80,7 @@ export function HoldingsSection({ h, facts, memberId }: { h: HoldingsFile | null
   const port = rowsOf<PortRow>(h.portfolio);
   const liab = rowsOf<LiabRow>(Y.liabilities);
   return (
-    <section className="section hold" aria-labelledby="hold-h" data-testid="holdings">
+    <section className="section hold" id="holdings" aria-labelledby="hold-h" data-testid="holdings">
       <h2 id="hold-h">Disclosed holdings</h2>
       <p className="section__note">
         From House annual financial disclosure reports, {years[0]}–{latest}. The figure is a <strong>disclosed net worth range</strong>: disclosed asset bands minus disclosed liability bands. It is not the member&rsquo;s net worth.

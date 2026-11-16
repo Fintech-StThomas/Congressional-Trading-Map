@@ -3,7 +3,7 @@
 // permanent link, or the note saying there is none. Disclosure pattern: the button toggles the panel, focus moves to
 // the panel's heading on open, Escape closes it and returns focus to the button. Built in the browser; sends nothing.
 import "@/styles/cite.css";
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { CITE } from "@/lib/copy";
 import { releaseShort } from "@/lib/format";
 import { citationFilename, citationJson, citationText, type Citation } from "@/lib/domain/citation";
@@ -17,9 +17,11 @@ type Props = {
   onOpenChange?: (open: boolean) => void;
   block?: boolean;
   testId?: string;
+  /** A drawn icon shown before the label (decorative). */
+  icon?: ReactNode;
 };
 
-export function CiteButton({ build, label = CITE.button, onOpenChange, block, testId = "cite" }: Props) {
+export function CiteButton({ build, label = CITE.button, onOpenChange, block, testId = "cite", icon }: Props) {
   const uid = useId();
   const [open, setOpen] = useState(false);
   const [retrieved, setRetrieved] = useState("");
@@ -74,6 +76,7 @@ export function CiteButton({ build, label = CITE.button, onOpenChange, block, te
   return (
     <div className={`cite no-print${block ? " cite--block" : ""}`} onKeyDown={onKey} data-testid={testId}>
       <button ref={btn} type="button" className="btn btn--small" aria-expanded={open} aria-controls={`${uid}-panel`} onClick={() => toggle(!open)} data-testid={`${testId}-button`}>
+        {icon}
         {label}
       </button>
       {open && packet && (

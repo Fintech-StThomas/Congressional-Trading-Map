@@ -2,27 +2,72 @@
    "since this snapshot" note and counts, the plain-language explainer popover, and the /status page. Neutral on
    purpose: red means a tie and nothing else, so none of these use the accent. */
 
-.stale-banner,
-.newer-note {
-  margin: 0;
-  padding: 9px var(--gutter);
-  background: var(--surface-2);
-  border-bottom: 1px solid var(--rule);
-  color: var(--text);
+/* ---- the one notice pattern (components/shared/Notice.tsx)
+   Tone sets the surface; the rule, spacing and type are shared. The rule is a pseudo-element, not a coloured border.
+   info: dark surface, quiet rule. snapshot: raised surface, light rule (a permalink or a snapshot comparison).
+   warning: paper surface with ink rule, for what the reader must not miss (the sample band). Contrast is AA on
+   each surface (text on --surface 12:1, on --surface-2 11:1, ink on --paper-2 14:1). */
+.notice {
+  --notice-bg: var(--surface);
+  --notice-fg: var(--text-2);
+  --notice-strong: var(--text);
+  --notice-rule: var(--text-3);
+  position: relative;
+  margin: 0 0 16px;
+  padding: 10px 14px 10px 18px;
+  background: var(--notice-bg);
+  color: var(--notice-fg);
   font-size: 14px;
   line-height: 1.45;
 }
-.stale-banner p,
-.newer-note p {
+.notice::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--notice-rule);
+}
+.notice--snapshot {
+  --notice-bg: var(--surface-2);
+  --notice-fg: var(--text);
+  --notice-rule: var(--paper-edge);
+}
+.notice--warning {
+  --notice-bg: var(--paper-2);
+  --notice-fg: var(--ink);
+  --notice-strong: var(--ink);
+  --notice-rule: var(--ink-2);
+}
+.notice p {
   margin: 0;
   max-width: 78ch;
 }
-.stale-banner a,
-.newer-note a {
-  color: var(--text);
+.notice p + p {
+  margin-top: 4px;
+}
+.notice strong {
+  color: var(--notice-strong);
+}
+.notice a {
+  color: var(--notice-strong);
   text-decoration: underline;
   text-underline-offset: 2px;
-  white-space: nowrap;
+}
+/* Under the header: full width, in a fixed order (sample band, stale banner, newer-data note), no gap between. */
+.notices {
+  display: flex;
+  flex-direction: column;
+}
+.notice--band {
+  margin: 0;
+  padding: 9px var(--gutter) 9px calc(var(--gutter) + 6px);
+  border-bottom: 1px solid var(--rule-soft);
+}
+.notice--band::before {
+  width: 3px;
+}
+.notice--band.notice--warning {
+  text-align: center;
 }
 .newer-slot:empty,
 .snapshot-slot:empty {
@@ -56,21 +101,15 @@
   outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
-
-/* ---- permalink: what changed since this snapshot */
+.stale-banner a,
+.newer-note a {
+  white-space: nowrap;
+}
+.release-banner p + p {
+  margin-top: 4px;
+}
 .snapshot-note {
   margin: -8px 0 16px;
-  padding: 9px 14px;
-  border: 1px solid var(--paper-edge);
-  border-left: 4px solid var(--ink-3);
-  background: var(--paper);
-  color: var(--ink);
-  font-size: 14px;
-  line-height: 1.45;
-}
-.snapshot-note a {
-  color: var(--ink);
-  text-decoration: underline;
 }
 .snapshot-count {
   display: block;
@@ -79,6 +118,31 @@
   font-size: 12px;
   font-weight: 400;
   color: var(--text-3);
+}
+/* Coverage notes sit beside the measure they qualify, so they are tighter and smaller. */
+.covnote {
+  margin: 8px 0 12px;
+  padding: 8px 12px 8px 16px;
+  max-width: 72ch;
+  font-size: 12.5px;
+}
+@media print {
+  .notice {
+    background: #fff;
+    color: #000;
+    border: 1px solid #777;
+    break-inside: avoid;
+  }
+  .notice::before {
+    background: #000;
+  }
+  .notice a,
+  .notice strong {
+    color: #000;
+  }
+  .notice--band {
+    border-width: 0 0 1px;
+  }
 }
 
 /* ---- explainer: a term as a button with a popover; in print only the term is printed */

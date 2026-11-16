@@ -9,6 +9,7 @@ import { FRESH } from "@/lib/copy";
 import { isReleasePath } from "@/lib/data/release";
 import { decidePoll, newerDataPublished } from "@/lib/data/latest";
 import { dataUrl } from "@/lib/urls";
+import { Notice } from "./Notice";
 
 const get = (url: string) => fetch(url, { cache: "no-store" });
 
@@ -67,14 +68,14 @@ export function NewerDataNote({ built, release }: { built: string | null; releas
   return (
     <div aria-live="polite" className="newer-slot no-print">
       {newer && !dismissed && (
-        <aside className="newer-note" data-testid="newer-data-note">
+        <Notice tone="info" band className="newer-note" data-testid="newer-data-note">
           <p>{FRESH.newer}</p>
           <button type="button" className="newer-note__x" onClick={() => setDismissed(true)} aria-label={FRESH.newerDismiss}>
             <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
               <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
             </svg>
           </button>
-        </aside>
+        </Notice>
       )}
     </div>
   );

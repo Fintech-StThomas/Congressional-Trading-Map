@@ -9,6 +9,7 @@ import { directionWord, TYPE_LABEL } from "@/lib/domain/edges";
 import { amountText, count, plural, yearSpan } from "@/lib/format";
 import { IS_SAMPLE_CLIENT } from "@/lib/data/fetch";
 import { ExternalIcon } from "@/components/shared/ExternalIcon";
+import { FOLD_UI } from "@/lib/copy-ui";
 
 type Props = {
   rows: LedgerRow[];
@@ -18,13 +19,14 @@ type Props = {
   selfRecordUrl?: string | null;
 };
 type Key = "name" | "type" | "amount" | "count" | "last";
-const STEP = 100;
+/** Rows shown before "Show all". */
+const FIRST = 10;
 
 /** Money ties that come without evidence arrays: one row per tie, linked to the official record by id. */
 export function LedgerTable({ rows, names, totals, selfRecordUrl }: Props) {
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<{ k: Key; dir: 1 | -1 }>({ k: "amount", dir: -1 });
-  const [limit, setLimit] = useState(STEP);
+  const [limit, setLimit] = useState(FIRST);
   const name = (r: LedgerRow) => names[r.other] ?? r.other;
 
   const list = useMemo(() => {
@@ -78,7 +80,7 @@ export function LedgerTable({ rows, names, totals, selfRecordUrl }: Props) {
       <div className="filters">
         <label className="filters__search">
           <span>Find in the ledger</span>
-          <input type="search" value={q} placeholder="Committee or organisation name" onChange={(e) => { setQ(e.target.value); setLimit(STEP); }} />
+          <input type="search" value={q} placeholder="Committee or organisation name" onChange={(e) => { setQ(e.target.value); setLimit(FIRST); }} />
         </label>
         <p className="filters__count mono" aria-live="polite">
           {count(list.length)} of {count(rows.length)} rows
@@ -130,11 +132,18 @@ export function LedgerTable({ rows, names, totals, selfRecordUrl }: Props) {
           </tbody>
         </table>
       </div>
-      {list.length > limit && (
+      {list.length > FIRST && (
         <p className="more">
-          <button type="button" className="btn btn--small" onClick={() => setLimit((l) => l + STEP * 5)}>
-            Show {count(Math.min(STEP * 5, list.length - limit))} more
-          </button>
+          {list.length > limit && (
+            <button type="button" className="btn btn--small" onClick={() => setLimit(list.length)} data-testid="ledger-show-all">
+              {FOLD_UI.showAll(list.length, "rows")}
+            </button>
+          )}
+          {limit > FIRST && list.length <= limit && (
+            <button type="button" className="btn btn--small" onClick={() => setLimit(FIRST)}>
+              {FOLD_UI.showFewer(FIRST, "rows")}
+            </button>
+          )}
         </p>
       )}
     </div>

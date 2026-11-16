@@ -11,6 +11,7 @@ import { changesHref } from "@/lib/urls";
 import { loadMemberSide } from "@/lib/data/compareLoad";
 import { loadLatestRelease } from "@/lib/data/latest";
 import { compareMember } from "@/lib/domain/compare";
+import { Notice } from "@/components/shared/Notice";
 import { differingCounts, snapshotParts, type CountKind, type HeaderCounts } from "@/lib/domain/snapshot";
 
 type State =
@@ -59,10 +60,11 @@ export function SnapshotNote() {
   return (
     <div aria-live="polite" className="snapshot-slot no-print">
       {c && s?.phase === "error" && (
-        <p className="snapshot-note" data-testid="snapshot-note" data-state="error">{SNAPSHOT.error}</p>
+        <Notice tone="snapshot" className="snapshot-note" data-testid="snapshot-note" data-state="error"><p>{SNAPSHOT.error}</p></Notice>
       )}
       {c && s?.phase === "changed" && (
-        <p className="snapshot-note" data-testid="snapshot-note" data-state={s.parts.length ? "changed" : "unchanged"}>
+        <Notice tone="snapshot" className="snapshot-note" data-testid="snapshot-note" data-state={s.parts.length ? "changed" : "unchanged"}>
+          <p>
           {s.parts.length ? (
             <>
               {SNAPSHOT.since(s.parts.join(", "))} <Link href={changesHref(c.member, c.release, s.latest)}>{SNAPSHOT.seeChanges}</Link>
@@ -70,7 +72,8 @@ export function SnapshotNote() {
           ) : (
             SNAPSHOT.unchanged
           )}
-        </p>
+          </p>
+        </Notice>
       )}
     </div>
   );

@@ -3,16 +3,17 @@
 import Link from "next/link";
 import { RELEASE } from "@/lib/copy";
 import { date, releaseShort } from "@/lib/format";
+import { Notice } from "./Notice";
 
 export function ReleaseBanner({ release, built, latestHref }: { release: string; built: string | null; latestHref: string }) {
   return (
-    <aside className="release-banner" role="note" data-testid="release-banner" data-release={release}>
+    <Notice tone="snapshot" className="release-banner" data-testid="release-banner" data-release={release}>
       <p>
         <strong>{RELEASE.banner(releaseShort(release), built ? date(built) : null)}</strong> {RELEASE.bannerBody}
       </p>
       <p className="release-banner__latest no-print">
         <Link href={latestHref}>{RELEASE.latestLink}</Link>
       </p>
-    </aside>
+    </Notice>
   );
 }

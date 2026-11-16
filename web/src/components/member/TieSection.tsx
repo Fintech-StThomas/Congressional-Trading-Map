@@ -12,6 +12,10 @@ import { EvidenceDrawer } from "@/components/shared/EvidenceDrawer";
 import { getJSON } from "@/lib/data/fetch";
 import { updateView, useView } from "@/components/shared/useViewState";
 import { YEAR_MAX, YEAR_MIN } from "@/lib/years";
+import { FOLD_UI } from "@/lib/copy-ui";
+
+/** Ties shown before "Show all". */
+const FOLD = 12;
 
 type Props = {
   edges: Edge[];
@@ -31,6 +35,7 @@ export function TieSection({ edges: initial, selfId, book: initialBook, sources,
   const [book] = useState(initialBook);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [all, setAll] = useState(false);
   const view = useView();
   const families = useMemo(() => new Set<Family>(view.families ?? FAMILIES), [view.families]);
   const range = useMemo<[number, number]>(() => view.years ?? [YEAR_MIN, YEAR_MAX], [view.years]);
@@ -81,6 +86,8 @@ export function TieSection({ edges: initial, selfId, book: initialBook, sources,
     }
   }
 
+  // A selected tie (the URL's `e`) is always reachable, so a selection opens the whole list.
+  const folded = shown.length > FOLD && !all && !view.edge;
   return (
     <div className="tiesection">
       {present.length > 1 && (
@@ -119,7 +126,16 @@ export function TieSection({ edges: initial, selfId, book: initialBook, sources,
         caption="Ties and their records"
         groupBy="family"
         emptyText="No ties in the selected families."
+        foldAfter={FOLD}
+        folded={folded}
       />
+      {shown.length > FOLD && (
+        <p className="more more--fold no-print">
+          <button type="button" className="btn btn--small" aria-expanded={!folded} onClick={() => setAll((a) => !a)} data-testid="ties-fold">
+            {folded ? FOLD_UI.showAll(shown.length, "listed ties") : FOLD_UI.showFewer(FOLD, "ties")}
+          </button>
+        </p>
+      )}
       {against.length > 0 && (
         <div className="tablezone" data-testid="ties-against">
           <h3>Spent against this member</h3>

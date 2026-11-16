@@ -33,7 +33,17 @@ function useBuild(p: MemberCiteProps, active: boolean) {
 
 export function MemberCite(p: MemberCiteProps) {
   const build = useBuild(p, true);
-  return <CiteButton build={build} testId="cite-member" />;
+  return (
+    <CiteButton
+      build={build}
+      testId="cite-member"
+      icon={
+        <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+          <path d="M3 4h10M3 8h10M3 12h6" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+      }
+    />
+  );
 }
 
 export function MemberCitePrint(p: MemberCiteProps) {

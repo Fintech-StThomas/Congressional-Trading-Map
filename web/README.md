@@ -28,11 +28,12 @@ web/
     │   ├── watch/        /watch: WatchView, store.ts (the watchlist kept in this browser, key `pt.watch.v1`); FollowButton lives in shared/, BoardFollow in saved/
     │   ├── delays/       /delays: disclosure timing (DelaysView, BandSummary, GroupsTable, MembersTable)
     │   ├── connect/      /connect: documented connections (ConnectView, NodePicker, PathCard, ConnectNotes; load.ts reads the files and runs the search, useConnect.ts, ConnectLink for the entry links)
-    │   └── shared/       used by several pages: EvidenceDrawer, TieTable, Print, SearchBox, controls, Assume, ReleasePin (pins browser fetches to the page's release), ReleaseBanner, FooterAsOf; CiteButton / CiteEnv / TieCite / CitePrint ("Cite this"), CoverageNote (coverage beside a measure), download
+    │   └── shared/       used by several pages: EvidenceDrawer, TieTable, Print, SearchBox, controls, Assume, ReleasePin (pins browser fetches to the page's release), ReleaseBanner, FooterAsOf; Notice (the one notice pattern: tones info / warning / snapshot, used by the sample band, stale banner, newer-data note, release banner, snapshot note and coverage notes), ActionMenu (the "More ▾" disclosure menu), SiteHeader + NavLinks (one-row phone header, nav menu); CiteButton / CiteEnv / TieCite / CitePrint ("Cite this"), CoverageNote (coverage beside a measure), download
     ├── lib/
     │   ├── types.ts      the contract's types, copied verbatim from the data dictionary
     │   ├── format.ts     every money figure, range, date, count and seat label
     │   ├── copy.ts       fixed wording: site name, tagline, disclaimer, notices, "what this does not show", Case wording
+    │   ├── copy-ui.ts    wording for the interface chrome: header menus, member action row, section index, "Show all", assumptions chip (import from here)
     │   ├── copy-discovery.ts  wording for /new (`NEW`), organisation feeds (`ORG_FEED`) and watchlists (`WATCH`); import from here, not copy.ts
     │   ├── urls.ts       every link: routes, data files, official record pages, safeHttpUrl for links from data
     │   ├── years.ts      YEAR_MIN / YEAR_MAX (the data's current year) and holdings years

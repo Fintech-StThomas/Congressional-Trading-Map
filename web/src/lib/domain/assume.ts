@@ -1,6 +1,8 @@
 // Assumption switches: what counts as "the member's trades". Pure and free of
 // runtime imports so tests can load it directly. Money strings are never affected.
 
+import { ASSUME_UI } from "../copy-ui.ts";
+
 export type Assumptions = {
   /** Owners counted. Default: all (the household). */
   self: boolean; family: boolean; unstated: boolean;
@@ -125,6 +127,18 @@ export const SWITCHES: { key: keyof Assumptions; label: string; hint: string }[]
   { key: "noSmall", label: "Exclude trades under $15,000", hint: "Drops trades whose disclosed range starts below $15,000" },
   { key: "lateOnly", label: "Public over 45 days after the trade only", hint: "Keeps only trades the public could see more than 45 days after the stated transaction date. Observed days, not a compliance finding" },
 ];
+
+/** The value shown on the assumptions chip: the default wording, "own trades only", or how many switches differ from the default. */
+export function assumptionSummary(a: Assumptions): string {
+  if (isDefault(a)) return ASSUME_UI.summaryDefault;
+  const keys = Object.keys(DEFAULT_ASSUMPTIONS) as (keyof Assumptions)[];
+  if (isOwnOnly(a)) {
+    // The own-only shortcut moves family and unstated together; what else differs is counted on top.
+    const more = keys.filter((k) => k !== "self" && k !== "family" && k !== "unstated" && a[k] !== DEFAULT_ASSUMPTIONS[k]).length;
+    return more ? ASSUME_UI.summaryOwnPlus(more) : ASSUME_UI.summaryOwnOnly;
+  }
+  return ASSUME_UI.summaryChanged(keys.filter((k) => a[k] !== DEFAULT_ASSUMPTIONS[k]).length);
+}
 
 /** One line: what changed. */
 export function readout(e: AssumptionEffect | null, a: Assumptions): string {

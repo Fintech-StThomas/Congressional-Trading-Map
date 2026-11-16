@@ -1,0 +1,89 @@
+/* The "More ▾" disclosure menu (components/shared/ActionMenu.tsx): used by the header navigation and the member
+   page's action row. Tokens only; no red. Focus rings come from the global :focus-visible rule, repeated here for
+   the menu's own items. The list is a popover under its button; it never relies on hover. */
+.menu {
+  position: relative;
+  display: inline-block;
+}
+.menu__btn {
+  gap: 7px;
+}
+.menu__caret {
+  flex: none;
+  transition: transform 140ms;
+}
+.menu[data-open] .menu__caret {
+  transform: rotate(180deg);
+}
+.menu__btn[data-current] {
+  border-color: var(--text-2);
+}
+.menu__list {
+  position: absolute;
+  z-index: 45;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 220px;
+  max-width: calc(100vw - 32px);
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  background: var(--surface-2);
+  border: 1px solid var(--rule);
+  border-radius: var(--r);
+  box-shadow: 0 12px 32px -8px oklch(0 0 0 / 0.7);
+}
+.menu__list[hidden] {
+  display: none;
+}
+.menu__list.is-end {
+  left: auto;
+  right: 0;
+}
+.menu__list li {
+  display: block;
+}
+.menu__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+.menu__item:hover {
+  background: var(--surface);
+}
+.menu__item:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+.menu__item[aria-current="page"] {
+  background: var(--surface);
+  box-shadow: inset 0 -2px 0 var(--text-2);
+  border-radius: 0;
+}
+.menu__item svg {
+  flex: none;
+  color: var(--text-2);
+}
+@media (prefers-reduced-motion: reduce) {
+  .menu__caret {
+    transition: none;
+  }
+}
+@media print {
+  .menu {
+    display: none;
+  }
+}

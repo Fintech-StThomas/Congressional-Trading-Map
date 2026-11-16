@@ -22,11 +22,15 @@ type Props = {
   emptyText?: string;
   /** Edge ids excluded by the assumption switches (they fade). Defaults to the page's assumption context. */
   excluded?: Set<string>;
+  /** Rows past this many (counted across groups) are marked `is-fold` and hidden by CSS until the table is expanded; print shows them all. */
+  foldAfter?: number;
+  /** The table is showing its first `foldAfter` rows only. */
+  folded?: boolean;
 };
 
 const NO_VALUE_TYPES = new Set(["oversees", "revolving_door", "sits_with", "legislates_with", "shared_staff", "position", "shared_donors", "traded_together"]);
 
-export function TieTable({ edges, selfId, book, range, onOpen, activeId, caseEdges, caption, groupBy = null, emptyText, excluded }: Props) {
+export function TieTable({ edges, selfId, book, range, onOpen, activeId, caseEdges, caption, groupBy = null, emptyText, excluded, foldAfter, folded = false }: Props) {
   const ctx = useAssumptionContext();
   const out = excluded ?? ctx?.effect?.excluded;
   if (!edges.length) {
@@ -41,8 +45,11 @@ export function TieTable({ edges, selfId, book, range, onOpen, activeId, caseEdg
     }
   } else groups.push(["all", edges]);
 
+  // Position of each row in reading order, so the fold cuts the same rows whatever the grouping.
+  let seen = 0;
+  const foldFrom = (n: number) => foldAfter !== undefined && n >= foldAfter;
   return (
-    <div className="tablewrap">
+    <div className="tablewrap" data-folded={folded || undefined}>
       <table className="ties">
         <caption className="visually-hidden">{caption}</caption>
         <thead>
@@ -55,10 +62,12 @@ export function TieTable({ edges, selfId, book, range, onOpen, activeId, caseEdg
             <th scope="col"><span className="visually-hidden">Evidence</span></th>
           </tr>
         </thead>
-        {groups.map(([g, list]) => (
+        {groups.map(([g, list]) => {
+          const groupStart = seen;
+          return (
           <tbody key={g}>
             {g !== "all" && (
-              <tr className="ties__group">
+              <tr className={`ties__group${foldFrom(groupStart) ? " is-fold" : ""}`}>
                 <th colSpan={6} scope="colgroup">
                   {FAMILY_LABEL[g]} <span className="mono">{list.length}</span>
                 </th>
@@ -71,8 +80,9 @@ export function TieTable({ edges, selfId, book, range, onOpen, activeId, caseEdg
               const org = o.kind === "org" ? book.orgs[o.id] : null;
               const amt = amountLabel(e, range);
               const n = filteredAmount(e, range).n;
+              const folds = foldFrom(seen++);
               return (
-                <tr key={e.id} className={[activeId === e.id ? "is-active" : "", out?.has(e.id) ? "is-excluded" : ""].join(" ").trim() || undefined} data-edge={e.id}>
+                <tr key={e.id} className={[activeId === e.id ? "is-active" : "", out?.has(e.id) ? "is-excluded" : "", folds ? "is-fold" : ""].join(" ").trim() || undefined} data-edge={e.id}>
                   <td data-label="Tie">
                     <span className="ties__type">
                       <LineSample style={stringStyle(e)} />
@@ -111,7 +121,8 @@ export function TieTable({ edges, selfId, book, range, onOpen, activeId, caseEdg
               );
             })}
           </tbody>
-        ))}
+          );
+        })}
       </table>
     </div>
   );

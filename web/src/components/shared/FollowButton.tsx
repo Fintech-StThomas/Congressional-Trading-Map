@@ -31,6 +31,9 @@ export function FollowButton({ kind, id, name }: { kind: Kind; id: string; name:
   return (
     <span className="follow no-print" data-testid="follow">
       <button type="button" className="btn btn--small" aria-pressed={on} aria-label={on ? WATCH.unfollowLabel(name) : WATCH.followLabel(name)} onClick={toggle} data-testid="follow-button">
+        <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+          <path d="M8 2.5a3.5 3.5 0 00-3.5 3.5v2.2L3 11h10l-1.5-2.8V6A3.5 3.5 0 008 2.5zM6.6 12.5a1.5 1.5 0 002.8 0" fill={on ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+        </svg>
         {on ? `${WATCH.following} ✓` : WATCH.follow}
       </button>
       {feed && (
