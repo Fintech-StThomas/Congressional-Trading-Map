@@ -101,7 +101,7 @@ web/ (Next.js on Vercel) reads the bucket: pages are built on first visit and re
 
 ## In progress
 
-- Completing the security/capacity and financial-history work on `claude/vigilant-edison-wovcu2`. PR #6 already merged the checkpoints into `main`; the continuation adds PR checks, timeline/member/records views, and completed validation. Full pipeline and browser verification are in progress before a new PR.
+- Completing the security/capacity and financial-history work on `claude/vigilant-edison-wovcu2`. PR #6 already merged the checkpoints into `main`; the continuation adds PR and working-branch checks, timeline/member/records views, and completed validation. Full pipeline and browser verification are in progress before a new PR.
 - The latest daily data job failed at its test step (run 43761542434). The step-local publish requirement fix is already on `main` through PR #6, but a successful hosted refresh and newer bucket build still need confirmation after the continuation merges.
 - Branch protection and moving R2 upload secrets into a `production` GitHub Environment remain owner setup; instructions are in `docs/SECURITY-REVIEW.md`.
 

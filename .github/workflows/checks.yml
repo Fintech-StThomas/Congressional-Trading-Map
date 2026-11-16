@@ -2,6 +2,8 @@
 name: Pull request checks
 
 on:
+  push:
+    branches: ["claude/**"]
   pull_request:
   workflow_dispatch:
 
@@ -9,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: checks-${{ github.event.pull_request.number || github.ref }}
+  group: checks-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
@@ -30,6 +32,12 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: python scripts/ci/check_status.py "$BASE_SHA" "$HEAD_SHA"
+
+      - name: Require STATUS.md for working-branch code changes
+        if: github.event_name == 'push'
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: python scripts/ci/check_status.py "origin/$DEFAULT_BRANCH" HEAD
 
   pipeline:
     name: Pipeline tests
