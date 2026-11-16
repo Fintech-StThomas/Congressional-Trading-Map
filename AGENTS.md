@@ -8,5 +8,6 @@ This file is for any AI model working in this repository (Claude, ChatGPT, Codex
 4. **Respect the settled decisions** listed in `STATUS.md` (privacy, wording, amounts as ranges, what counts as a tie, colour meaning). Ask the owner before changing any of them.
 5. **Verify before proposing a merge:** `python -m pipeline.validate` (0 failures), `python -m pytest pipeline/tests`, and in `web/`: `npm run build` and `npm test`.
 6. **Never commit secrets or generated data.** Keys live in GitHub secrets. Generated data lives in the R2 bucket, not in git.
-7. **Update `STATUS.md` in the same change** whenever what is live, in progress or planned has changed.
+7. **Update `STATUS.md` in the same change** whenever what is live, in progress or planned has changed. Branch and pull-request checks require it when code, tests, configuration or crosswalk data changes under `web/`, `pipeline/`, `scripts/` or `.github/workflows/`.
 8. **Do not push unfinished work to a branch that has an open pull request.**
+9. **Leave a current handoff when work is unfinished.** Before stopping, create or update `HANDOFF.md` with the branch/commit, completed work, unverified checks, exact next commands and blockers. Keep `STATUS.md` current too. When the work is finished, delete the handoff in the finishing PR and move remaining follow-ups into `STATUS.md`.

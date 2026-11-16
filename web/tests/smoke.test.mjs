@@ -238,7 +238,8 @@ realTest("wall and organisation pages do not scroll sideways at phone width", as
 
 realTest("wall by year: a year loads, members and summaries change, and 2008 trades say so in words", async () => {
   const p = await page();
-  await p.goto(base + "/wall");
+  // The local prerender can be visible before the slider's client handler hydrates.
+  await p.goto(base + "/wall", { waitUntil: "networkidle" });
   await p.waitForSelector("[data-testid=wall] .wall__print");
   const allSum = await p.getByTestId("wall-sum-D").innerText();
   await p.getByRole("slider", { name: "Year" }).fill("2008");
@@ -468,13 +469,28 @@ realTest("annual positions, financial history and transition CSV agree with the 
   await p.goto(`${base}/m/${id}`);
   await p.getByTestId("tenure-change").waitFor();
   await p.getByTestId("leverage").waitFor();
+  let failFirstPositionRequest = true;
+  await p.route("**/data/holdings/positions/*.json", async (route) => {
+    if (failFirstPositionRequest) {
+      failFirstPositionRequest = false;
+      return route.fulfill({ status: 503, body: "temporary data failure" });
+    }
+    return route.continue();
+  });
   await p.getByRole("button", { name: "Load position timelines" }).click();
+  await p.getByRole("alert").filter({ hasText: "positions file failed" }).waitFor();
+  await p.getByRole("button", { name: "Retry loading positions" }).click();
   await p.locator(".positions__table").waitFor();
   assert.equal(await p.locator(".positions__table tbody tr").count(), Math.min(20, wire.assets.rows.length));
   await p.locator(".positions__table summary").first().click();
   assert.ok(await p.locator('.positions__table a[href*="financial-pdfs"]').count() > 0);
   await p.setViewportSize({ width: 390, height: 844 });
-  assert.ok(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), "timeline scroll stays inside mobile page");
+  const mobileTable = p.locator(".positions .tablewrap");
+  assert.ok(await mobileTable.evaluate((el) => {
+    const box = el.getBoundingClientRect();
+    return box.left >= 0 && box.right <= innerWidth + 1 && el.scrollWidth > el.clientWidth;
+  }), "year columns scroll inside the timeline's mobile container");
+  assert.equal(await p.locator(".positions__table thead").isVisible(), true, "year headers stay visible on phones");
   await p.goto(`${base}/m/${id}/records`);
   await p.getByTestId("records-ready").waitFor({ timeout: 60000 });
   await p.getByRole("button", { name: "Load every position transition" }).click();

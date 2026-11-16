@@ -54,6 +54,13 @@ Vercel/GitHub after merge.
   and the verification server's custom HTTP agents receive `proxyEnv` via a scratch preload. This only adapts
   the verification environment's networking; application code, bucket URL and data are unchanged.
 
+Final local real-data verification: the 4,653-page production build and lint passed; all 75 site tests
+passed with no skips, including the on-demand positions failure/retry, mobile year headers and exact CSV contents.
+Desktop/mobile screenshots were reviewed with no browser errors or failed stylesheets. The `claude/**` checks
+workflow passed on GitHub, and data workflow run [43784027285](https://github.com/Fintech-StThomas/Congressional-Trading-Map/actions/runs/43784027285)
+completed a full `PT_CACHE_ONLY=1` pipeline and holdings validation with zero failures, correctly skipping publish.
+The local holdings validator also checked 25 PDF text samples: all asset words and value bands matched.
+
 ### Owner setup: branch protection and R2 environment
 
 1. After the checks workflow has run on GitHub, open repository **Settings → Rules → Rulesets** (or Branches →

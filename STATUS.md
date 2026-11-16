@@ -19,7 +19,7 @@ Paper Trail maps every member of Congress who served since 2000 to the organisat
 
 ```
 public sources ──> pipeline/ (Python, runs daily on GitHub Actions at 07:41 UTC)
-                     │  builds ~3,000 JSON files, validates them (about 12 million checks)
+                     │  builds ~4,000 JSON files, validates them (about 12 million checks)
                      ▼
                Cloudflare R2 bucket  (public: https://pub-b6acb08f97e345d68ebc4629e915f8ab.r2.dev/data)
                      ▲
@@ -101,8 +101,10 @@ web/ (Next.js on Vercel) reads the bucket: pages are built on first visit and re
 
 ## In progress
 
-- Completing the security/capacity and financial-history work on `claude/vigilant-edison-wovcu2`. PR #6 already merged the checkpoints into `main`; the continuation adds PR and working-branch checks, timeline/member/records views, and completed validation. Full pipeline and browser verification are in progress before a new PR.
-- The latest daily data job failed at its test step (run 43761542434). The step-local publish requirement fix is already on `main` through PR #6, but a successful hosted refresh and newer bucket build still need confirmation after the continuation merges.
+- The continuation on `claude/vigilant-edison-wovcu2` completes the financial-history views and security/CI verification begun in PR #6. House member pages now include on-demand asset timelines, change since the first disclosed report, and debt history; full files include transition CSV. Older bucket builds show timelines as unavailable until refreshed. Local verification is complete; ready for pull-request review.
+- Automated checks now run on `claude/**` pushes and every PR: pipeline tests, site unit tests, sample build/lint, type check, and a tested check requiring `STATUS.md` when code or crosswalk data changes. The branch run passed all three GitHub jobs. The full cache-only data workflow also passed, with production publishing correctly skipped on the branch.
+- Verified before PR: 87 Python tests; 12,127,362 main checks and 3,473,065 holdings/positions checks with zero failures; all 25 sampled asset names/bands matched PDF text; local real-data build/lint/type check and 75 site tests passed with no skips. Local/sample and isolated real-bucket browser runs reported zero CSP violations; desktop/mobile screenshots reviewed. Transition sanity counts are in `docs/validation/README.md`.
+- The latest main-branch daily data job failed at its test step (run 43761542434). The step-local publish requirement fix is already on `main` through PR #6, but a successful hosted refresh and newer bucket build still need confirmation after the continuation merges.
 - Branch protection and moving R2 upload secrets into a `production` GitHub Environment remain owner setup; instructions are in `docs/SECURITY-REVIEW.md`.
 
 ## Security and capacity (reviewed 2026-11-15; full report in `docs/SECURITY-REVIEW.md`)
@@ -117,22 +119,28 @@ web/ (Next.js on Vercel) reads the bucket: pages are built on first visit and re
 ## Next, in order
 
 **Housekeeping**
-1. Rewrite git history to drop the old data (owner must confirm timing; teammates must re-clone).
-2. Automated checks on every pull request (pipeline tests, site lint, type check, build on sample data, unit tests), including a check that `STATUS.md` was updated when code changed. Then protect `main` so it cannot be merged with failing checks.
-3. Fix the open security and capacity findings listed above.
+1. Coordinate the approved git-history cleanup after this PR merges (see the release checklist below; teammates must re-clone).
+2. Protect `main` using the implemented checks so failing checks prevent merging (owner setup in `docs/SECURITY-REVIEW.md`).
+3. Complete the remaining deployment checks and security/capacity configuration listed above.
 
 **Data and features: a fuller financial profile**
 4. Lobbying: review attribution, finish the download, switch on.
 5. Senate holdings.
-6. Position timeline per asset: join yearly holdings snapshots with the trades between them ("held since 2015, added 2019, sold 2023").
-7. Sector held versus sector overseen: share of a member's disclosed portfolio in industries their committees regulate (needs historical committee membership).
-8. FEC spending and summary files: loans a member made to their own campaign and their repayment; campaign payments to family members or member-owned firms; leadership PAC spending by category.
-9. Net worth change over tenure (first report against latest, as ranges) and leverage (mortgages, margin loans, credit lines) from the liabilities already held.
-10. Returns measured from the disclosure date: what copying each trade on the day it became public would have earned, against a benchmark.
-11. Outside income, positions and gifts (other schedules of the annual reports; needs our own parsing of the House PDFs).
-12. Votes, bills and hearings; then prediction-market odds on pending bills.
-13. Federal contracts; earmarks; sponsored travel; SEC insider filings.
-14. Alerts and the conflict score.
+6. Sector held versus sector overseen: share of a member's disclosed portfolio in industries their committees regulate (needs historical committee membership).
+7. FEC spending and summary files: loans a member made to their own campaign and their repayment; campaign payments to family members or member-owned firms; leadership PAC spending by category.
+8. Returns measured from the disclosure date: what copying each trade on the day it became public would have earned, against a benchmark.
+9. Outside income, positions and gifts (other schedules of the annual reports; needs our own parsing of the House PDFs).
+10. Votes, bills and hearings; then prediction-market odds on pending bills.
+11. Federal contracts; earmarks; sponsored travel; SEC insider filings.
+12. Alerts and the conflict score.
+
+**Release checklist for this continuation**
+1. Confirm the PR merge on GitHub, then check the live site and the new member/records views.
+2. Dispatch **Daily data refresh** on `main`; confirm the job succeeds, `data/meta.json` advances, timelines are available, and bucket/proxied data headers allow an hour of edge caching. The successful branch run deliberately did not publish.
+3. Move the R2 secrets into a `production` GitHub Environment restricted to `main`, and enable the workflow environment as coordinated in `docs/SECURITY-REVIEW.md`. Confirm other branches cannot publish or access those environment credentials.
+4. Rewrite history to remove `web/public/data` from every commit. The owner approved this on 2026-11-15, but first coordinate a time with no open PRs and nobody mid-work. Use `git filter-repo --path web/public/data --invert-paths`, force-push `main` once, and have all four teammates delete their copies and re-clone. Prepare an owner message to GitHub Support requesting cached views and unreachable commits be purged, including closed PRs #1–#6. Do not rewrite while this PR is open.
+5. Continue with lobbying attribution review/downloads, then the remaining feature list. Human review of the new 20-timeline sample remains open; automated checks are not human sign-off. Complete the existing trade sample/McCaul recheck and the 205 company override approvals.
+6. Vercel Pro ends 2026-11-26: the owner should downgrade a few days early and confirm the free-plan deployment works.
 
 **Optimisations**
 - A custom domain on the R2 bucket (the current r2.dev address is rate-limited by Cloudflare and meant for development).
