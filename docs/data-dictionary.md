@@ -698,3 +698,72 @@ type Overlap = {              // a holding and a filed tie with the same org in 
   `pipeline/build/holdings-sample.csv` (25 rows, seed 20261113, with a machine check that the asset words and the band
   figures occur in the PDF text, and empty columns for a human). It creates `docs/validation/holdings-sample.csv` from
   it only when that reviewed file does not exist, and never overwrites it.
+
+### Position timelines
+
+`holdings/positions/<id>.json` contains `member` (bioguide id), `source`, `coverage`
+(as in HoldingsFile), `years` (used report years), `docs` (annual report id to URL),
+`filings` (trade report id to URL or null), and four columnar tables:
+
+- `assets`: `key, name, org, ticker, kind, first, last, years, trades, latest_low, latest_high, status`.
+  Kind is stock, fund, bond, option or unlabelled, from registry or filed categories.
+  Status codes are `[throughout, first, last]`, `[from, year]`, `[again, year]`, `[until, year]`.
+- `snapshots`: `a, year, low, high, lines, unvalued, open_ended, owners, rows, doc`.
+- `trades`: `a, id, date, action, low, high, owner, doc`.
+- `transitions`: `a, from, to, gap, change, buys, sells, exchanges, sold_last_listed_year, class, owner_change`.
+
+`a` indexes the asset table. Keys use resolved org ids, with a separate `|option`
+key for options. Otherwise exact normalised issuer names join rows; a unique exact
+name can bridge an unresolved ticker to a resolved company. Real property includes
+filed city/state. A resolved trade identity never falls back to a different issuer with the same name. No similarity matching. Snapshot bands sum the filed lines;
+unvalued or open-ended lines leave the upper bound unknown. `latest_*` describes the
+last report listing the asset, which need not be the member's latest report.
+
+Transitions join consecutive *available* annual reports. `gap` counts intervening
+years without a report; these years are never interpreted as sales. Trades fall
+after the first report year and through the second report year. A disappearance
+also counts a sale/exchange in the last listed year, since income-producing assets
+sold during a year can still appear on that annual report.
+
+Classes: `consistent` means a purchase/exchange accompanies an appearance or band
+rise, or a sale/exchange accompanies a disappearance or band fall;
+`unexplained_appearance` and `unexplained_disappearance` mean no corresponding
+trade was found; `band_change_no_trade` means the band changed without a trade;
+`contrary` means only the opposite trade direction was found; `traded_same_band`,
+`unchanged`, `not_comparable` and `traded_while_unlisted` complete the partition.
+These are facts about records, never findings of wrongdoing. Gifts, inheritance,
+thresholds, price changes and excepted funds can explain transitions without trades.
+`summary` contains asset counts, share with trades, counts per transition class,
+and trade accounting (matched, unlisted assets, undated, before/after report span).
+`HoldingsFile.positions_summary` repeats it.
+
+### Change since first report
+
+`HoldingsFile.tenure_change` is null with fewer than two used reports, otherwise:
+`first_year, latest_year, years_between, reports_between, first, latest, change,
+known, comparable, doc_first, doc_latest`. `first` and `latest` contain
+`low, high, high_valued, label`. `change` is `{low: latest.low - first.high,
+high: latest.high - first.low}` only when both figures are full ranges; otherwise
+both bounds are null and `known` is false. `comparable` means the labels match.
+This is change between disclosures, not a growth rate or change in true wealth.
+
+### Liabilities and leverage
+
+`HoldingsFile.leverage` contains columnar `by_year` (`year, n, low, high,
+residence_low, residence_high, share_low, share_high, by_type`), `buckets` (labels),
+`bucket_rows` (counts across all years), `recurring_creditors` (`creditor, years`),
+and `margin_loans` (`year, creditor, type, owner, low, high, doc`). All-liability
+bands include residence-secured debt; shares exclude it, matching net worth rules.
+Share bounds are non-residence liability low / asset high and liability high /
+asset low, null when an input is unknown or the denominator is zero.
+Buckets use filed type text in order: residence flag, margin/securities-backed,
+student, investment property, mortgage with property unstated, credit, vehicle,
+business, personal, other. Creditor text is a fallback for margin only. Recurring
+creditors use exact normalised names across multiple report years.
+
+The holdings index appends `nw_first_year, nw_change_low, nw_change_high,
+nw_comparable, pos_assets, pos_consistent, pos_unexplained_appearance,
+pos_unexplained_disappearance, pos_band_change_no_trade, pos_share_with_trades,
+margin_loan_years`. Missing first/latest comparison values are null.
+The holdings validator runs the positions checks alongside the main validator: snapshot sums and citations, trade
+identity, transition rules and summaries, first/latest change and leverage.

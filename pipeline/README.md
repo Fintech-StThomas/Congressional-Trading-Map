@@ -310,3 +310,18 @@ contributions file (`indiv`), and publishes no individual contributor; the notic
   failed validation `web/public/data/` holds the failed build until the next run (the daily workflow never publishes
   it). There is no copy in git to restore from: fix and rerun, or run the site against the published data
   (`DATA_BASE_URL`, see `web/README.md`).
+
+## Financial history derived from annual reports
+
+`holdings/positions.py` joins annual asset rows to the published household trades;
+`profile.py` derives first/latest disclosed range change and debt history, using
+`ranges.py` for the same unknown/open-ended band rules. `holdings_publish` rebuilds
+these after assembly so the timelines use this run's trades. The extra public files
+are `holdings/positions/<id>.json`; summaries, change and leverage are in each
+`holdings/<id>.json` and selected summary columns in `holdings-index.json`.
+See the [contract](../docs/data-dictionary.md#position-timelines) before editing.
+`python -m pipeline.holdings.validate` invokes `validate_positions.py` to check the
+annual row partition, trade identity, complete transition set, citations, summaries
+and derived financial profile; run it in addition to `python -m pipeline.validate`.
+It writes `pipeline/build/timeline-sample.csv` for human review without overwriting
+an existing reviewed sample in `docs/validation/`.

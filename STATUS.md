@@ -3,7 +3,7 @@
 **Read this first.** It is the single shared picture of the project for every teammate and every AI assistant (Claude, ChatGPT or any other), in any session.
 **Rule:** whoever changes what is live, what is in progress, or what is planned updates this file in the same pull request. If this file and the code disagree, the code is right and this file must be fixed.
 
-Last updated: 2026-11-16
+Last updated: 2026-11-15 (America/Chicago)
 
 ## What this is
 
@@ -19,7 +19,7 @@ Paper Trail maps every member of Congress who served since 2000 to the organisat
 
 ```
 public sources ──> pipeline/ (Python, runs daily on GitHub Actions at 07:41 UTC)
-                     │  builds ~3,000 JSON files, validates them (about 12 million checks)
+                     │  builds ~4,000 JSON files, validates them (about 12 million checks)
                      ▼
                Cloudflare R2 bucket  (public: https://pub-b6acb08f97e345d68ebc4629e915f8ab.r2.dev/data)
                      ▲
@@ -102,9 +102,10 @@ web/ (Next.js on Vercel) reads the bucket: pages are built on first visit and re
 ## In progress
 
 - Product implementation is sequenced in [`docs/PRODUCT-PLAN.md`](docs/PRODUCT-PLAN.md): release reliability → immutable citations and coverage → disclosure/change analysis → investigation views and saved boards → distribution and source expansion. This supersedes the feature ordering below; that list remains the broader backlog.
-- Local branch `codex/investigation-plan`: the implementation plan, pull-request checks, deterministic release manifests, and opt-in immutable archive publisher are complete locally. The archive publisher is not wired into the daily job and production remains unchanged. Release-pinned readers, citation UI, and contextual coverage are the next unfinished slice.
-- `HANDOFF.md` records earlier security/capacity and position-timeline work. Local code already contains several of its pending fixes (including cache-policy invalidation and asset cache headers); its branch, daily-job and deployment claims need remote re-verification. PR checks are still absent. Do not treat that handoff as a current deployment report.
+- Pull request #8 adds deterministic release manifests and an opt-in immutable archive publisher. It is not wired into the daily job and production remains unchanged. Release-pinned readers, citation UI, contextual coverage, provider staging checks and a withdrawal policy remain required before activation.
+- The financial-history and security/CI continuation is now on `main`: House member pages include asset timelines, change since the first disclosed report and debt history; full files include transition CSV. Automated checks run on every PR, and this branch extends the site job to run Chromium/CSP tests.
 - The latest daily job inspected in this session succeeded (run 43784027285 on 2026-11-15 Central time). Branch protection could not be inspected with the available GitHub token.
+- Branch protection and moving R2 upload secrets into a `production` GitHub Environment remain owner setup; instructions are in `docs/SECURITY-REVIEW.md`.
 
 ## Security and capacity (reviewed 2026-11-15; full report in `docs/SECURITY-REVIEW.md`)
 
@@ -115,28 +116,36 @@ report, not measurements repeated in this session.
 
 - No high-severity findings. The live site served 100 concurrent users (277 requests a second) with no errors.
 - The limit is Vercel's free-plan monthly quotas, not speed: roughly 300 to 400 first-time visitors a day as configured. The fixes below should raise that to roughly 1,000 to 2,000. A day of news-level traffic needs the paid plan.
-- Open findings, in priority order: (1) junk member ids trigger bucket fetches and cached pages: validate ids before fetching; (2) no browser security headers (CSP and others); (3) portraits and map files are not cached by browsers; (4) bucket objects should allow an hour of edge caching; (5) the R2 upload keys should move into a GitHub Environment limited to `main`; (6) one record link skips the http(s)-only check.
+- Fixed in code: malformed/unknown member ids are rejected before per-member reads; CSP and other browser headers; safe source links; browser caching for portraits/map files and lazy off-screen portraits; hourly data revalidation, per-process fetch single-flight, and bucket cache-policy invalidation.
+- Partly fixed: cost amplification from cold requests (single-flight does not span serverless instances, and query-string variants/rate limiting remain open). Hourly bucket caching needs a successful publish and public-header confirmation.
+- Open owner configuration: restrict R2 upload secrets to `main` with a GitHub Environment; protect `main` once the new checks have run. See the finding-by-finding table and setup instructions in `docs/SECURITY-REVIEW.md`.
 - Load test scripts teammates can re-run: `scripts/loadtest/` (test only your own deployment).
 
 ## Next, in order
 
 **Housekeeping**
-1. Rewrite git history to drop the old data (owner must confirm timing; teammates must re-clone).
-2. Automated checks on every pull request (pipeline tests, site lint, type check, build on sample data, unit tests), including a check that `STATUS.md` was updated when code changed. Then protect `main` so it cannot be merged with failing checks.
-3. Fix the open security and capacity findings listed above.
+1. Coordinate the approved git-history cleanup after this PR merges (see the release checklist below; teammates must re-clone).
+2. Protect `main` using the implemented checks so failing checks prevent merging (owner setup in `docs/SECURITY-REVIEW.md`).
+3. Complete the remaining deployment checks and security/capacity configuration listed above.
 
 **Data and features: a fuller financial profile**
 4. Lobbying: review attribution, finish the download, switch on.
 5. Senate holdings.
-6. Position timeline per asset: join yearly holdings snapshots with the trades between them ("held since 2015, added 2019, sold 2023").
-7. Sector held versus sector overseen: share of a member's disclosed portfolio in industries their committees regulate (needs historical committee membership).
-8. FEC spending and summary files: loans a member made to their own campaign and their repayment; campaign payments to family members or member-owned firms; leadership PAC spending by category.
-9. Net worth change over tenure (first report against latest, as ranges) and leverage (mortgages, margin loans, credit lines) from the liabilities already held.
-10. Returns measured from the disclosure date: what copying each trade on the day it became public would have earned, against a benchmark.
-11. Outside income, positions and gifts (other schedules of the annual reports; needs our own parsing of the House PDFs).
-12. Votes, bills and hearings; then prediction-market odds on pending bills.
-13. Federal contracts; earmarks; sponsored travel; SEC insider filings.
-14. Alerts and explainable overlap indicators (individual measures and methods, without a composite conflict score).
+6. Sector held versus sector overseen: share of a member's disclosed portfolio in industries their committees regulate (needs historical committee membership).
+7. FEC spending and summary files: loans a member made to their own campaign and their repayment; campaign payments to family members or member-owned firms; leadership PAC spending by category.
+8. Returns measured from the disclosure date: what copying each trade on the day it became public would have earned, against a benchmark.
+9. Outside income, positions and gifts (other schedules of the annual reports; needs our own parsing of the House PDFs).
+10. Votes, bills and hearings; then prediction-market odds on pending bills.
+11. Federal contracts; earmarks; sponsored travel; SEC insider filings.
+12. Alerts and explainable overlap indicators (individual measures and methods, without a composite conflict score).
+
+**Release checklist**
+1. Before enabling immutable publishing, verify R2 conditional writes on a staging prefix or bucket and deploy compatible release-pinned readers. Keep the current daily publisher in place until the reader migration is verified.
+2. After merges that affect generated data, dispatch **Daily data refresh** on `main`; confirm the job succeeds, `data/meta.json` advances, timelines are available, and bucket/proxied data headers allow an hour of edge caching.
+3. Move the R2 secrets into a `production` GitHub Environment restricted to `main`, and enable the workflow environment as coordinated in `docs/SECURITY-REVIEW.md`. Confirm other branches cannot publish or access those environment credentials.
+4. Rewrite history to remove `web/public/data` from every commit. The owner approved this on 2026-11-15, but first coordinate a time with no open PRs and nobody mid-work. Use `git filter-repo --path web/public/data --invert-paths`, force-push `main` once, and have all four teammates delete their copies and re-clone. Prepare an owner message to GitHub Support requesting cached views and unreachable commits be purged, including closed PRs #1–#6. Do not rewrite while this PR is open.
+5. Continue with lobbying attribution review/downloads, then the remaining feature list. Human review of the new 20-timeline sample remains open; automated checks are not human sign-off. Complete the existing trade sample/McCaul recheck and the 205 company override approvals.
+6. Vercel Pro ends 2026-11-26: the owner should downgrade a few days early and confirm the free-plan deployment works.
 
 **Optimisations**
 - A custom domain on the R2 bucket (the current r2.dev address is rate-limited by Cloudflare and meant for development).
