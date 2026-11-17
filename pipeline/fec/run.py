@@ -26,7 +26,7 @@ from pathlib import Path
 
 from .. import util
 from ..util import dumps
-from . import build, download, load, refs
+from . import build, download, load, refs, spending
 from .load import q
 
 BUILD = refs.BUILD
@@ -163,6 +163,7 @@ def main(argv: list[str] | None = None) -> int:
     report["files"] = audit["files"]
 
     build.prepare_reference_tables(con, members, cycles, report)
+    spending.run(con, members, cycles, report, report["files"], SOURCE_FILE.parent.parent)   # loans + leadership PAC categories
     build.classify_rows(con, cycles, build.today_iso())
     build.resolve_orgs(con, companies, overrides, report)
     build.edge_inputs(con)
@@ -410,7 +411,7 @@ def _write_sources(report: dict) -> None:
     src = {"fec": {
         "name": "Federal Election Commission bulk data (candidate master, committee master, candidate-committee "
                 "linkage, contributions from committees to candidates and independent expenditures, all-candidates "
-                "summary, leadership PACs and sponsors)",
+                "summary, leadership PACs and sponsors; operating expenditures, streamed for leadership PACs)",
         "url": "https://www.fec.gov/data/browse-data/?tab=bulk-data",
         "revision": max(revisions).strftime("%Y-%m-%dT%H:%M:%SZ") if revisions else None,
         "retrieved": retrieved[0] if retrieved else None,

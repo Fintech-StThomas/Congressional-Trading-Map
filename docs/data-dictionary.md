@@ -153,7 +153,7 @@ process above. Operating procedure: `docs/RELEASE-OPERATIONS.md`.
 |---|---|
 | `meta.json` | Build time, each source's revision and retrieval date, row counts, unmatched counts, exclusions, coverage notes, publication budget, largest files |
 | `members.json` | Array of `MemberSummary` |
-| `members/<id>.json` | `MemberFile`: one member's full record, edges, board, nodes, ledger, trade summary, cases, coverage |
+| `members/<id>.json` | `MemberFile`: one member's full record, edges, board, nodes, ledger, trade summary, cases, campaign finance, coverage |
 | `trades/<id>.json` | `TradeFile`: every current trade of one member (only members with trades) |
 | `orgs.json` | Array of `OrgSummary`: every org with at least one tie (full edge, ledger row or org tie) |
 | `orgs/<shard>.json` | `{ [orgId]: OrgFile }`, where shard is the first two hex characters of `sha1(orgId)` |
@@ -355,6 +355,7 @@ type MemberFile = {
     by_owner: { [owner: string]: number }; by_action: { [action: string]: number };
   };
   cases: Case[];
+  campaign_finance: CampaignFinance | null; // FEC loans and leadership PAC spending; null = no FEC candidacy row and no leadership PAC row
   coverage: { year: number; trades: "full" | "partial" | "none" | "n/a"; money: "full" | "partial" | "none" }[];
 };
 
@@ -662,7 +663,8 @@ they did not choose public life.
 - **Never published:** street addresses (locations are cut to "City, ST"; street addresses in asset, creditor and
   liability-type text become `[street address redacted]`) and personal residences (rows that name a personal
   residence or non-rental second home are dropped). The pipeline never reads the FEC individual-contributions file,
-  so no individual contributor is published.
+  so no individual contributor is published. The campaign finance block (see its section) publishes leadership PAC spending
+  as per-category aggregates only, never a payee name or address.
 
 Both validators check that no published asset or trade text still carries a minor's name under these indicators.
 
@@ -691,6 +693,99 @@ wins for ticker, cik and sector, files in name order; a `company` row sets kind 
 rows of equal standing the later file's name wins, so `trades.jsonl`'s SEC name beats `fec.jsonl`'s), assigns edge ids, aggregates duplicates of the same
 type/from/to/via, and writes the files above. Edges with an unknown endpoint, an unlisted evidence source, no evidence
 or an invalid type/family are dropped and counted in `meta.json.unmatched.edges_dropped_at_assembly`.
+
+## Campaign finance block (`MemberFile.campaign_finance`, FEC spending and loans)
+
+Sources, both FEC bulk files read by `pipeline/fec/` (retrieved with the other FEC files; public domain, not for
+solicitation or commercial use, 52 U.S.C. 30111(a)(4)). Column layouts:
+<https://www.fec.gov/campaign-finance-data/all-candidates-file-description/> (`weball<yy>.zip`) and
+<https://www.fec.gov/campaign-finance-data/operating-expenditures-file-description/> (`oppexp<yy>.zip`, header file
+<https://www.fec.gov/files/bulk-downloads/data_dictionaries/oppexp_header_file.csv>). Category codes:
+<https://www.fec.gov/campaign-finance-data/disbursement-category-code-descriptions/>. Written by
+`pipeline/fec/spending.py` to `pipeline/build/campaign_finance.json` (members, plus committee links used only by the
+validator) and `pipeline/build/sources/fec_spending.json` (source `fec_spending`, report in `meta.reports.fec_spending`).
+
+```ts
+type CampaignFinance = {
+  loans: LoanRow[];                 // one row per (cycle, candidate id), oldest cycle first; [] if none
+  leadership_pac: LeadershipPacYear[]; // one row per (cycle, committee), oldest cycle first; [] if none
+  coverage: {
+    loans_cycles: number[];         // cycles whose weball file was loaded (the same for every member)
+    leadership_pac_cycles: number[];// cycles whose oppexp file was loaded (2004 on; 2000 and 2002 do not exist)
+    leadership_pac_note: string | null; // set exactly when leadership_pac is []
+  };
+};
+
+type LoanRow = {                    // the FEC's all-candidates summary row for one candidate id and cycle
+  cycle: number;                    // two-year election cycle, even year
+  candidate_id: string;             // one of MemberFile.member.fec_ids
+  office: "house" | "senate" | "president" | null; // from the id's first letter H, S or P
+  candidate_loans: number | null;   // CAND_LOANS: loans the candidate reported making to their own campaign
+  other_loans: number | null;       // OTHER_LOANS
+  candidate_loan_repayments: number | null; // CAND_LOAN_REPAY
+  other_loan_repayments: number | null;     // OTHER_LOAN_REPAY
+  debts_owed_by: number | null;     // DEBTS_OWED_BY, as in the FEC summary
+  through: string | null;           // CVG_END_DT: the summary covers the cycle up to this date (YYYY-MM-DD)
+};                                  // dollars, exact (not ranges); null = blank in the file or a negative figure (see below)
+
+type LeadershipPacYear = {
+  committee_id: string;             // the leadership PAC, C + 8 digits
+  committee_name: string;           // latest name in the FEC committee master
+  cycle: number;
+  sponsor_link: "fec_candidate_id" | "leadership_file_exact_name" | "fec_candidate_id+leadership_file_exact_name";
+  total: number;                    // net dollars of the committee's operating expenditures in that cycle's file
+  count: number;                    // rows summed (refunds and voids are negative rows and count too)
+  categories: { category: string | null; label: string; total: number; count: number }[];
+                                    // by code, then the rows with no usable code (category null) last; sums equal total and count
+};
+```
+
+Rules
+- **Loans: exact id only.** A weball row belongs to a member only because its `CAND_ID` is one of the member's FEC
+  candidate ids (the same linkage the money edges use). The row is the FEC's summary of everything the candidate's
+  authorised committees reported for the cycle; the five money fields are copied as summarised, to the cent.
+  A blank field is `null`, never zero. A negative figure (80 figures in 44,913 rows, cycles 2000-2026) is not published (`null`) and is listed in `meta.reports.fec_spending.loans.negative_figures_not_published`.
+  A zero is published as zero only when the FEC file says 0.
+- **Leadership PACs: the existing sponsor linkage.** A committee is a member's leadership PAC only through the rules in
+  `pipeline/fec/README.md` ("Leadership-PAC sponsors"): a filed candidate id on the committee (`fec_candidate_id`) or
+  the FEC leadership-PAC list's sponsor name equal to the FEC candidate-master name of that member's candidate ids,
+  punctuation aside (`leadership_file_exact_name`). No similarity matching; unmatched sponsors are listed in the
+  `fec` report. `sponsor_link` says which.
+- **Spending: aggregates only.** The operating-expenditures file is streamed and summed by the FEC's `CATEGORY` code
+  (001-012 for House, Senate and party/PAC filers; 101-107 for presidential filers; labels are the FEC's wording).
+  Memo items (`MEMO_CD` = X, itemisations of an amount already counted) are dropped, a transaction re-reported in a later
+  filing (same committee, transaction id, date and amount) counts once, and the file's own cycle decides the `cycle`.
+  A blank or unrecognised code goes to `category: null`. Most Form 3X rows (PACs) carry no category, so most
+  of a leadership PAC's rows fall under `null` (2024 cycle: about 86% of rows and 78% of dollars). The FEC has no other category
+  field in the bulk file and free-text purposes are not read.
+- **Coverage.** `loans_cycles` and `leadership_pac_cycles` list the files actually loaded. A member with no candidacy row
+  in a loaded weball file and no leadership PAC row gets `campaign_finance: null` (not a block of zeros), as does
+  a member with no FEC id. A member with a block but no leadership PAC gets `leadership_pac: []` and the note.
+  A committee-cycle with no rows in the file has no entry: absence is not a reported zero.
+
+What it does not show
+- A loan figure is a cycle total as the FEC summarises it. It does not show when the loan was made, its terms, whether
+  or when it was repaid beyond the two reported repayment fields, or why. `debts_owed_by` is the FEC's field of that name.
+- Category labels are the FEC's, and the FEC assigns the code from the committee's own filing. The categories do not say
+  what a payment was for beyond that label, and they do not show who was paid.
+- Totals are what a committee reported in operating expenditures. They exclude contributions to candidates and
+  committees, transfers and other lines that are not operating expenditures, so they are not the committee's total
+  disbursements.
+- Nothing here says a spending or loan figure is improper. The site reports what the filings say.
+
+Privacy
+- No payee name, payee address, ZIP, city, free-text purpose or memo, entity type or individual-level row is read into the
+  aggregation or published (`spending_oppexp.iter_rows` never extracts those columns). Validators reject any key naming a
+  payee, lender, address, city or ZIP and any text that looks like a street address (`pipeline/validate_fec_spending.py`).
+- A category holding a single row shows that row's amount but not who was paid.
+
+Not built: payments to family members or member-owned firms. The bulk files carry the payee only as free text (name,
+address) or, for a committee payee, a committee id; nothing in them is an exact identifier tying a payee to a member's
+relatives or businesses, and linking by name similarity is forbidden. This needs a reviewed list from a filing that names
+both ends and is out of scope.
+
+Download and cost: `weball` is loaded for every cycle already; `oppexp<yy>.zip` (50-65 MB each, 2004-2026, 12 files) is
+cached like the other FEC files (the two latest cycles refetched daily, older ones weekly) and streamed, about 3 seconds and 60 MB peak memory per cycle (measured on 2024: 2.2 million lines, 430 MB unpacked).
 
 ## Holdings and net worth
 

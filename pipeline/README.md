@@ -67,7 +67,7 @@ Times and peak memory (resident set of the whole process, which only grows) from
 | `spine` | `spine.py` | congress-legislators (daily) | `spine.json`, `committees.json`, `sources/legislators.json` | 1 s | 0.1 GB |
 | `trades` | `trades.py` | HF `austin-starks/congressional-stock-trades` (by commit) | `trades.parquet`, `sources/hf_trades.json` | 5 s | 1.2 GB |
 | `companies` | `companies.py`, `sic.py` | SEC tickers (daily), FSDS `sub.txt`, `trades.parquet`, overrides | `ticker_orgs.json`, `companies.json`, `company_names.json`, `sources/sec.json` | 1 s | 1.2 GB |
-| `fec` | `fec/` | FEC bulk files (see its README), `spine.json`, `company_names.json`, overrides | `edges/fec_*.jsonl`, `orgs/fec.jsonl`, `sources/fec.json` | 162 s | 1.9 GB |
+| `fec` | `fec/` | FEC bulk files (see its README), `spine.json`, `company_names.json`, overrides | `edges/fec_*.jsonl`, `orgs/fec.jsonl`, `sources/fec.json`, `campaign_finance.json`, `sources/fec_spending.json` | 162 s (+ about 5 s per cycle for spending, not yet measured in a full run) | 1.9 GB |
 | `edges_trades` | `edges_trades.py` | `trades.parquet`, `ticker_orgs.json`, `companies.json` | `trades_resolved.parquet`, `edges/trades.jsonl`, `orgs/trades.jsonl` | 23 s | 1.5 GB |
 | `edges_committees` | `edges_committees.py` | `committees.json` | `edges/committees.jsonl` | 1 s | |
 | `lda` | `lda/` | LDA API pages (off unless `PT_ENABLE_LDA=1`) | `edges/lda.jsonl`, `orgs/lda.jsonl`, `sources/lda.json` | 0 s | |
@@ -93,7 +93,8 @@ pipeline/
   util.py             paths, cached HTTP with retry, deterministic JSON, override file, name/ticker normalisation
   edges.py            range arithmetic (sum_amounts), by_year, evidence ranking, edge ids
   spine.py trades.py companies.py sic.py edges_trades.py edges_committees.py    core sources and edges
-  fec/                download -> load (parse) -> refs (identities) -> build (rules, edges, orgs) -> run (write, checks)
+  fec/                download -> load (parse) -> refs (identities) -> build (rules, edges, orgs) -> run (write, checks);
+                      spending + spending_oppexp (loans and leadership PAC spending by category -> campaign_finance.json)
   holdings/           source (download) -> run (parse, resolve, emit) -> rules (redaction) -> validate
   lda/                download -> build (parse) -> match (identities) -> edges -> run (write, checks); off by default
   congress/           download -> facts (parse, exact ids) -> run (fact table, review sample); off by default, unpublished
@@ -326,6 +327,7 @@ The binding version is the data dictionary's "Privacy" section; the code is `hol
 | `hf_trades` | [austin-starks/congressional-stock-trades](https://huggingface.co/datasets/austin-starks/congressional-stock-trades) on Hugging Face: House Clerk and Senate eFD periodic transaction reports | dataset commit SHA, `snapshot.json` time, each parquet file's SHA-256 (checked against `snapshot.json`) | Public records with a statutory use restriction (below) |
 | `sec` | SEC `company_tickers_exchange.json` and the Financial Statement Data Sets (`sub.txt`, for SIC codes) | Last-Modified, SHA-256, quarters used | U.S. government work |
 | `fec` | FEC bulk data (see `pipeline/fec/`) | per-file Last-Modified and SHA-256 | U.S. government work |
+| `fec_spending` | FEC `weball` (loans) and `oppexp` (leadership PAC operating expenditures, streamed); see `pipeline/fec/README.md` | per-file Last-Modified and SHA-256 (listed under `fec`) | U.S. government work |
 | `lda` | [LDA REST API](https://lda.gov/api/) (LD-203 contribution reports, LD-2 filings with covered positions); the Senate Office of Public Records cannot vouch for the data | posting cutoff dates and a SHA-256 manifest of cached slices | Public records; [LDA API terms](https://lda.gov/api/tos/) |
 
 **Use restriction (from the trades dataset's LICENSE_DATA.md).** The trade data is derived from financial disclosure
@@ -365,6 +367,11 @@ contributions file (`indiv`), and publishes no individual contributor; the notic
 - **Late flag.** `late` compares public availability with the transaction date (more than 45 days). The legal
   deadline runs from the notification date, so a few flagged trades may have been filed on time.
 - **Memory.** Assembly holds every edge (without evidence) in memory: about 4.2 GB peak with the full FEC plug-in.
+- **Campaign finance block.** `MemberFile.campaign_finance` (loans as the FEC summarises them, leadership PAC spending
+  summed by FEC category) comes from `pipeline/fec/spending.py`, which runs inside the `fec` stage and writes
+  `build/campaign_finance.json`; the assembler copies each member's block (null when absent) and
+  `pipeline/validate_fec_spending.py` checks it, including that no payee or address text is present. Only aggregates
+  are read from `oppexp`. Payments to family or member-owned firms are not built (no exact identifier).
 - **FEC totals are what givers reported.** They can differ from the recipient's own summary (weball) when the
   recipient amended its reports or never itemised a receipt; see `pipeline/fec/README.md` (Jordan 2020, Cruz 2018 and
   2022 are worked through there).

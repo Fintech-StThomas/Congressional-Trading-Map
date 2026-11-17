@@ -177,6 +177,7 @@ Common columns first, then the detail. "Years" are what the source covers, not w
   showed 2024 and 2026 data; the earliest cycle was not checked). Filings arrive continuously. Volume: see section 2.
 - **Adds.** Leadership PAC spending by FEC category (`disbursement_purpose_category`), loans a member made to their own campaign with balance and repayment (Next item 7).
 - **Privacy.** Schedule C and B rows carry lender and payee street addresses and individual names. Never publish addresses (data dictionary "Privacy"); decide whether individual payees follow the existing independent-expenditure payee rule or are aggregated. Do not publish family-member payments by inference.
+- **Built 2026-11-17 (see data dictionary, "Campaign finance block").** Bulk files `weball` (loans) and `oppexp` (leadership PAC spending, streamed and published only as per-category aggregates; no payee, address or individual row). Operating expenditures are 50-65 MB per cycle, not 1 GB. **Not built: payments to family members or member-owned firms** (no exact identifier in the bulk files; the payee is free text, and name similarity is forbidden). Schedule C (loan lender detail) is not used.
 
 ### 3.7 Earmarks (2022 on)
 

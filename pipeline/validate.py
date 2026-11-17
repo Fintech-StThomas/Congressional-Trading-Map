@@ -29,6 +29,7 @@ from .edges import edge_id, sum_amounts
 from .holdings.rules import redact_beneficiary
 from .util import BUILD, OUT, read_json
 from .validate_delays import check_delays
+from .validate_fec_spending import check_campaign_finance, load_links
 
 DATE = "date"
 OWNERS = {"self", "spouse", "joint", "dependent", "unspecified"}
@@ -378,6 +379,7 @@ def main() -> int:
     for k in cases:
         shape(c, k, CASE, f"cases.json:{k.get('id')}")
 
+    links = load_links()
     seen_edges: dict[str, dict[str, Any]] = {}
     full_pairs: set[tuple[str, str]] = set()
     terms: dict[str, list[dict[str, Any]]] = {}
@@ -387,9 +389,10 @@ def main() -> int:
     for mid in sorted(members):
         mf = read_json(OUT / "members" / f"{mid}.json")
         where = f"members/{mid}"
-        c.check(set(mf) == {"member", "edges", "board", "nodes", "ledger", "ledger_totals", "trade_summary", "cases", "coverage"},
-                "schema", f"{where} keys")
+        c.check(set(mf) == {"member", "edges", "board", "nodes", "ledger", "ledger_totals", "trade_summary", "cases", "campaign_finance",
+                                  "coverage"}, "schema", f"{where} keys")
         c.check(mf["member"]["id"] == mid, "member file id", where)
+        check_campaign_finance(c, mf.get("campaign_finance"), where, mid, mf["member"]["fec_ids"], links)
         terms[mid] = mf["member"]["terms"]
         for e in mf["edges"]:
             check_edge(c, e, where, sources, members, orgs)

@@ -45,7 +45,8 @@ by recipient member id and then by edge key (`fundraises_with` and orgs are full
 | Committee master `cm` | `.../cm{YY}.zip` | 2000-2026 |
 | Candidate-committee linkage `ccl` | `.../ccl{YY}.zip` | 2000-2026 |
 | Contributions from committees to candidates and independent expenditures `pas2` | `.../pas2{YY}.zip` (member `itpas2.txt`) | 2000-2026 |
-| All-candidates summary `weball` (sanity check only) | `.../weball{YY}.zip` | 2000-2026 |
+| All-candidates summary `weball` (sanity check, and the loans in `spending.py`) | `.../weball{YY}.zip` | 2000-2026 |
+| Operating expenditures `oppexp` (streamed, leadership PACs only) | `.../oppexp{YY}.zip` (member `oppexp.txt`, 25 columns) | 2004-2026 (2000 and 2002 answer 404); 50-65 MB each, 430 MB unpacked for 2024 |
 | Leadership PACs and sponsors | `https://www.fec.gov/files/bulk-downloads/data.fec.gov/leadership{YYYY}.csv` | 2010-2026 only (404 before 2010) |
 | Members (fallback) | congress-legislators `legislators-current.json`, `legislators-historical.json` | |
 | Company names (fallback) and company org records | `https://www.sec.gov/files/company_tickers.json` | |
@@ -247,3 +248,39 @@ truncated. What a threshold would leave (all members / current members only):
 A dollar threshold alone does not get the file under 150 MB unless it drops most ties. Two lossless options: shard
 the file by recipient (for example `fec_pac_money_<first letter of bioguide>.jsonl`, each under about 60 MB), or cut
 evidence for pac_money to 3 items.
+
+## Spending and loans (`spending.py`, `spending_oppexp.py`)
+
+Adds `campaign_finance` for each member (contract: `docs/data-dictionary.md`, "Campaign finance block"). Runs inside
+`run.py` right after the reference tables (it needs the `lpac` table and `cm_latest`), writes
+`pipeline/build/campaign_finance.json` and `pipeline/build/sources/fec_spending.json`, and adds the `oppexp` files to the
+`fec` source's file list. Sources (accessed 2026-11-17):
+
+| File | URL | Used columns |
+|---|---|---|
+| `weball<yy>.zip` (already loaded) | `https://www.fec.gov/files/bulk-downloads/<YYYY>/weball<yy>.zip`; description <https://www.fec.gov/campaign-finance-data/all-candidates-file-description/> | `CAND_ID`, `CAND_LOANS`, `OTHER_LOANS`, `CAND_LOAN_REPAY`, `OTHER_LOAN_REPAY`, `DEBTS_OWED_BY`, `CVG_END_DT` |
+| `oppexp<yy>.zip` | `https://www.fec.gov/files/bulk-downloads/<YYYY>/oppexp<yy>.zip`; description <https://www.fec.gov/campaign-finance-data/operating-expenditures-file-description/>; header <https://www.fec.gov/files/bulk-downloads/data_dictionaries/oppexp_header_file.csv> | `CMTE_ID`, `TRANSACTION_AMT`, `TRANSACTION_DT` and `TRAN_ID` (only to recognise a re-report), `CATEGORY`, `MEMO_CD`, `FILE_NUM`, `SUB_ID`. Never read: `NAME`, `CITY`, `STATE`, `ZIP_CODE`, `PURPOSE`, `MEMO_TEXT`, `ENTITY_TP` |
+| category codes | <https://www.fec.gov/campaign-finance-data/disbursement-category-code-descriptions/> | labels in `spending_oppexp.CATEGORY_LABELS` |
+
+Rules
+- Loans are copied from the weball row of each of the member's candidate ids (exact `refs.Members.cand_to_bio`).
+  Blank = null, negative (80 figures in 44,913 rows) = null and listed in the report, 0 = 0.
+- Leadership PACs are the `lpac` table of `build._leadership` (filed candidate id, or the FEC leadership list's sponsor
+  name equal to the candidate-master name; no similarity matching). Every line of `oppexp` is read from the zip but split
+  only when its first 9 bytes are one of those committee ids. Memo items (`MEMO_CD` = X) are dropped; the same transaction
+  (committee, `TRAN_ID`, date, amount) re-reported in a later filing counts once (highest `FILE_NUM`); refunds net.
+  Sums are by `CATEGORY` (001-012, 101-107); anything else goes to `category: null`. About 86% of 2024 rows and 78% of
+  dollars have no category, because Form 3X rows mostly carry none. The bulk file has no other category field.
+- A first line with a different number of columns skips that file-cycle (`oppexp_coverage` says so, a warning is printed).
+  Only the 2024 layout has been checked by hand (24 or 25 delimiters per line); verify the other cycles in the first full run.
+- Not built: payments to family members or member-owned firms. No bulk-file field is an exact identifier for them.
+
+Measured on 2024 (this sandbox, 2026-11-17): download of `oppexp24.zip` 64 MB in 2.4 s; stream and aggregate 2,249,911
+lines (120,846 of the 832 leadership PACs listed by the FEC; 32,220 of the 290 linked to a member) in 2.9-3.4 s; peak
+resident memory 63 MB for the stream alone, 147 MB with DuckDB and the reference tables. Only this one oppexp cycle was
+downloaded; the other 11 files (2004-2022, 2026) are 26-65 MB each, so a cold full run adds about 0.6 GB of download and about
+35 s of streaming, and a daily run refetches only the two latest cycles (about 115 MB). `weball` was read for all 14 cycles
+(44,913 rows).
+
+Tests: `pipeline/tests/test_fec_spending.py` with recorded rows in `pipeline/tests/fixtures/fec_spending/` (payee name,
+city, state, ZIP, purpose and memo text blanked).

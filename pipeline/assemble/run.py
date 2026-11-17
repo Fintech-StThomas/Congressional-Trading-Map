@@ -20,6 +20,7 @@ from ..util import BUILD, PORTRAITS, print_table, read_json, utc_now, write_json
 from .budget import ledger_totals, member_end, member_ledger, org_ties, split_member_edges
 from .cases import find_cases
 from .delays import build_delays
+from .finance import load_campaign_finance
 from .members import board_order, coverage, node_info, trade_row, trade_summary
 from .orgs import SplitStats, org_index, party_split, shard
 from .plugins import attach_evidence, load_edges, load_orgs, load_sources
@@ -47,6 +48,7 @@ def run() -> None:
     edges, edge_report = load_edges(set(spine), orgs, set(sources), slim=True)
     trades: list[Trade] = pq.read_table(BUILD / "trades_resolved.parquet").to_pylist()
     trades_report = reports["hf_trades"]
+    finance = load_campaign_finance(set(spine))
     this_year = date.today().year
 
     by_member_trades: dict[str, list[Trade]] = defaultdict(list)
@@ -110,7 +112,7 @@ def run() -> None:
             "nodes": {k: node_info(v, orgs, spine) for k, v in sorted(refs.items())},
             "ledger": member_ledger(mid, shown), "ledger_totals": ledger_totals(rest + context),
             "trade_summary": trade_summary(ts),
-            "cases": member_cases.get(mid, []),
+            "cases": member_cases.get(mid, []), "campaign_finance": finance.get(mid),
             "coverage": coverage(m, trades_report["coverage"], failed[mid], money_cov, this_year)})
 
     shards: dict[str, dict[str, Any]] = defaultdict(dict)
