@@ -324,7 +324,8 @@ test("member page: section index, one caveat above the cases, and long ties fold
   assert.equal(await p.getByTestId("cases-not-shown").count(), await p.locator("#cases").count());
   assert.equal(await p.locator(".dossier__cases .notshown").count(), 0);
   // Ties fold after 12 rows and unfold; hidden rows are not in the tab order.
-  const rows = p.locator("[data-testid=member-page] .tiesection table.ties tbody tr[data-edge]");
+  // Only the main ties table folds; real members can also have a short "Spent against this member" table.
+  const rows = p.locator("[data-testid=member-page] .tiesection table.ties").first().locator("tbody tr[data-edge]");
   const total = await rows.count();
   assert.ok(total > 12, `fixture has more than 12 ties (${total})`);
   const shownRows = () => rows.evaluateAll((trs) => trs.filter((r) => getComputedStyle(r).display !== "none").length);
@@ -349,6 +350,18 @@ realTest("wall and organisation pages do not scroll sideways at phone width", as
     const overflow = await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     assert.ok(overflow <= 0, `${url} scrolls sideways by ${overflow}px`);
   }
+  await p.close();
+});
+
+test("a permanent release link on a site without archived releases says so, and shows no latest data", async (t) => {
+  if ((await fetch(base + "/releases/current.json")).ok) return t.skip("this site reads archived releases");
+  const p = await page();
+  const res = await p.goto(base + "/r/" + "f".repeat(64) + "/m/X000001");
+  assert.equal(res.status(), 404);
+  const box = p.getByTestId("release-not-found");
+  assert.equal(await box.getAttribute("data-pinned"), "0");
+  assert.match(await box.innerText(), /not switched on for this site yet/);
+  assert.doesNotMatch(await box.innerText(), /withdrawn/);
   await p.close();
 });
 
@@ -598,7 +611,7 @@ realTest("annual positions, financial history and transition CSV agree with the 
   await p.getByTestId("tenure-change").waitFor();
   await p.getByTestId("leverage").waitFor();
   let failFirstPositionRequest = true;
-  await p.route("**/data/holdings/positions/*.json", async (route) => {
+  await p.route("**/holdings/positions/*.json", async (route) => { // /data/... or /releases/<id>/... (snapshot mode)
     if (failFirstPositionRequest) {
       failFirstPositionRequest = false;
       return route.fulfill({ status: 503, body: "temporary data failure" });
@@ -733,11 +746,11 @@ test("the stale banner follows the 48-hour rule from the browser's clock, and ne
     await p.getByTestId("footer-age").waitFor(); // hydrated
     return p;
   };
-  const fresh = await at(3 * 3600_000);
+  const fresh = await at(3 * 3600_000 + 90_000); // the age is computed from the time rounded down to the minute
   assert.equal(await fresh.getByTestId("stale-banner").count(), 0, "fresh data: no banner");
   assert.match(await fresh.getByTestId("footer-age").innerText(), /updated 3 hours ago/);
   await fresh.close();
-  const old = await at(5 * 24 * 3600_000);
+  const old = await at(5 * 24 * 3600_000 + 90_000);
   if (realData) {
     const banner = old.getByTestId("stale-banner");
     const text = await banner.innerText();
