@@ -82,7 +82,9 @@ test("deep section shortcuts and case-file tables return scroll to the page", as
     await toc.getByRole("link", { name: "Back to sections" }).click();
     await page.waitForTimeout(150);
     assert.ok(Math.abs(await toc.evaluate((el) => el.getBoundingClientRect().top - 8)) < 16);
-
+    await page.setViewportSize({ width: 794, height: 1123 }); // A4 at CSS-pixel scale.
+    await page.emulateMedia({ media: "print" });
+    assert.ok(await toc.evaluate((el) => el.scrollWidth <= el.clientWidth + 1), "printed section links wrap instead of being clipped in a scroll container");
   } finally {
     await browser?.close();
     try { process.kill(-server.pid); } catch {}

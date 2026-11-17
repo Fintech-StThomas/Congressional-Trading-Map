@@ -66,6 +66,14 @@
   display: block;
   scroll-margin-top: 8px;
 }
+@media print {
+  .rec__toc {
+    position: static;
+    overflow: visible;
+    flex-wrap: wrap;
+    box-shadow: none;
+  }
+}
 .rec__sec {
   margin-top: 36px;
   scroll-margin-top: 64px;

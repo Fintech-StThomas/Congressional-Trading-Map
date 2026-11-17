@@ -1,6 +1,6 @@
 # Paper Trail: design review and next passes
 
-Reviewed 2026-11-16 (America/Chicago). This document separates the implemented interaction fixes from proposed product work. Preserve the dark room, single light, paper and yarn; make the evidence legible, navigable and citable.
+Visual review 2026-11-16; independent code review 2026-11-17 (America/Chicago). This document separates the implemented interaction fixes from proposed product work. Preserve the dark room, single light, paper and yarn; make the evidence legible, navigable and citable.
 
 ## Scope and evidence
 
@@ -15,7 +15,7 @@ Reviewed 2026-11-16 (America/Chicago). This document separates the implemented i
 |---|---|---|
 | Featured briefing covers pinned cards | Place the paper briefing in normal flow above the canvas; make “Why this example?” expandable | Every card gets usable board space, regardless of explanation length |
 | Dense boards can still collide | Keep successful placements; retry bounded, deterministic ellipse phases only when collisions remain | Avoid expensive continuous layout and preserve stable successful arrangements |
-| Case/Full file shortcuts disappear far down the page | Sticky, horizontally scrollable section shortcuts, plus “Back to sections” links | Reach any section without scrolling through thousands of records |
+| Case/Full file shortcuts disappear far down the page | Sticky, horizontally scrollable section shortcuts, plus “Back to sections” links; printed Full file links wrap | Reach any section without scrolling through thousands of records |
 | A trade table traps scrolling at its boundary | Restore native vertical scroll chaining | Wheel/touch scrolling can continue onto the document at the table's top/bottom |
 | Evidence only closes through a small X | Outside-click dismissal, a labeled 44px close control, existing Escape support | Make dismissal discoverable on desktop and touch screens |
 | Dismissal can interfere with other controls | Preserve focus on clicked controls; restore the opener for blank-area/explicit dismissal; retain evidence when switching views | Search, keyboard use and the shared investigation URL keep working |
