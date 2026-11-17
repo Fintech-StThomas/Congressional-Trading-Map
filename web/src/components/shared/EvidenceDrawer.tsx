@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useRef } from "react";
 import type { Edge, NodeRef } from "@/lib/types";
 import { CORRECTIONS, notShown, SITE } from "@/lib/copy";
+import { BOARD_UI } from "@/lib/copy-ui";
 import { CorrectionLink } from "./CorrectionLink";
 import { weakTag, WEAK_WHY, typeLabel, TYPE_RULE, FAMILY_LABEL, filteredAmount, plainStat, stringStyle } from "@/lib/domain/edges";
 import { amountText, count, date, NOT_DISCLOSED, plural } from "@/lib/format";
@@ -26,7 +27,7 @@ type Props = {
   book: NameBook;
   sources: Record<string, string>;
   range?: [number, number];
-  onClose: () => void;
+  onClose: (restoreFocus?: boolean) => void;
   /** The full record is being fetched. */
   loading?: boolean;
   /** Every string to the same card, when the drawer was opened from a card. */
@@ -76,6 +77,37 @@ export function EvidenceDrawer({ edge, book, sources, range, onClose, loading, s
     return () => window.removeEventListener("keydown", onKey);
   }, [open, edge?.id, onClose]);
 
+  useEffect(() => {
+    if (!open) return;
+    // This is a non-modal inspector: outside controls remain usable. Only dismiss
+    // deliberate outside clicks, not a text selection dragged out of the drawer.
+    let startedOutside = false;
+    const outside = (event: Event) => event.target instanceof Node && !ref.current?.contains(event.target);
+    const onPointerDown = (event: PointerEvent) => { startedOutside = event.button === 0 && outside(event); };
+    const onClick = (event: MouseEvent) => {
+      if (event.button === 0 && startedOutside && outside(event)) {
+        // Switching view intentionally carries the selected tie to the next page.
+        if (event.target instanceof Element && event.target.closest(".viewswitch a")) {
+          startedOutside = false;
+          return;
+        }
+        // A clicked search field, link or other control should keep its focus.
+        const control = event.target instanceof Element && event.target.closest('a, button, input, select, textarea, summary, [tabindex]:not([tabindex="-1"]), [contenteditable="true"]');
+        onClose(!control);
+      }
+      startedOutside = false;
+    };
+    const onCancel = () => { startedOutside = false; };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("pointercancel", onCancel, true);
+    document.addEventListener("click", onClick, true);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("pointercancel", onCancel, true);
+      document.removeEventListener("click", onClick, true);
+    };
+  }, [open, onClose]);
+
   if (!edge) return null;
   const filtered = range && (range[0] > YEAR_MIN || range[1] < YEAR_MAX) ? range : undefined;
   const totals = filteredAmount(edge);
@@ -88,7 +120,8 @@ export function EvidenceDrawer({ edge, book, sources, range, onClose, loading, s
     <aside ref={ref} className="drawer" role="dialog" aria-modal="false" aria-labelledby="drawer-title" data-testid="evidence-drawer">
       <div className="drawer__bar">
         <span className="drawer__kicker">Evidence</span>
-        <button type="button" className="iconbtn" onClick={onClose} aria-label="Close evidence (Escape)">
+        <button type="button" className="iconbtn drawer__close" onClick={() => onClose()} aria-label={BOARD_UI.closeEvidenceHint}>
+          <span>{BOARD_UI.closeEvidence}</span>
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
             <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
           </svg>

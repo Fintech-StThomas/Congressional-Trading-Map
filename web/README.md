@@ -4,6 +4,8 @@ The public site: a board that maps every member of Congress to the organisations
 
 Live: https://red-paper-trail.vercel.app/ · Data contract: [`../docs/data-dictionary.md`](../docs/data-dictionary.md) · Review notes: [`REVIEW.md`](REVIEW.md)
 
+Design review and follow-up priorities: [`../docs/UX-DESIGN-REVIEW.md`](../docs/UX-DESIGN-REVIEW.md). The board briefing is outside the canvas (`board-ux.css`), with memoized geometry in `components/board/useBoardLayout.ts`. Case/Full file section shortcuts use sticky CSS and native anchors; evidence remains a non-modal inspector with outside-click dismissal.
+
 ## Directory map
 
 ```

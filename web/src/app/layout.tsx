@@ -19,6 +19,7 @@ import { Analytics } from "@vercel/analytics/next";
 import "@/styles/tokens.css";
 import "@/styles/globals.css";
 import "@/styles/board.css";
+import "@/styles/board-ux.css";
 import "@/styles/pages.css";
 import "@/styles/notices.css";
 

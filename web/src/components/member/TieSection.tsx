@@ -55,9 +55,9 @@ export function TieSection({ edges: initial, selfId, book: initialBook, sources,
   const shown = useMemo(() => sortEdges(edges.filter((e) => families.has(e.family) && !isAgainst(e) && inYears(e, range))), [edges, families, range]);
   const against = useMemo(() => sortEdges(edges.filter((e) => isAgainst(e) && inYears(e, range))), [edges, range]);
 
-  const close = useCallback(() => {
+  const close = useCallback((restoreFocus = true) => {
     updateView({ edge: null, org: null }, { push: true });
-    trigger.current?.focus();
+    if (restoreFocus) trigger.current?.focus({ preventScroll: true });
   }, []);
 
   // Arriving with `e` in the URL: bring that row into view (not when the reader just clicked it), and load the

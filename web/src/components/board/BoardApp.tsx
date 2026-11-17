@@ -235,11 +235,11 @@ export function BoardApp(props: Props) {
     },
     [pickEdge],
   );
-  const closeEdge = useCallback(() => {
+  const closeEdge = useCallback((restoreFocus = true) => {
     setOpen(null);
     writeSelectedEdge(null, selfId, Boolean(sel.m));
     const t = trigger.current as HTMLElement | SVGElement | null;
-    t?.focus?.();
+    if (restoreFocus) t?.focus?.({ preventScroll: true });
   }, [selfId, sel.m]);
   const hideEdge = useCallback(() => setOpen(null), []);
   const { missing } = useSelectedEdge(allStrings, open, showEdge, hideEdge, Boolean(center) && !loading);
