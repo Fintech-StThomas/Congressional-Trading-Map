@@ -718,7 +718,7 @@ type CampaignFinance = {
 
 type LoanRow = {                    // the FEC's all-candidates summary row for one candidate id and cycle
   cycle: number;                    // two-year election cycle, even year
-  candidate_id: string;             // one of MemberFile.member.fec_ids
+  candidate_id: string;             // one of MemberFile.member.fec_ids: H/S + digit + 2 letters + 5 digits (H8VA01233), or P + 8 digits for a president (P60003225)
   office: "house" | "senate" | "president" | null; // from the id's first letter H, S or P
   candidate_loans: number | null;   // CAND_LOANS: loans the candidate reported making to their own campaign
   other_loans: number | null;       // OTHER_LOANS
@@ -733,10 +733,13 @@ type LeadershipPacYear = {
   committee_name: string;           // latest name in the FEC committee master
   cycle: number;
   sponsor_link: "fec_candidate_id" | "leadership_file_exact_name" | "fec_candidate_id+leadership_file_exact_name";
-  total: number;                    // net dollars of the committee's operating expenditures in that cycle's file
-  count: number;                    // rows summed (refunds and voids are negative rows and count too)
-  categories: { category: string | null; label: string; total: number; count: number }[];
-                                    // by code, then the rows with no usable code (category null) last; sums equal total and count
+  total: number;                    // dollars spent: sum of the committee's positive operating-expenditure rows in that cycle's file
+  count: number;                    // number of those positive rows
+  refunds: number;                  // sum of the absolute values of the negative rows (refunds and voids), not subtracted from total
+  refund_count: number;             // number of negative rows
+  categories: { category: string | null; label: string; total: number; count: number; refunds: number; refund_count: number }[];
+                                    // by code, then the rows with no usable code (category null) last; the four
+                                    // figures of the categories sum to the four figures above; all four are >= 0
 };
 ```
 
@@ -754,10 +757,14 @@ Rules
 - **Spending: aggregates only.** The operating-expenditures file is streamed and summed by the FEC's `CATEGORY` code
   (001-012 for House, Senate and party/PAC filers; 101-107 for presidential filers; labels are the FEC's wording).
   Memo items (`MEMO_CD` = X, itemisations of an amount already counted) are dropped, a transaction re-reported in a later
-  filing (same committee, transaction id, date and amount) counts once, and the file's own cycle decides the `cycle`.
+  filing (same committee, transaction id, date and amount) counts once, rows of exactly zero are skipped, and the file's own cycle decides the `cycle`.
   A blank or unrecognised code goes to `category: null`. Most Form 3X rows (PACs) carry no category, so most
   of a leadership PAC's rows fall under `null` (2024 cycle: about 86% of rows and 78% of dollars). The FEC has no other category
   field in the bulk file and free-text purposes are not read.
+- **Refunds are not netted.** A negative row is a refund or void reported by the committee (money returned to it, or a
+  correction of an earlier row). It is never subtracted from what was spent: `total` and `count` cover the positive rows
+  only, `refunds` and `refund_count` the negative ones, per category and per committee-cycle. A category can show more
+  refunded than spent, for example when the original row is in an earlier cycle's file. The two are not paired.
 - **Coverage.** `loans_cycles` and `leadership_pac_cycles` list the files actually loaded. A member with no candidacy row
   in a loaded weball file and no leadership PAC row gets `campaign_finance: null` (not a block of zeros), as does
   a member with no FEC id. A member with a block but no leadership PAC gets `leadership_pac: []` and the note.

@@ -2,8 +2,8 @@
 pipeline/validate.py for every member file; reads nothing itself except, when it exists, the committee links in
 pipeline/build/campaign_finance.json (committee -> member and method, written by pipeline/fec/spending.py).
 
-Checks: schema and key sets; amounts non-negative or null; category totals and counts add up to the committee-cycle
-total; candidate ids are among the member's `fec_ids` and committee ids are linked to that member (exact ids only);
+Checks: schema and key sets; amounts non-negative or null; category spent and refund sums and counts add up to the committee-cycle
+sums; candidate ids are among the member's `fec_ids` and committee ids are linked to that member (exact ids only);
 cycles even, unique and ordered; no member without an FEC id has a block; and no payee, lender, address or similar key
 and no street-address-looking text anywhere in the block.
 """
@@ -18,7 +18,7 @@ from .util import BUILD, read_json
 OFFICES = {"house", "senate", "president", None}
 LINK_METHODS = {"fec_candidate_id", "leadership_file_exact_name", "fec_candidate_id+leadership_file_exact_name"}
 LOAN_KEYS = ("candidate_loans", "other_loans", "candidate_loan_repayments", "other_loan_repayments", "debts_owed_by")
-CANDIDATE_ID = re.compile(r"^[HSP]\d[A-Z]{2}\d{5}$")
+CANDIDATE_ID = re.compile(r"^(?:[HS]\d[A-Z]{2}\d{5}|P\d{8})$")   # House/Senate: H8VA01233; president: P60003225
 COMMITTEE_ID = re.compile(r"^C\d{8}$")
 # Key names that would mean an individual-level or address field leaked into the block.
 FORBIDDEN_KEYS = re.compile(r"payee|lender|recipient|vendor|address|street|city|zip|state|phone|purpose|memo|"
@@ -70,6 +70,14 @@ def _shape(c: Any, obj: Any, spec: dict[str, Callable[[Any], bool]], where: str)
     return ok
 
 
+def _amount_req(v: Any) -> bool:
+    return _is_num(v) and v >= 0
+
+
+def _count(v: Any) -> bool:
+    return isinstance(v, int) and not isinstance(v, bool) and v >= 0
+
+
 def _amount(v: Any) -> bool:
     return v is None or (_is_num(v) and v >= 0)
 
@@ -91,10 +99,10 @@ def check_loans(c: Any, rows: Any, where: str, fec_ids: set[str]) -> None:
 def check_pacs(c: Any, rows: Any, where: str, mid: str, links: dict[str, Any] | None) -> None:
     c.check(isinstance(rows, list), "campaign_finance: schema", f"{where}.leadership_pac")
     cat_spec = {"category": lambda v: v is None or v in CATEGORY_LABELS, "label": lambda v: isinstance(v, str),
-                "total": lambda v: _is_num(v), "count": lambda v: isinstance(v, int) and v >= 0}
+                "total": _amount_req, "count": _count, "refunds": _amount_req, "refund_count": _count}
     spec = {"committee_id": lambda v: isinstance(v, str) and COMMITTEE_ID.match(v) is not None,
             "committee_name": lambda v: isinstance(v, str) and v != "", "cycle": _cycle_ok,
-            "sponsor_link": lambda v: v in LINK_METHODS, "total": _is_num, "count": lambda v: isinstance(v, int) and v >= 0,
+            "sponsor_link": lambda v: v in LINK_METHODS, "total": _amount_req, "count": _count, "refunds": _amount_req, "refund_count": _count,
             "categories": lambda v: isinstance(v, list) and len(v) > 0}
     keys: list[tuple[int, str]] = []
     for i, p in enumerate(rows if isinstance(rows, list) else []):
@@ -105,9 +113,10 @@ def check_pacs(c: Any, rows: Any, where: str, mid: str, links: dict[str, Any] | 
         cats = [x for j, x in enumerate(p["categories"]) if _shape(c, x, cat_spec, f"{w}.categories[{j}]")]
         c.check(len(cats) == len(p["categories"]), "campaign_finance: schema", w)
         c.check(len({x["category"] for x in cats}) == len(cats), "campaign_finance: one row per category", w)
-        c.check(abs(sum(x["total"] for x in cats) - p["total"]) < 0.005 and sum(x["count"] for x in cats) == p["count"],
-                "campaign_finance: category totals sum to the cycle total", f"{w} total {p['total']}")
-        c.check(p["total"] >= 0 and all(x["total"] >= 0 for x in cats), "campaign_finance: amounts are not negative", w)
+        for amt, n in (("total", "count"), ("refunds", "refund_count")):
+            c.check(abs(sum(x[amt] for x in cats) - p[amt]) < 0.005 and sum(x[n] for x in cats) == p[n],
+                    "campaign_finance: category sums equal the committee-cycle sums", f"{w} {amt} {p[amt]}")
+        c.check(all(x["total"] >= 0 and x["refunds"] >= 0 for x in cats + [p]), "campaign_finance: amounts are not negative", w)
         if links is not None:
             link = links.get(p["committee_id"])
             c.check(link is not None and link["member"] == mid and link["method"] == p["sponsor_link"],

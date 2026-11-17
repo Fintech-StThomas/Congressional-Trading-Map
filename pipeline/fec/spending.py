@@ -9,7 +9,7 @@ tables exist: builds `campaign_finance` for each member from two bulk files and 
    negative figure (80 figures in 44,913 rows, cycles 2000-2026) is not published (null) and is listed in the report.
 2. Leadership PAC spending. `oppexp<yy>` (operating expenditures) is streamed (spending_oppexp.py) for the committee
    ids in the `lpac` table (committee -> sponsoring member, built by build._leadership from FEC candidate ids and the
-   FEC leadership-PAC sponsor list, exact names only) and summed by the FEC category code. Payees are never read.
+   FEC leadership-PAC sponsor list, exact names only) and summed by the FEC category code (spent and refunds kept apart). Payees are never read.
 Members with neither a candidacy row nor a leadership-PAC row get no entry (the assembler publishes null).
 """
 from __future__ import annotations
@@ -83,10 +83,13 @@ def _block(loans: list[dict], pacs: list[dict], wb: list[int], op: list[int]) ->
 
 def pac_entry(cmte: str, cycle: int, name: str, method: str, cats: dict[str | None, list]) -> dict[str, Any]:
     """One committee-cycle: categories ordered by code (no-category last); total and count are their sums."""
-    cs = [{"category": c, "label": CATEGORY_LABELS.get(c, NO_CATEGORY), "total": _money(v[0]), "count": v[1]}
+    cs = [{"category": c, "label": CATEGORY_LABELS.get(c, NO_CATEGORY), "total": _money(v[0]), "count": v[1],
+           "refunds": _money(v[2]), "refund_count": v[3]}
           for c, v in sorted(cats.items(), key=lambda kv: (kv[0] is None, kv[0] or ""))]
     return {"committee_id": cmte, "committee_name": name, "cycle": cycle, "sponsor_link": method,
-            "total": _money(sum(c["total"] for c in cs)), "count": sum(c["count"] for c in cs), "categories": cs}
+            "total": _money(sum(c["total"] for c in cs)), "count": sum(c["count"] for c in cs),
+            "refunds": _money(sum(c["refunds"] for c in cs)), "refund_count": sum(c["refund_count"] for c in cs),
+            "categories": cs}
 
 
 def spending_by_cycle(links: dict[str, tuple[str, str]], cycles: list[int], report: dict[str, Any],

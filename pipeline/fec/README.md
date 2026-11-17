@@ -268,7 +268,7 @@ Rules
 - Leadership PACs are the `lpac` table of `build._leadership` (filed candidate id, or the FEC leadership list's sponsor
   name equal to the candidate-master name; no similarity matching). Every line of `oppexp` is read from the zip but split
   only when its first 9 bytes are one of those committee ids. Memo items (`MEMO_CD` = X) are dropped; the same transaction
-  (committee, `TRAN_ID`, date, amount) re-reported in a later filing counts once (highest `FILE_NUM`); refunds net.
+  (committee, `TRAN_ID`, date, amount) re-reported in a later filing counts once (highest `FILE_NUM`); negative rows (refunds, voids) are summed apart as `refunds`, never netted.
   Sums are by `CATEGORY` (001-012, 101-107); anything else goes to `category: null`. About 86% of 2024 rows and 78% of
   dollars have no category, because Form 3X rows mostly carry none. The bulk file has no other category field.
 - A first line with a different number of columns skips that file-cycle (`oppexp_coverage` says so, a warning is printed).

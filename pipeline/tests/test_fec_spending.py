@@ -73,7 +73,8 @@ def test_iter_rows_stops_on_a_changed_layout(tmp_path):
 
 # --- aggregation -------------------------------------------------------------------------------
 def expected_totals(rows: list[dict]) -> dict[tuple[str, str | None], float]:
-    """Independent re-computation: non-memo rows, the re-reported transaction once, unknown code -> None."""
+    """Independent re-computation of the spent sums: non-memo positive rows, the re-reported transaction once,
+    unknown code -> None."""
     seen, out = {}, {}
     for r in rows:
         if r["memo"]:
@@ -81,7 +82,8 @@ def expected_totals(rows: list[dict]) -> dict[tuple[str, str | None], float]:
         seen[(r["committee"], r["tran_id"], r["date"], r["amount"])] = r
     for r in seen.values():
         k = (r["committee"], r["category"] if r["category"] in oe.CATEGORY_LABELS else None)
-        out[k] = round(out.get(k, 0) + r["amount"], 2)
+        if r["amount"] > 0:
+            out[k] = round(out.get(k, 0) + r["amount"], 2)
     return out
 
 
@@ -103,7 +105,23 @@ def test_rereport_counts_once_from_the_latest_filing_and_refunds_net():
                 "file_num": file_num, "sub_id": f"{file_num}{tran}{amount}"}
     agg = oe.aggregate([row(100.0, 1), row(100.0, 2), row(-30.0, 3, tran="T2"), row(50.0, 4, tran="", date=""),
                         row(50.0, 5, tran="", date=""), row(9.0, 6, tran="T3", memo=True), row(None, 7, tran="T4")])
-    assert agg["C1"]["001"] == [round(100 - 30 + 50 + 50, 2), 4]
+    assert agg["C1"]["001"] == [200.0, 3, 30.0, 1]       # spent 100 + 50 + 50, refunded 30, never netted
+
+
+def test_refunds_can_exceed_spending_in_a_category_and_stay_non_negative():
+    def row(amount, tran, cat):
+        return {"committee": "C1", "memo": False, "amount": amount, "category": cat, "tran_id": tran, "date": "d",
+                "file_num": 1, "sub_id": tran}
+    agg = oe.aggregate([row(10.0, "A", "002"), row(-75.5, "B", "002"), row(-1.0, "C", "003"), row(0.0, "D", "003")])
+    assert agg["C1"]["002"] == [10.0, 1, 75.5, 1] and agg["C1"]["003"] == [0.0, 0, 1.0, 1]
+    pac = spending.pac_entry("C00000001", 2024, "T", "fec_candidate_id", agg["C1"])
+    assert (pac["total"], pac["count"], pac["refunds"], pac["refund_count"]) == (10, 1, 76.5, 2)
+    assert [(c["total"], c["refunds"]) for c in pac["categories"]] == [(10, 75.5), (0, 1)]
+    c = Checker()
+    check_campaign_finance(c, {"loans": [], "leadership_pac": [pac], "coverage": {
+        "loans_cycles": [2024], "leadership_pac_cycles": [2024], "leadership_pac_note": None}},
+        "m", "M1", ["S8FL00273"], {"C00000001": {"member": "M1", "method": "fec_candidate_id"}})
+    assert c.errors == {}
 
 
 def test_category_labels_cover_the_official_codes():
@@ -248,9 +266,11 @@ GOOD = {
     "loans": [{"cycle": 2024, "candidate_id": "S8FL00273", "office": "senate", "candidate_loans": 100, "other_loans": None,
                "candidate_loan_repayments": 0, "other_loan_repayments": 0, "debts_owed_by": 5.5, "through": "2024-12-31"}],
     "leadership_pac": [{"committee_id": "C00409276", "committee_name": "TEST PAC", "cycle": 2024,
-                        "sponsor_link": "fec_candidate_id", "total": 30.5, "count": 3,
-                        "categories": [{"category": "001", "label": "Administrative/salary/overhead expenses", "total": 20.5, "count": 2},
-                                       {"category": None, "label": spending.NO_CATEGORY, "total": 10, "count": 1}]}],
+                        "sponsor_link": "fec_candidate_id", "total": 30.5, "count": 3, "refunds": 4, "refund_count": 2,
+                        "categories": [{"category": "001", "label": "Administrative/salary/overhead expenses", "total": 20.5,
+                                        "count": 2, "refunds": 4, "refund_count": 2},
+                                       {"category": None, "label": spending.NO_CATEGORY, "total": 10, "count": 1,
+                                        "refunds": 0, "refund_count": 0}]}],
     "coverage": {"loans_cycles": [2024], "leadership_pac_cycles": [2024], "leadership_pac_note": None},
 }
 LINKS = {"C00409276": {"member": "M1", "method": "fec_candidate_id"}}
@@ -268,6 +288,22 @@ def mutated(fn):
     return b
 
 
+@pytest.mark.parametrize("cid,ok", [("H8VA01233", True), ("S8FL00273", True), ("H6MD08549", True), ("P60003225", True),
+                                    ("P20002978", True), ("P6000322", False), ("P6000322X", False), ("X8VA01233", False),
+                                    ("H8VA0123", False), ("", False)])
+def test_candidate_id_formats(cid, ok):
+    block = mutated(lambda b: b["loans"][0].update(candidate_id=cid))
+    errors = run_check(block, fec_ids=(cid,))
+    assert (not any("schema" in k for k in errors)) is ok
+
+
+def test_presidential_loan_rows_get_the_president_office():
+    con = weball_con([["P60003225", "TEST, PRES", "C", "1", "REP", "0", "0", "0", "0", "0", "0", "0", "5", "0", "0", "0", "0", "0",
+                       "US", "00", "", "", "", "", "", "0", "0", "12/31/2024", "0", "0"]])
+    row = spending.loan_rows(con, [2024], {"P60003225": "P"}, {})["P"][0]
+    assert row["office"] == "president" and row["candidate_loans"] == 5
+
+
 def test_validator_accepts_a_good_block_and_null():
     assert run_check(GOOD) == {} and run_check(None) == {}
     assert run_check(None, fec_ids=()) == {}
@@ -275,8 +311,12 @@ def test_validator_accepts_a_good_block_and_null():
 
 @pytest.mark.parametrize("fn,rule", [
     (lambda b: b["loans"][0].update(candidate_loans=-1), "schema"),
-    (lambda b: b["leadership_pac"][0]["categories"][0].update(total=21), "category totals sum"),
-    (lambda b: b["leadership_pac"][0].update(count=4), "category totals sum"),
+    (lambda b: b["leadership_pac"][0]["categories"][0].update(total=21), "category sums equal"),
+    (lambda b: b["leadership_pac"][0].update(count=4), "category sums equal"),
+    (lambda b: b["leadership_pac"][0].update(refunds=3), "category sums equal"),
+    (lambda b: b["leadership_pac"][0]["categories"][0].update(refund_count=1), "category sums equal"),
+    (lambda b: b["leadership_pac"][0]["categories"][0].update(refunds=-1), "schema"),
+    (lambda b: b["leadership_pac"][0].update(total=-30.5), "schema"),
     (lambda b: b["loans"][0].update(candidate_id="S8FL00999"), "candidate id is one of"),
     (lambda b: b["leadership_pac"][0].update(committee_id="C00000001"), "linked to this member"),
     (lambda b: b["leadership_pac"][0].update(sponsor_link="fec_candidate_id+leadership_file_exact_name"), "linked to this member"),

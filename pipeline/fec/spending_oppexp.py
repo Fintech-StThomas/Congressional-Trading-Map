@@ -98,12 +98,14 @@ def category_code(raw: str) -> str | None:
 
 
 def aggregate(rows: Iterable[dict[str, Any]], report: dict[str, int] | None = None) -> dict[str, dict[str | None, list]]:
-    """{committee: {category code or None: [net dollars, rows]}} for one file-cycle.
+    """{committee: {category code or None: [spent, rows, refunds, refund rows]}} for one file-cycle.
 
     Rules: memo items (MEMO_CD = X, itemisations of an amount already counted) are dropped; a transaction that appears
     more than once (same committee, transaction id, date and amount, which is a re-report in a later filing) counts
     once, from the highest file number; rows without a transaction id or amount are kept (no amount: counted in
-    `report['no_amount']` and skipped). Refunds and voids are negative rows and net against their category."""
+    `report['no_amount']` and skipped). Spent = sum of the positive
+    rows; refunds = sum of the absolute values of the negative rows (refunds and voids). They are never netted.
+    Rows of exactly zero are skipped (`report['zero_amount']`)."""
     rep = report if report is not None else {}
     kept: dict[tuple, dict[str, Any]] = {}
     for r in rows:
@@ -122,7 +124,11 @@ def aggregate(rows: Iterable[dict[str, Any]], report: dict[str, int] | None = No
         kept[key] = r
     out: dict[str, dict[str | None, list]] = defaultdict(dict)
     for r in kept.values():
-        cell = out[r["committee"]].setdefault(category_code(r["category"]), [0.0, 0])
-        cell[0] = round(cell[0] + r["amount"], 2)
-        cell[1] += 1
+        if r["amount"] == 0:
+            rep["zero_amount"] = rep.get("zero_amount", 0) + 1
+            continue
+        cell = out[r["committee"]].setdefault(category_code(r["category"]), [0.0, 0, 0.0, 0])
+        i = 0 if r["amount"] > 0 else 2
+        cell[i] = round(cell[i] + abs(r["amount"]), 2)
+        cell[i + 1] += 1
     return out
