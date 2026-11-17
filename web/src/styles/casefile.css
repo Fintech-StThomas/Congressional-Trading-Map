@@ -3,6 +3,36 @@
 .casefile {
   display: none;
 }
+/* Keep section shortcuts reachable while reading the long screen case file. */
+.secindex {
+  position: sticky;
+  top: 8px;
+  z-index: 20;
+  flex-wrap: nowrap;
+  gap: 2px 8px;
+  margin: 12px 0 0;
+  padding: 4px 6px;
+  border: 1px solid var(--rule-soft);
+  border-radius: var(--r-sm);
+  background: var(--bg-2);
+  box-shadow: 0 2px 8px oklch(0.1 0 0 / 0.12);
+}
+.secindex ul {
+  min-width: 0;
+  flex: 1;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+}
+.secindex a {
+  min-height: 44px;
+  white-space: nowrap;
+}
+.secindex-start {
+  scroll-margin-top: 8px;
+}
+.section[id] {
+  scroll-margin-top: 64px;
+}
 @media print {
   @page {
     size: auto;

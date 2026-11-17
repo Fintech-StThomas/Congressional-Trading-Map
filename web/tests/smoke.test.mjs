@@ -415,6 +415,7 @@ test("featured example explains itself and steps to another", async () => {
   await p.goto(base + "/");
   const slip = p.locator(".slip").first();
   await slip.getByText("Featured example").waitFor();
+  await slip.locator("summary").click();
   assert.match(await slip.innerText(), /Shown because this member/);
   const before = await slip.locator(".slip__title").innerText();
   await slip.getByRole("button", { name: /Show another/ }).click();

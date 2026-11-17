@@ -38,6 +38,7 @@ export const ACTIONS_UI = {
 export const SECTION_INDEX = {
   aria: "On this page",
   label: "On this page",
+  backToSections: "Back to sections",
   cases: "Cases",
   ties: "Ties",
   activity: "Activity",
@@ -62,4 +63,10 @@ export const ASSUME_UI = {
 export const CASES_UI = {
   /** Said once above the cases list; the sentence itself is CASE_NOT_SHOWN in copy.ts. */
   notShownLabel: "What a case does not show:",
+} as const;
+
+export const BOARD_UI = {
+  whyFeatured: "Why this example?",
+  closeEvidence: "Close evidence",
+  closeEvidenceHint: "Close evidence (Escape)",
 } as const;

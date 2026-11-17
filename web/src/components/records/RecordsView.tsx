@@ -6,6 +6,7 @@ import { getJSON } from "@/lib/data/fetch";
 import type { MemberFileWire } from "@/lib/types";
 import { caveats, DOC_COLS, documentRows, identifierLinks, TIE_COLS, tieRows, TRADE_COLS_ALL, tradeRows } from "@/lib/domain/records";
 import { USE_NOTICE, COVERAGE, VIEW } from "@/lib/copy";
+import { SECTION_INDEX } from "@/lib/copy-ui";
 import { buildViewCitation, type Citation, type SourceRef } from "@/lib/domain/citation";
 import { coverageFacts, tradeValueStats, type CoverageMeta } from "@/lib/domain/coverage";
 import { CiteButton } from "@/components/shared/CiteButton";
@@ -179,6 +180,7 @@ export function RecordsView({ id, hasTrades, hasHoldings, everHouse, names, sour
         </p>
       )}
 
+      <span id="records-toc-start" className="rec__toc-start" tabIndex={-1} />
       <nav className="rec__toc" aria-label="On this page">
         <a href="#rec-ties">Ties ({ties.length.toLocaleString("en-US")})</a>
         {hasTrades && <a href="#rec-trades">Trades ({tradesReady ? tradeTable.length.toLocaleString("en-US") : "…"})</a>}
@@ -187,6 +189,7 @@ export function RecordsView({ id, hasTrades, hasHoldings, everHouse, names, sour
         <a href="#rec-cov">Coverage and caveats</a>
         <a href="#rec-holdings">Holdings and net worth</a>
         {holdings?.positions_summary && <a href="#rec-positions">Position transitions</a>}
+        <a href="#records-toc-start">{SECTION_INDEX.backToSections}</a>
       </nav>
 
       <section id="rec-ties" className="rec__sec" aria-labelledby="rec-ties-h">

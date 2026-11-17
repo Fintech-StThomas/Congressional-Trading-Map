@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Edge, NodeRef, OrgSummary } from "@/lib/types";
 import type { MapGeometry } from "@/lib/board/geo";
-import { arrange, yarn, yarnAt, type Rect } from "@/lib/board/layout";
+import { yarnAt } from "@/lib/board/layout";
 import { typeLabel, amountLabel, filteredAmount, otherEnd, stringStyle, strokeWidth, isFrayed, frayCue, tiePhrase, weakTag } from "@/lib/domain/edges";
 import { count, seat } from "@/lib/format";
 import { nodeName, ORG_KIND_LABEL, type BoardMember, type NameBook } from "@/lib/domain/names";
@@ -14,7 +14,8 @@ import { fnv1a, tiltFor } from "@/lib/hash";
 import { Print, PartyTag } from "@/components/shared/Print";
 import { CASE_TAG_TEXT } from "@/lib/copy";
 import { USMap } from "./USMap";
-import { boxOf, distTo, FrayedYarn, LEAD, lightAt, lightVars, SAG_KEYS, SAG_SPLINES, SAG_TIMES, SETTLE, STAGGER, useRichYarn } from "./yarn";
+import { useBoardLayout, type NodeCard } from "./useBoardLayout";
+import { boxOf, distTo, FrayedYarn, LEAD, lightVars, SAG_KEYS, SAG_SPLINES, SAG_TIMES, SETTLE, STAGGER, useRichYarn } from "./yarn";
 
 export type Center =
   | { kind: "member"; member: BoardMember; total: number }
@@ -45,14 +46,10 @@ type Props = {
 
 const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
-type NodeCard = { ref: NodeRef; edges: Edge[]; order: number };
-
 export function BoardCanvas(props: Props) {
   const { geo, counts, selectedState, onSelectState, center, edges, book, caseNodes, excluded, focusNode, drawKey, range, activeEdge, onOpenEdge, onRecenter, slip, loading } = props;
   const box = useRef<HTMLDivElement>(null);
-  const slipRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<{ W: number; H: number } | null>(null);
-  const [slipBox, setSlipBox] = useState<Rect | null>(null);
   const [hover, setHover] = useState<string | null>(null);
   const [focused, setFocused] = useState<string | null>(null);
   const [hoverNode, setHoverNode] = useState<string | null>(null);
@@ -64,17 +61,12 @@ export function BoardCanvas(props: Props) {
     if (!el) return;
     const measure = () => {
       const r = el.getBoundingClientRect();
+      if (r.width < 1 || r.height < 1) return; // The table view temporarily hides this canvas.
       setSize((s) => (s && Math.abs(s.W - r.width) < 1 && Math.abs(s.H - r.height) < 1 ? s : { W: Math.round(r.width), H: Math.round(r.height) }));
-      const sl = slipRef.current;
-      if (sl) {
-        const b = sl.getBoundingClientRect();
-        setSlipBox({ x: b.left - r.left, y: b.top - r.top, w: b.width, h: b.height });
-      }
     };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
-    if (slipRef.current) ro.observe(slipRef.current);
     return () => ro.disconnect();
   }, []);
 
@@ -96,50 +88,7 @@ export function BoardCanvas(props: Props) {
     return list;
   }, [edges, selfId, focusNode]);
 
-  const layout = useMemo(() => {
-    if (!size || !center) return null;
-    const { W, H } = size;
-    const compact = W < 1000 || H < 620;
-    const cw = compact ? 176 : 190, ch = compact ? 80 : 88;
-    const centerRect: Rect =
-      center.kind === "member"
-        ? (() => {
-            const w = compact ? 112 : 136, h = Math.round(w * 1.22) + 14;
-            return { x: Math.round(W / 2 - w / 2), y: Math.round(H / 2 - h / 2 + 4), w, h };
-          })()
-        : { x: Math.round(W / 2 - 120), y: Math.round(H / 2 - 52), w: 240, h: 104 };
-    const avoid = slipBox ? [{ ...slipBox, w: slipBox.w + 4, h: slipBox.h + 4 }] : [];
-    const placed = arrange(W, H, centerRect, nodes.map((n) => ({ id: `${n.ref.kind}:${n.ref.id}`, w: cw, h: ch })), avoid);
-    const pos = new Map(placed.map((p) => [p.id, p]));
-    const strings = nodes.flatMap((n) => {
-      const p = pos.get(`${n.ref.kind}:${n.ref.id}`);
-      if (!p) return [];
-      // Pin on the edge facing the centre, clear of the text and the re-centre control.
-      const ccx = centerRect.x + centerRect.w / 2;
-      const pin =
-        p.y + p.h < centerRect.y + 10
-          ? { x: p.x + p.w / 2, y: p.y + p.h - 7 }
-          : p.y > centerRect.y + centerRect.h - 10
-            ? { x: p.x + p.w / 2, y: p.y + 7 }
-            : p.x + p.w / 2 < ccx
-              ? { x: p.x + p.w - 6, y: p.y + Math.round(p.h * 0.42) }
-              : { x: p.x + 6, y: p.y + Math.round(p.h * 0.42) };
-      return n.edges.map((e, j) => {
-        const k = n.edges.length;
-        const slack = 1 + (j - (k - 1) / 2) * 0.42;
-        const shift = (j - (k - 1) / 2) * 7;
-        const y = yarn(centerRect, pin, slack, shift);
-        return { e, node: n, pin, y, light: lightAt(W, H, y.mid.x, y.mid.y) };
-      });
-    });
-    const pins = new Map(strings.map((x) => [`${x.node.ref.kind}:${x.node.ref.id}`, x.pin]));
-    // Draw order: strongest string first, as the edges arrived.
-    const orderOf = new Map(edges.map((e, i) => [e.id, i]));
-    strings.sort((a, b) => (orderOf.get(a.e.id) ?? 0) - (orderOf.get(b.e.id) ?? 0));
-    const lights = new Map(placed.map((p) => [p.id, lightAt(W, H, p.x + p.w / 2, p.y + p.h / 2)]));
-    const slipLight = slipBox ? lightAt(W, H, slipBox.x + slipBox.w / 2, slipBox.y + slipBox.h / 2) : null;
-    return { W, H, centerRect, placed, pos, strings, pins, lights, slipLight, cw, ch, compact };
-  }, [size, center, nodes, edges, slipBox]);
+  const layout = useBoardLayout(size, center, nodes, edges);
 
   // Fuzz goes on once the strings have come to rest, so no filter runs while they sway.
   const nStrings = layout?.strings.length ?? 0;
@@ -172,11 +121,14 @@ export function BoardCanvas(props: Props) {
   );
 
   const backdrop = Boolean(center);
-  const hovered = layout?.strings.find((s) => s.e.id === (hover ?? focused ?? activeEdge));
+  // Evidence already explains the selection; don't leave a duplicate tooltip over the portrait.
+  const hovered = !activeEdge && layout?.strings.find((s) => s.e.id === (hover ?? focused));
   const anyHot = Boolean(hover || hoverNode || focused);
   const groupOf = (n: NodeCard) => n.edges;
 
   return (
+    <>
+    <div className="board-briefing" data-testid="board-briefing">{slip}</div>
     <div className={`canvas${center ? " has-center" : ""}${layout?.compact ? " is-compact" : ""}`} ref={box} data-testid="board-canvas">
       <USMap geo={geo} counts={counts} selected={selectedState} backdrop={backdrop} onSelect={onSelectState} />
       <div className="canvas__light" aria-hidden="true" />
@@ -300,7 +252,7 @@ export function BoardCanvas(props: Props) {
               const w = frayed ? Math.max(1.1, Math.round(base * 0.55 * 10) / 10) : base;
               const nodeKey = `${node.ref.kind}:${node.ref.id}`;
               const hot = hover === e.id || focused === e.id || activeEdge === e.id || hoverNode === nodeKey;
-              const anim = !still;
+              const anim = !still && !done; // Release frozen SVG paths before later resizes/filter changes.
               const begin = `${LEAD + i * STAGGER}ms`;
               const sway = (vals: string) =>
                 anim ? <animate attributeName="d" values={vals} keyTimes={SAG_TIMES} calcMode="spline" keySplines={SAG_SPLINES} dur={`${SETTLE}ms`} begin={begin} fill="freeze" /> : null;
@@ -422,9 +374,6 @@ export function BoardCanvas(props: Props) {
         </>
       )}
 
-      <div className={`canvas__slip${!center && !selectedState ? " canvas__slip--country" : ""}`} ref={slipRef} style={layout?.slipLight ? lightVars(layout.slipLight) : undefined}>
-        {slip}
-      </div>
       {loading && (
         <div className="canvas__loading" role="status">
           Pulling the records…
@@ -436,5 +385,6 @@ export function BoardCanvas(props: Props) {
         </p>
       )}
     </div>
+    </>
   );
 }

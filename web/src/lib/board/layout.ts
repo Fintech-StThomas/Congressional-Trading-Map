@@ -40,50 +40,71 @@ export function arrange(W: number, H: number, center: Rect, items: Item[], avoid
   const rx = Math.max(Math.min(rxMin, rxMax), rxMin + (rxMax - rxMin) * spread);
   const ry = Math.max(Math.min(ryMin, ryMax), ryMin + (ryMax - ryMin) * spread);
   const start = -Math.PI / 2 + Math.PI / n;
-
-  const placed: Placed[] = items.map((it, i) => {
-    const a = start + (i * 2 * Math.PI) / n;
-    return { ...it, x: cx + rx * Math.cos(a) - it.w / 2, y: cy + ry * Math.sin(a) - it.h / 2 };
-  });
-  placed.forEach((p) => clamp(p, W, H));
-
+  const obstacles: Rect[] = [center, ...avoid];
   const fixed: Rect[] = [{ x: center.x - 8, y: center.y - 14, w: center.w + 16, h: center.h + 22 }, ...avoid];
-  for (let pass = 0; pass < 400; pass++) {
-    let moved = false;
-    for (let i = 0; i < n; i++) {
-      const a = placed[i];
-      for (const f of fixed) {
-        const o = overlap(a, f, PAD);
-        if (!o) continue;
-        moved = true;
-        // Push away from the obstacle along the shorter way out.
-        const ax = a.x + a.w / 2, ay = a.y + a.h / 2;
-        const fx = f.x + f.w / 2, fy = f.y + f.h / 2;
-        if (o.dx < o.dy) a.x += (ax >= fx ? 1 : -1) * o.dx;
-        else a.y += (ay >= fy ? 1 : -1) * o.dy;
-        clamp(a, W, H);
-      }
-      for (let j = i + 1; j < n; j++) {
-        const b = placed[j];
-        const o = overlap(a, b, PAD);
-        if (!o) continue;
-        moved = true;
-        const ax = a.x + a.w / 2, ay = a.y + a.h / 2;
-        const bx = b.x + b.w / 2, by = b.y + b.h / 2;
-        if (o.dx < o.dy) {
-          const s = (ax < bx || (ax === bx && i < j) ? -1 : 1) * (o.dx / 2 + 0.5);
-          a.x += s; b.x -= s;
-        } else {
-          const s = (ay < by || (ay === by && i < j) ? -1 : 1) * (o.dy / 2 + 0.5);
-          a.y += s; b.y -= s;
+  const attempt = (phase: number) => {
+    const placed: Placed[] = items.map((it, i) => {
+      const a = start + phase + (i * 2 * Math.PI) / n;
+      return { ...it, x: cx + rx * Math.cos(a) - it.w / 2, y: cy + ry * Math.sin(a) - it.h / 2 };
+    });
+    placed.forEach((p) => clamp(p, W, H));
+    for (let pass = 0; pass < 400; pass++) {
+      let moved = false;
+      for (let i = 0; i < n; i++) {
+        const a = placed[i];
+        for (const f of fixed) {
+          const o = overlap(a, f, PAD);
+          if (!o) continue;
+          moved = true;
+          // Push away from the obstacle along the shorter way out.
+          const ax = a.x + a.w / 2, ay = a.y + a.h / 2;
+          const fx = f.x + f.w / 2, fy = f.y + f.h / 2;
+          if (o.dx < o.dy) a.x += (ax >= fx ? 1 : -1) * o.dx;
+          else a.y += (ay >= fy ? 1 : -1) * o.dy;
+          clamp(a, W, H);
         }
-        clamp(a, W, H);
-        clamp(b, W, H);
+        for (let j = i + 1; j < n; j++) {
+          const b = placed[j];
+          const o = overlap(a, b, PAD);
+          if (!o) continue;
+          moved = true;
+          const ax = a.x + a.w / 2, ay = a.y + a.h / 2;
+          const bx = b.x + b.w / 2, by = b.y + b.h / 2;
+          if (o.dx < o.dy) {
+            const s = (ax < bx || (ax === bx && i < j) ? -1 : 1) * (o.dx / 2 + 0.5);
+            a.x += s; b.x -= s;
+          } else {
+            const s = (ay < by || (ay === by && i < j) ? -1 : 1) * (o.dy / 2 + 0.5);
+            a.y += s; b.y -= s;
+          }
+          clamp(a, W, H);
+          clamp(b, W, H);
+        }
       }
+      if (!moved) break;
     }
-    if (!moved) break;
+    return placed.map((p) => ({ ...p, x: Math.round(p.x), y: Math.round(p.y) }));
+  };
+  let result = attempt(0);
+  // Dense boards can leave the first ellipse phase stuck in a local collision pattern. Preserve
+  // its exact placement when clear; otherwise try deterministic fractional-slot rotations.
+  if (!isClear(result, obstacles)) {
+    for (let step = 1; step <= 16; step++) {
+      const candidate = attempt((step / 16) * (2 * Math.PI / n));
+      if (isClear(candidate, obstacles)) return candidate;
+      if (collisionCount(candidate, obstacles) < collisionCount(result, obstacles)) result = candidate;
+    }
   }
-  return placed.map((p) => ({ ...p, x: Math.round(p.x), y: Math.round(p.y) }));
+  return result;
+}
+
+function collisionCount(placed: Rect[], obstacles: Rect[]): number {
+  let n = 0;
+  for (let i = 0; i < placed.length; i++) {
+    for (const o of obstacles) if (overlap(placed[i], o, 0)) n++;
+    for (let j = i + 1; j < placed.length; j++) if (overlap(placed[i], placed[j], 0)) n++;
+  }
+  return n;
 }
 
 /** True when no two placed cards (or a card and an obstacle) overlap. Used by tests and dev checks. */

@@ -7,6 +7,7 @@ import { memberHref, orgHref } from "@/lib/urls";
 import { PartyTag } from "@/components/shared/Print";
 import { ViewLink } from "@/components/shared/ViewLink";
 import { ViewSwitch } from "@/components/shared/ViewSwitch";
+import { BOARD_UI } from "@/lib/copy-ui";
 import type { Center } from "./BoardCanvas";
 import type { Sel } from "./types";
 
@@ -30,7 +31,12 @@ export function Slip({
           {m.name} <PartyTag party={m.party} />
         </h2>
         <p className="slip__sub">{seat(m)}</p>
-        {featured && <p className="slip__why">{featured.reason}</p>}
+        {featured && (
+          <details className="slip__explanation">
+            <summary>{BOARD_UI.whyFeatured}</summary>
+            <p className="slip__why">{featured.reason}</p>
+          </details>
+        )}
         <p className="slip__meta">
           <span className="mono">{shown}</span> {shown === 1 ? "string" : "strings"}
           {more > 0 && (

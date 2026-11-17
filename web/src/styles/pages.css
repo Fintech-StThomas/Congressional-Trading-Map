@@ -189,7 +189,8 @@
   border: 1px solid var(--rule-soft);
   border-radius: var(--r);
   background: var(--surface);
-  overscroll-behavior: contain;
+  /* Let vertical wheel/touch scrolling continue onto the document at either edge. */
+  overscroll-behavior-y: auto;
 }
 .vtable .tradetable {
   min-width: 920px;

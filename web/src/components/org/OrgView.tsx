@@ -113,9 +113,9 @@ export function OrgView({ sources }: { sources: Record<string, string> }) {
         .finally(() => setResolving(false));
     }
   }, []);
-  const close = useCallback(() => {
+  const close = useCallback((restoreFocus = true) => {
     setOpen(null);
-    trigger.current?.focus();
+    if (restoreFocus) trigger.current?.focus({ preventScroll: true });
   }, []);
 
   if (status === "loading") {

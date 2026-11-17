@@ -1,0 +1,74 @@
+/* Board briefing and evidence ergonomics: keep the paper theme without covering records. */
+.board-briefing {
+  margin: 0 0 18px;
+}
+.board-briefing .slip {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 20px;
+  padding: 16px 20px;
+  transform: none;
+  border-top: 2px solid var(--paper-edge);
+}
+.board-briefing .slip__kicker {
+  grid-column: 1 / -1;
+  max-width: none;
+  margin-bottom: 8px;
+}
+.board-briefing .slip__title,
+.board-briefing .slip__sub,
+.board-briefing .slip__meta,
+.board-briefing .slip__explanation {
+  grid-column: 1;
+}
+.board-briefing .viewswitch {
+  grid-column: 2;
+  grid-row: 2 / span 3;
+  align-self: center;
+  margin: 0;
+}
+.slip .viewswitch a,
+.slip .viewswitch__k {
+  color: var(--ink);
+}
+.slip .viewswitch a {
+  border-color: var(--paper-edge);
+}
+.slip :focus-visible {
+  outline-color: var(--ink);
+}
+.slip .viewswitch a:hover,
+.slip .viewswitch a:focus-visible {
+  color: var(--ink);
+  border-color: var(--ink);
+  background: color-mix(in oklch, var(--paper), var(--ink) 6%);
+}
+.slip .viewswitch a[aria-current="page"] {
+  color: var(--paper);
+  background: var(--ink);
+  border-color: var(--ink);
+}
+.slip__explanation summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  padding-block: 6px;
+}
+.slip__explanation .slip__why {
+  max-width: 72ch;
+  margin: 4px 0 10px;
+}
+.drawer__close {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  width: auto;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 8px 12px;
+  font-size: 13px;
+}
+@media (max-width: 1050px) {
+  .board-briefing .slip { grid-template-columns: minmax(0, 1fr); }
+  .board-briefing .viewswitch { grid-column: 1; grid-row: auto; margin-top: 8px; }
+}
