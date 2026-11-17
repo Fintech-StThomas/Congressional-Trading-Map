@@ -30,9 +30,10 @@ jobs:
     timeout-minutes: 150
     # No job-level env: every variable is set on the one step that needs it, so the tests and the pipeline run
     # under the same conditions on main as on any branch or fork.
-    # GitHub Environment for the R2 secrets (docs/SECURITY-REVIEW.md, S6): once the owner has created the
-    # `production` environment limited to main and moved the R2_* secrets into it, uncomment the next line.
-    # environment: production
+    # GitHub Environment for the R2 secrets (docs/SECURITY-REVIEW.md, S6): `production` is limited to main and holds the
+    # R2_* secrets. Only default-branch runs of the main repository enter it; branch dispatches (build and validate
+    # without publishing) run outside it, so they never see the upload keys and are not refused by its branch rule.
+    environment: ${{ (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && !github.event.repository.fork) && 'production' || '' }}
     steps:
       # Actions pinned to the commit of the tag in use (tag in the comment), so a moved tag cannot change the job.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (node24)

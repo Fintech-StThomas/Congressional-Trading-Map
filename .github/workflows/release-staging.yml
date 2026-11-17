@@ -39,7 +39,7 @@ jobs:
     if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && !github.event.repository.fork
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # environment: production   # enable together with the same line in data.yml (docs/SECURITY-REVIEW.md, S6)
+    environment: production   # holds the R2_* secrets, limited to main (docs/SECURITY-REVIEW.md, S6)
     steps:
       # Actions pinned to the commit of the tag in use (tag in the comment), as in data.yml.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (node24)

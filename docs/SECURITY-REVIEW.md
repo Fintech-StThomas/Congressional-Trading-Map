@@ -73,7 +73,7 @@ The local holdings validator also checked 25 PDF text samples: all asset words a
 3. Add `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_PUBLIC_URL` as environment
    secrets, then remove their repository-secret copies. Keep `LDA_API_KEY` and `SEC_USER_AGENT` where the data build
    can use them. Confirm the Cloudflare token is Object Read & Write for this one bucket; rotate if broader.
-4. Uncomment `environment: production` under `jobs.refresh` in `data.yml` in a reviewed pull request. Coordinate
+4. Merge the pull request that enables the environment (done in code on 2026-11-17: `data.yml` enters `production` only for default-branch runs of the main repository, so branch dispatches still build and validate without the keys; `release-staging.yml` always enters it). Coordinate
    steps 3–4 so no scheduled refresh runs between moving the secrets and merging that line. The environment is
    intentionally not enabled before the owner creates it; silently auto-creating an unrestricted environment
    would provide no isolation.
