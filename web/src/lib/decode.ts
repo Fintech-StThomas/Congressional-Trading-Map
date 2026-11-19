@@ -97,7 +97,7 @@ export function ledgerSize(file: { ledger?: Columnar }): number {
 
 /** Edge type -> family, for ties that arrive without a full Edge. */
 export const FAMILY_OF: Record<EdgeType, Edge["family"]> = {
-  traded: "holding", owns: "holding", position: "holding", traded_together: "holding",
+  traded: "holding", owns: "holding", position: "holding", traded_together: "holding", traded_before_contract: "holding",
   pac_money: "money", employee_money: "money", lobbyist_money: "money", outside_spending: "money",
   paid_travel: "money", funds: "money", fundraises_with: "money", shared_donors: "money",
   revolving_door: "people", oversees: "people", shared_staff: "people",

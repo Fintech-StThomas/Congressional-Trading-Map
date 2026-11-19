@@ -1,7 +1,7 @@
 """Unit tests for the rules in docs/data-dictionary.md. Run: python -m pytest -q pipeline/tests"""
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from pipeline import assemble, trades, validate
 from pipeline.companies import same_issuer_possible
@@ -116,3 +116,71 @@ def test_validator_catches_bad_by_year() -> None:
     e["by_year"][0]["n"] = 2
     validate.check_edge(c, e, "t", {"s"}, {"A000001"}, {"co:1"})
     assert "by_year n sums to count" in c.errors
+
+
+# ---------------------------------------------------------------- traded_before_contract
+
+def _contract_trade(i: int, member: str, org: str, d: date, action: str = "buy") -> dict:
+    return {"id": f"t{i}", "member": member, "org": org, "date": d, "available": d, "action": action,
+            "ticker": "XYZ", "asset": "XYZ Corp", "asset_class": "stock", "owner": "self", "low": 1001,
+            "high": 15000, "url": "https://example.org/ptr"}
+
+
+def test_next_award_window_is_inclusive_and_forward_only() -> None:
+    from pipeline.contracts import WINDOW_DAYS, next_award
+    awards = [date(2020, 3, 1), date(2020, 6, 1)]
+    assert next_award(date(2020, 3, 1), awards) == date(2020, 3, 1)  # same day counts
+    assert next_award(date(2020, 3, 1) - timedelta(days=WINDOW_DAYS), awards) == date(2020, 3, 1)
+    assert next_award(date(2020, 3, 1) - timedelta(days=WINDOW_DAYS + 1), awards) is None
+    assert next_award(date(2020, 3, 2), awards) is None  # a buy after the award does not count
+
+
+def test_permutation_flags_buys_timed_to_awards_but_not_routine_trading() -> None:
+    from pipeline.contracts import passes, permutation_test
+    year = [date(2021, 1, 1) + timedelta(days=7 * k) for k in range(52)]  # a member trading weekly all year
+    pool = {2021: year}
+    awards = [date(2021, 2, 12), date(2021, 5, 14), date(2021, 8, 13), date(2021, 11, 12)]
+    timed = [d for d in year if any(0 <= (a - d).days <= 6 for a in awards)]  # one buy in the week before each award
+    obs, exp, p = permutation_test(timed, pool, awards, shuffles=500)
+    assert obs == 4 and passes(obs, exp, p)
+    # A burst of buys before one award counts once.
+    burst = [d for d in year if 0 <= (awards[0] - d).days <= 27]
+    assert len(burst) == 4 and permutation_test(burst, pool, awards, shuffles=50)[0] == 1
+    # Buying the week after each award is not flagged.
+    after = [d for d in year if any(1 <= (d - a).days <= 7 for a in awards)]
+    obs, exp, p = permutation_test(after, pool, awards, shuffles=500)
+    assert obs == 0 and not passes(obs, exp, p)
+    # A company that wins contracts every week: buying it at any time lands before an award, so nothing is flagged.
+    busy = [d + timedelta(days=3) for d in year]
+    obs, exp, p = permutation_test(year[:10], pool, busy, shuffles=500)
+    assert obs == 10 and not passes(obs, exp, p)
+
+
+def test_build_edges_writes_a_derived_edge_with_evidence() -> None:
+    from pipeline.contracts import build_edges
+    companies = {"co:1": {"name": "XYZ Corp", "sic": 3720, "pooled_vehicle": False}}
+    other = [_contract_trade(100 + k, "A000001", "co:2", date(2021, 1, 1) + timedelta(days=7 * k), "sell") for k in range(104)]
+    award_days = [date(2021, 1, 29) + timedelta(days=119 * k) for k in range(6)]  # one award every 17 weeks
+    buy_days = [d - timedelta(days=4) for d in award_days] + [award_days[-1] - timedelta(days=11)]
+    hits = [_contract_trade(k, "A000001", "co:1", d) for k, d in enumerate(buy_days)]
+    awards = [{"id": f"CONT_AWD_{k}", "piid": f"P{k}", "date": d, "amount": 2.5e7, "agency": "Department of Defense",
+               "subagency": "Department of the Army", "description": "WIDGETS", "recipient": "XYZ CORP"}
+              for k, d in enumerate(award_days)]
+    edges, report = build_edges(other + hits, companies, {"co:1": awards})
+    assert report["pairs_tested"] == 1 and len(edges) == 1
+    e = edges[0]
+    assert e["type"] == "traded_before_contract" and e["basis"] == "derived" and e["stat"]["observed"] == 6
+    assert e["family"] == "holding" and not e["weak"] and e["evidence_total"] == 6 and e["count"] == 7
+    assert e["evidence"][0]["url"].startswith("https://www.usaspending.gov/award/CONT_AWD_")
+    assert "4 days later" in e["evidence"][0]["label"] and "$25.0M" in e["evidence"][0]["label"]
+    assert e["amount"] == {"low": 7007, "high": 105000, "exact": None}  # all seven pre-award buys
+    assert any("and 1 earlier buy day in the 30 days before" in ev["label"] for ev in e["evidence"])
+
+
+def test_contract_recipient_matches_by_exact_name_or_listed_parent_only() -> None:
+    from pipeline.contracts import match_via
+    profiles = {"r1-C": {"GENERAL DYNAMICS"}, "r2-C": {"GENERAL DYNAMICS LAND SYSTEMS"}}
+    assert match_via("General Dynamics Corporation", None, "GENERAL DYNAMICS", profiles) == "name"
+    assert match_via("BATH IRON WORKS CORPORATION", "r1-C", "GENERAL DYNAMICS", profiles) == "parent"
+    assert match_via("GENERAL DYNAMICS LAND SYSTEMS INC.", "r2-C", "GENERAL DYNAMICS", profiles) is None  # no fuzzy match
+    assert match_via("SOMEONE ELSE LLC", None, "GENERAL DYNAMICS", profiles) is None

@@ -112,7 +112,7 @@ type OrgSummary = {
 
 type EdgeType =
   // member -> org
-  | "traded" | "owns" | "position"
+  | "traded" | "owns" | "position" | "traded_before_contract"
   // org -> member
   | "pac_money" | "employee_money" | "lobbyist_money" | "outside_spending" | "paid_travel"
   // member <-> org
@@ -123,7 +123,7 @@ type EdgeType =
   | "fundraises_with" | "shared_donors" | "traded_together" | "legislates_with" | "shared_staff" | "sits_with";
 
 // Family of each type (fixed): money = pac_money, employee_money, lobbyist_money, outside_spending, paid_travel,
-// funds, fundraises_with, shared_donors; holding = traded, owns, traded_together; people = position,
+// funds, fundraises_with, shared_donors; holding = traded, owns, traded_together, traded_before_contract; people = position,
 // revolving_door, shared_staff; context = oversees, legislates_with, sits_with.
 
 type Amount = { low: number | null; high: number | null; exact: number | null }; // nominal USD
@@ -292,6 +292,37 @@ member keeps their tickers and their trading days; `expected` is the mean co-occ
 no shuffle produced one) and `p` is (shuffles with at least the observed count + 1) / 201. An edge is kept when the
 pair has at least 3 distinct tickers or 5 occasions, observed >= 5 and observed >= 3 x expected. It is `weak` when
 p > 0.05 or fewer than 3 distinct tickers are involved.
+
+### `traded_before_contract` rule
+
+Source: USAspending.gov (`api.usaspending.gov/api/v2/search/spending_by_award/`), source id `usaspending`, written by
+`pipeline/contracts.py` (stage `contracts`, after `edges_trades`).
+
+Awards: definitive contracts and purchase or delivery orders (award types A, B, C, D; not IDV vehicles) with a current
+award amount of at least $10,000,000, signed (base obligation date) from 2012-07-01 to the build date. Companies are
+the SEC companies (`co:`) that some member bought in an eligible trade (the `traded_together` eligibility rule). Each is
+looked up by its normalised SEC name (the EDGAR state tag removed); an award counts when the recipient name,
+normalised, equals it exactly, or when USAspending's recipient profile (`/api/v2/recipient/<id>/`) lists a parent
+(current `parent_name` or any entry in `parents`) whose normalised name equals it, so subsidiaries with other names
+(Bath Iron Works under General Dynamics) count. At most 300 profiles are read per company. Similar names and joint
+ventures never match. Parent links are not dated, so a former subsidiary's awards may be attributed to its later or
+earlier parent. Names
+shorter than 3 characters, or shared by two companies, are not looked up. Responses are cached in
+`pipeline/.cache/usaspending/` (past years 30 days, the current year 1 day).
+
+Test: for each member and company, the buy days are the member's distinct eligible buy dates in that company from
+2012-07-01. The statistic is the number of distinct award signing days that had at least one buy day on that day or in
+the 30 days before, so a burst of buys before one award counts once. Baseline: 1,000 permutations (fixed seed)
+replacing the pair's buy days in each calendar year with as many days drawn without replacement from the member's own
+eligible trading days (buys and sells, any company) that year; `expected` is the mean (floored at 1/1000) and `p` is
+(shuffles with at least the observed count + 1) / 1001. Pairs whose observed count is below 2 are not tested. An edge
+(member -> org, family holding, basis derived) is kept when observed >= 2, observed >= 2 x expected and p <= 0.01.
+It is `weak` when observed < 3. `stat.observed` is the number of awards; `count`, `amount` and `by_year` cover every
+buy day that fell in one of those windows (disclosed ranges summed). Evidence: one record per counted award, closest
+first, labelled with the buy nearest the award, how many earlier buys fell in its window, and the award (agency,
+amount, PIID, the subsidiary when matched by parent, description); `url` is the award's USAspending page and
+`record` is `<trade id> + <PIID>`. `meta.json.reports.contracts` gives the number of pairs tested and the false
+positives expected by chance at p <= 0.01.
 
 ## Intermediate plug-in format
 

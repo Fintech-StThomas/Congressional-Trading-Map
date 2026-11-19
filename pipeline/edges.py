@@ -15,6 +15,7 @@ FAMILY = {
     "pac_money": "money", "employee_money": "money", "lobbyist_money": "money", "outside_spending": "money",
     "paid_travel": "money", "revolving_door": "people", "oversees": "context", "funds": "money",
     "fundraises_with": "money", "shared_donors": "money", "traded_together": "holding",
+    "traded_before_contract": "holding",
     "legislates_with": "context", "shared_staff": "people", "sits_with": "context",
 }
 MAX_EVIDENCE = 5

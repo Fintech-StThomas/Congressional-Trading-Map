@@ -398,6 +398,60 @@
   color: var(--text-2);
 }
 
+.flags {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.flag-card {
+  border: 1px solid var(--rule-soft);
+  border-left: 3px solid var(--red);
+  border-radius: var(--r);
+  background: var(--surface);
+  padding: 12px 14px;
+  font-size: 13.5px;
+}
+.flag-card__head {
+  display: grid;
+  grid-template-columns: auto minmax(160px, 1fr) minmax(0, 2fr) auto;
+  gap: 14px;
+  align-items: center;
+}
+.flag-card__stat {
+  color: var(--text-2);
+}
+.flag-card__evidence {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 10px 0 0;
+  border-top: 1px solid var(--rule-soft);
+  display: grid;
+  gap: 6px;
+}
+.flag-card__evidence li {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: baseline;
+  color: var(--text-2);
+}
+.flag-card__date {
+  color: var(--text-3);
+  font-size: 12px;
+}
+.flag-card__more {
+  margin: 8px 0 0;
+  color: var(--text-3);
+  font-size: 12.5px;
+}
+.tag--weak {
+  background: transparent;
+  color: var(--red-hot);
+  box-shadow: inset 0 0 0 1px var(--red-ink);
+}
+
 .timeline {
   overflow-x: auto;
 }
@@ -732,6 +786,16 @@
   }
   .dossier__casetypes {
     grid-column: 1 / -1;
+  }
+  .flag-card__head {
+    grid-template-columns: auto 1fr;
+  }
+  .flag-card__stat {
+    grid-column: 1 / -1;
+  }
+  .flag-card__evidence li {
+    grid-template-columns: 1fr;
+    gap: 2px;
   }
   .caserow {
     grid-template-columns: auto minmax(0, 1fr);

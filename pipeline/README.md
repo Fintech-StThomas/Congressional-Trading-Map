@@ -32,6 +32,7 @@ the branch only when validation passes and some file other than `meta.json` chan
 | `companies` | `companies.py` | `ticker_orgs.json`, `companies.json`, `company_names.json`, `sources/sec.json` |
 | `fec` | `fec/` (maintained separately) | `edges/fec_*.jsonl`, `orgs/fec.jsonl`, `sources/fec.json` |
 | `edges_trades` | `edges_trades.py` | `trades_resolved.parquet`, `edges/trades.jsonl` (`traded`, `traded_together`), `orgs/trades.jsonl` |
+| `contracts` | `contracts.py` | `edges/contracts.jsonl` (`traded_before_contract`), `sources/contracts.json`; USAspending responses cached in `pipeline/.cache/usaspending/` |
 | `edges_committees` | `edges_committees.py` | `edges/committees.jsonl` (`sits_with`) |
 | `assemble` | `assemble.py` | every file in `web/public/data/`, built in a staging directory and swapped in |
 | `validate` | `validate.py` | checks the output; writes `validation_sample.csv` (25 trades, fixed seed, with filing URLs) |

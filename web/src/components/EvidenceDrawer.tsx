@@ -148,6 +148,7 @@ export function EvidenceDrawer({ edge, book, sources, range, onClose, loading }:
               {typeof (edge.stat as { p?: number }).p === "number" ? <>, p = <span className="mono">{(edge.stat as { p?: number }).p!.toPrecision(2)}</span></> : null}. Method: {edge.stat.method}
             </p>
             {edge.type === "traded_together" && <p className="stat__meta">Frequent traders overlap often; this is not evidence of coordination.</p>}
+            {edge.type === "traded_before_contract" && <p className="stat__meta">Contract awards are often expected by the market, and many are public before they are signed. Timing alone is not evidence of inside information.</p>}
           </div>
         )}
 

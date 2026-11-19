@@ -99,6 +99,9 @@ export default async function MemberPage({ params }: PageProps<"/m/[id]">) {
   const lateCount = ts?.late ?? 0;
   const owners = ts?.by_owner ?? {};
   const ownTrades = owners.self ?? 0;
+  const contractFlags = file.edges
+    .filter((e) => e.type === "traded_before_contract" && e.stat)
+    .sort((a, b) => Number(a.weak) - Number(b.weak) || (a.stat!.p ?? 1) - (b.stat!.p ?? 1) || b.count - a.count);
 
   return (
     <article className="page dossier" data-testid="member-page">
@@ -117,6 +120,7 @@ export default async function MemberPage({ params }: PageProps<"/m/[id]">) {
             <div><dt>Members tied</dt><dd className="mono">{count(m.counts.members)}</dd></div>
             <div><dt>Cases</dt><dd className="mono">{count(m.counts.cases)}</dd></div>
             {nTrades > 0 && <div><dt>Disclosed late</dt><dd className="mono">{count(lateCount)}</dd></div>}
+            {contractFlags.length > 0 && <div><dt>Contract-timing flags</dt><dd className="mono">{count(contractFlags.length)}</dd></div>}
           </dl>
           <div className="dossier__actions no-print">
             {m.current ? (
@@ -166,6 +170,51 @@ export default async function MemberPage({ params }: PageProps<"/m/[id]">) {
                 <Link className="no-print" href={boardHref({ s: m.current ? m.state : undefined, m: m.id, focus: c.org })}>On the board</Link>
               </li>
             ))}
+          </ol>
+        </section>
+      )}
+
+      {contractFlags.length > 0 && (
+        <section className="section" id="contract-timing" aria-labelledby="contract-h">
+          <h2 id="contract-h">Flagged: bought before federal contracts</h2>
+          <p className="section__note">
+            Companies whose stock this member&rsquo;s household bought within 30 days before the company was awarded a federal contract of $10 million or more, more often than the member&rsquo;s own trading calendar predicts by chance.
+            Each record pairs a filed trade with the USAspending.gov award that followed it. A reason to read the filings, not a finding: many awards are expected by the market before they are signed.
+          </p>
+          <ol className="flags">
+            {contractFlags.map((e) => {
+              const st = e.stat!;
+              const p = (st as { p?: number }).p;
+              return (
+                <li key={e.id} className="flag-card">
+                  <div className="flag-card__head">
+                    <span className={e.weak ? "tag tag--weak" : "tag"}>{e.weak ? "Weak flag" : "Flag"}</span>
+                    <span className="dossier__casename">{orgName(e.to.id)}</span>
+                    <span className="flag-card__stat">
+                      <span className="mono">{count(st.observed)}</span> contract {st.observed === 1 ? "award" : "awards"} within 30 days of a buy · <span className="mono">{st.expected < 1 ? st.expected.toFixed(2) : st.expected.toFixed(1)}</span> expected by chance
+                      {typeof p === "number" ? <> · p = <span className="mono">{p.toPrecision(2)}</span></> : null}
+                    </span>
+                    <Link className="no-print" href={boardHref({ s: m.current ? m.state : undefined, m: m.id, focus: e.to.id })}>On the board</Link>
+                  </div>
+                  <ol className="flag-card__evidence">
+                    {e.evidence.map((ev, i) => (
+                      <li key={`${ev.record ?? "r"}-${i}`}>
+                        <span className="mono flag-card__date">{date(ev.date)}</span>
+                        <span>{ev.label}</span>
+                        {ev.url && (
+                          <a href={ev.url} target="_blank" rel="noopener noreferrer">
+                            Contract award<span className="visually-hidden"> on USAspending.gov (opens in a new tab)</span>
+                          </a>
+                        )}
+                      </li>
+                    ))}
+                  </ol>
+                  {e.evidence_total > e.evidence.length && (
+                    <p className="flag-card__more">{count(e.evidence_total - e.evidence.length)} more {e.evidence_total - e.evidence.length === 1 ? "award" : "awards"} followed a buy; the closest are listed. The trades are in the table below.</p>
+                  )}
+                </li>
+              );
+            })}
           </ol>
         </section>
       )}

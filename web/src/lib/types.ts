@@ -38,7 +38,7 @@ type OrgSummary = {
 
 type EdgeType =
   // member -> org
-  | "traded" | "owns" | "position"
+  | "traded" | "owns" | "position" | "traded_before_contract"
   // org -> member
   | "pac_money" | "employee_money" | "lobbyist_money" | "outside_spending" | "paid_travel"
   // member <-> org
@@ -49,7 +49,7 @@ type EdgeType =
   | "fundraises_with" | "shared_donors" | "traded_together" | "legislates_with" | "shared_staff" | "sits_with";
 
 // Family of each type (fixed): money = pac_money, employee_money, lobbyist_money, outside_spending, paid_travel,
-// funds, fundraises_with, shared_donors; holding = traded, owns, traded_together; people = position,
+// funds, fundraises_with, shared_donors; holding = traded, owns, traded_together, traded_before_contract; people = position,
 // revolving_door, shared_staff; context = oversees, legislates_with, sits_with.
 
 type Amount = { low: number | null; high: number | null; exact: number | null }; // nominal USD

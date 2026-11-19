@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 };
 
 const TYPES_BY_FAMILY: [keyof typeof FAMILY_LABEL, EdgeType[]][] = [
-  ["holding", ["traded", "owns", "position", "traded_together"]],
+  ["holding", ["traded", "owns", "position", "traded_together", "traded_before_contract"]],
   ["money", ["pac_money", "employee_money", "lobbyist_money", "outside_spending", "paid_travel", "funds", "fundraises_with", "shared_donors"]],
   ["people", ["revolving_door", "oversees", "shared_staff"]],
   ["context", ["sits_with", "legislates_with"]],
@@ -132,7 +132,7 @@ export default function MethodPage() {
               {types.map((t) => (
                 <div key={t}>
                   <dt>
-                    <LineSample style={fam === "context" ? "context" : t === "shared_donors" || t === "traded_together" ? "derived" : "filed"} /> {TYPE_LABEL[t]}
+                    <LineSample style={fam === "context" ? "context" : t === "shared_donors" || t === "traded_together" || t === "traded_before_contract" ? "derived" : "filed"} /> {TYPE_LABEL[t]}
                   </dt>
                   <dd>{meta.rules?.[t] ?? TYPE_RULE[t]}</dd>
                 </div>

@@ -5,7 +5,7 @@ import argparse
 import time
 from typing import Callable
 
-from . import assemble, companies, edges_committees, edges_trades, spine, trades, validate
+from . import assemble, companies, contracts, edges_committees, edges_trades, spine, trades, validate
 
 
 def fec() -> None:
@@ -21,6 +21,7 @@ STAGES: dict[str, Callable[[], None]] = {
     "companies": companies.run,
     "fec": fec,
     "edges_trades": edges_trades.run,
+    "contracts": contracts.run,
     "edges_committees": edges_committees.run,
     "assemble": assemble.run,
 }

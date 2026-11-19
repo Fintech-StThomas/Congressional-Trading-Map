@@ -108,6 +108,7 @@ const SOURCE_FOR = {
   fundraises_with: "fec_jfc",
   shared_donors: "fec_indiv",
   traded_together: "ptr",
+  traded_before_contract: "usaspending",
   legislates_with: "congress_bills",
   shared_staff: "house_disbursements",
   sits_with: "committees",
@@ -118,14 +119,14 @@ const FAMILY = {
   outside_spending: "money", paid_travel: "money", funds: "money",
   fundraises_with: "money", shared_donors: "money",
   revolving_door: "people", oversees: "people", shared_staff: "people",
-  traded_together: "holding",
+  traded_together: "holding", traded_before_contract: "holding",
   sits_with: "context", legislates_with: "context",
 };
 const DIRECTED = {
   traded: true, owns: true, position: true,
   pac_money: true, employee_money: true, lobbyist_money: true, outside_spending: true, paid_travel: true,
   revolving_door: false, oversees: false, funds: true,
-  fundraises_with: false, shared_donors: false, traded_together: false, legislates_with: false, shared_staff: false, sits_with: false,
+  fundraises_with: false, shared_donors: false, traded_together: false, traded_before_contract: true, legislates_with: false, shared_staff: false, sits_with: false,
 };
 // Directions per the contract: member -> org for holdings, org -> member for money.
 const ORG_TO_MEMBER = new Set(["pac_money", "employee_money", "lobbyist_money", "outside_spending", "paid_travel"]);
@@ -201,7 +202,7 @@ function makeEdge({ type, member, other, otherKind = "org", years, amountKind = 
     by_year,
     evidence,
     evidence_total: n,
-    stat: derived ? { observed: n, expected: Math.max(1, Math.round(n / (3 + rand() * 3))), lift: 0, method: type === "shared_donors" ? "Hypergeometric test on shared individual donors versus each member's donor pool, p < 0.001" : "Same-ticker, same-week trades versus a shuffled-date baseline, 1,000 permutations" } : null,
+    stat: derived ? { observed: n, expected: Math.max(1, Math.round(n / (3 + rand() * 3))), lift: 0, method: type === "traded_before_contract" ? "Buys within 30 days before a $10M+ federal contract award versus the member's own trading days, 1,000 permutations" : type === "shared_donors" ? "Hypergeometric test on shared individual donors versus each member's donor pool, p < 0.001" : "Same-ticker, same-week trades versus a shuffled-date baseline, 1,000 permutations" } : null,
     weak,
     note,
   };
@@ -231,6 +232,7 @@ function evidenceLabel(type, member, other, yearRow, via) {
     case "funds": return `SAMPLE FEC filing: ${member}'s leadership PAC gave ${amt} to ${other}`;
     case "fundraises_with": return `SAMPLE joint fundraising agreement naming ${member} and ${other}`;
     case "shared_donors": return `SAMPLE donor overlap: individual donors who gave to both ${member} and ${other}`;
+    case "traded_before_contract": return `SAMPLE: ${member} bought ${other} stock 12 days before a $48.0M federal contract to ${other} was signed`;
     case "traded_together": return `SAMPLE trade pair: ${member} and ${other} traded the same ticker the same week`;
     case "legislates_with": return `SAMPLE bill record: ${member} and ${other} co-sponsored a bill`;
     case "shared_staff": return `SAMPLE disbursement record: one staffer was paid by both ${member} and ${other}`;
@@ -295,6 +297,7 @@ makeEdge({ type: "oversees", member: E, other: "cmte:SSXA", years: yrs(2009, 202
 
 const F = "X000006";
 makeEdge({ type: "traded", member: F, other: "co:9000006", years: [2015, 2016, 2019, 2023], amountKind: "range" });
+makeEdge({ type: "traded_before_contract", member: F, other: "co:9000006", years: [2019, 2023], amountKind: "range", derived: true, count: 3 });
 makeEdge({ type: "pac_money", member: F, other: "co:9000006", years: [2016, 2018, 2024], scale: 5000, via: { id: "pac:C90000906", name: "Stubworks Defense PAC (sample)" } });
 
 const G = "X000007";
@@ -622,6 +625,7 @@ write("meta.json", {
     { id: "house_travel", name: "SAMPLE privately funded travel disclosures", url: "https://example.org/sample-source/travel", revision: "sample-r1", retrieved: "2026-11-03", rows: 33, unmatched: 2 },
     { id: "house_disbursements", name: "SAMPLE statements of disbursements", url: "https://example.org/sample-source/disb", revision: "sample-r1", retrieved: "2026-11-03", rows: 640, unmatched: 0 },
     { id: "committees", name: "SAMPLE committee rosters", url: "https://example.org/sample-source/committees", revision: "sample-r1", retrieved: "2026-11-01", rows: 96, unmatched: 0 },
+    { id: "usaspending", name: "SAMPLE USAspending.gov contract awards", url: "https://example.org/sample-source/usaspending", revision: "sample-r1", retrieved: "2026-11-01", rows: 75, unmatched: 0 },
     { id: "congress_bills", name: "SAMPLE bill co-sponsorship records", url: "https://example.org/sample-source/bills", revision: "sample-r1", retrieved: "2026-11-01", rows: 410, unmatched: 0 },
   ],
   counts,
