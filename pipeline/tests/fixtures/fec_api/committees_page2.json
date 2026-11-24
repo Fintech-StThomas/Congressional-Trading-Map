@@ -1,0 +1,98 @@
+{
+ "api_version": "1.0",
+ "pagination": {
+  "count": 6,
+  "is_count_exact": true,
+  "page": 2,
+  "pages": 2,
+  "per_page": 100
+ },
+ "results": [
+  {
+   "committee_id": "C00348607",
+   "name": "IMPACT",
+   "sponsor_candidate_ids": [
+    "S8NY00082"
+   ],
+   "cycles": [
+    2000,
+    2002,
+    2004,
+    2006,
+    2008,
+    2010,
+    2012,
+    2014,
+    2016,
+    2018,
+    2020,
+    2022,
+    2024,
+    2026
+   ],
+   "designation": "D",
+   "designated_agent_street1": "1 TEST STREET",
+   "treasurer_name": "TEST, TREASURER"
+  },
+  {
+   "committee_id": "C00388934",
+   "name": "FUND FOR AMERICA'S FUTURE",
+   "sponsor_candidate_ids": [
+    "S0SC00149",
+    "S6SC04437"
+   ],
+   "cycles": [
+    2004,
+    2006,
+    2008,
+    2010,
+    2012,
+    2014,
+    2016,
+    2018,
+    2020,
+    2022,
+    2024,
+    2026
+   ],
+   "designation": "D",
+   "designated_agent_street1": "1 TEST STREET",
+   "treasurer_name": "TEST, TREASURER"
+  },
+  {
+   "committee_id": "C00083337",
+   "name": "LOUISIANA ACTION COMMITTEE FOR RURAL ELECTRIFICATION",
+   "sponsor_candidate_ids": null,
+   "cycles": [
+    1978,
+    1980,
+    1982,
+    1984,
+    1986,
+    1988,
+    1990,
+    1992,
+    1994,
+    1996,
+    1998,
+    2000,
+    2002,
+    2004,
+    2006,
+    2008,
+    2010,
+    2012,
+    2014,
+    2016,
+    2018,
+    2020,
+    2022,
+    2024,
+    2026
+   ],
+   "designation": "D",
+   "designated_agent_street1": "1 TEST STREET",
+   "treasurer_name": "TEST, TREASURER"
+  }
+ ]
+}

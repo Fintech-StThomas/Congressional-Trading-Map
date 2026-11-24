@@ -9,7 +9,7 @@
 852 web/src/styles/globals.css
 662 web/scripts/make-fixtures.mjs
 643 pipeline/holdings/run.py
-563 pipeline/fec/build.py
+552 pipeline/fec/build.py
 548 web/tests/pinned/pinned.test.mjs
 508 web/src/styles/saved.css
 472 pipeline/validate.py
@@ -27,4 +27,3 @@
 335 pipeline/lda/download.py
 322 web/src/lib/domain/compare.ts
 312 pipeline/tests/test_withdraw_release.py
-303 web/src/components/member/MemberPageView.tsx

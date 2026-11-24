@@ -1,0 +1,57 @@
+{
+ "api_version": "1.0",
+ "pagination": {
+  "count": 12,
+  "is_count_exact": true,
+  "page": 2,
+  "pages": 2,
+  "per_page": 100
+ },
+ "results": [
+  {
+   "committee_id": "C00344234",
+   "count": 243,
+   "cycle": 2024,
+   "memo_count": 0,
+   "memo_total": "0.00",
+   "purpose": "REFUNDS",
+   "total": 96141.0
+  },
+  {
+   "committee_id": "C00344234",
+   "count": 3,
+   "cycle": 2024,
+   "memo_count": 0,
+   "memo_total": "0.00",
+   "purpose": "ADVERTISING",
+   "total": 7485.51
+  },
+  {
+   "committee_id": "C00344234",
+   "count": 8,
+   "cycle": 2024,
+   "memo_count": 0,
+   "memo_total": "0.00",
+   "purpose": "ADMINISTRATIVE",
+   "total": 5307.27
+  },
+  {
+   "committee_id": "C00344234",
+   "count": 0,
+   "cycle": 2024,
+   "memo_count": 1,
+   "memo_total": "289.73",
+   "purpose": "TRAVEL",
+   "total": 0.0
+  },
+  {
+   "committee_id": "C00344234",
+   "count": 1,
+   "cycle": 2024,
+   "memo_count": 0,
+   "memo_total": "0.00",
+   "purpose": "TRANSFERS",
+   "total": 247.06
+  }
+ ]
+}

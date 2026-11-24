@@ -1,0 +1,83 @@
+{
+ "api_version": "1.0",
+ "pagination": {
+  "count": 6,
+  "is_count_exact": true,
+  "page": 1,
+  "pages": 2,
+  "per_page": 100
+ },
+ "results": [
+  {
+   "committee_id": "C00235655",
+   "name": "BLUEGRASS COMMITTEE",
+   "sponsor_candidate_ids": [
+    "S2KY00012"
+   ],
+   "cycles": [
+    1990,
+    1992,
+    1994,
+    1996,
+    1998,
+    2000,
+    2002,
+    2004,
+    2006,
+    2008,
+    2010,
+    2012,
+    2014,
+    2016,
+    2018,
+    2020,
+    2022,
+    2024,
+    2026
+   ],
+   "designation": "D",
+   "designated_agent_street1": "1 TEST STREET",
+   "treasurer_name": "TEST, TREASURER"
+  },
+  {
+   "committee_id": "C00536540",
+   "name": "JOBS, FREEDOM, AND SECURITY PAC",
+   "sponsor_candidate_ids": [
+    "S2TX00312"
+   ],
+   "cycles": [
+    2012,
+    2014,
+    2016,
+    2018,
+    2020,
+    2022,
+    2024,
+    2026
+   ],
+   "designation": "D",
+   "designated_agent_street1": "1 TEST STREET",
+   "treasurer_name": "TEST, TREASURER"
+  },
+  {
+   "committee_id": "C00366781",
+   "name": "BUCKEYE LIBERTY PAC",
+   "sponsor_candidate_ids": [
+    "H6OH04082"
+   ],
+   "cycles": [
+    2002,
+    2004,
+    2006,
+    2008,
+    2010,
+    2012,
+    2014,
+    2016
+   ],
+   "designation": "D",
+   "designated_agent_street1": "1 TEST STREET",
+   "treasurer_name": "TEST, TREASURER"
+  }
+ ]
+}

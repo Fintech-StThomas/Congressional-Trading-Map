@@ -1,0 +1,75 @@
+{
+ "api_version": "1.0",
+ "pagination": {
+  "count": 12,
+  "is_count_exact": true,
+  "page": 1,
+  "pages": 2,
+  "per_page": 100
+ },
+ "results": [
+  {
+   "committee_id": "C00235655",
+   "count": 14,
+   "cycle": 2024,
+   "memo_count": 0,
+   "memo_total": "0.00",
+   "purpose": "ADMINISTRATIVE",
+   "total": 41502.2
+  },
+  {
+   "committee_id": "C00235655",
+   "count": 277,
+   "cycle": 2024,
+   "memo_count": 0,
+   "memo_total": "0.00",
+   "purpose": "OTHER",
+   "total": 869279.08
+  },
+  {
+   "committee_id": "C00235655",
+   "count": 55,
+   "cycle": 2024,
+   "memo_count": 0,
+   "memo_total": "0.00",
+   "purpose": "CONTRIBUTIONS",
+   "total": 580000.0
+  },
+  {
+   "committee_id": "C00235655",
+   "count": 1,
+   "cycle": 2024,
+   "memo_count": 4,
+   "memo_total": "930.63",
+   "purpose": "MATERIALS",
+   "total": 822.53
+  },
+  {
+   "committee_id": "C00235655",
+   "count": 5,
+   "cycle": 2024,
+   "memo_count": 6,
+   "memo_total": "2783.32",
+   "purpose": "FUNDRAISING",
+   "total": 18090.54
+  },
+  {
+   "committee_id": "C00344234",
+   "count": 238,
+   "cycle": 2024,
+   "memo_count": 0,
+   "memo_total": "0.00",
+   "purpose": "CONTRIBUTIONS",
+   "total": 2154500.0
+  },
+  {
+   "committee_id": "C00344234",
+   "count": 412,
+   "cycle": 2024,
+   "memo_count": 7,
+   "memo_total": "28202.53",
+   "purpose": "OTHER",
+   "total": 6007834.74
+  }
+ ]
+}
