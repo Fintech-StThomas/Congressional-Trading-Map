@@ -1,6 +1,6 @@
 "use client";
 // One leadership PAC on the member page: its name, FEC committee link and how it is linked to the member, a cycle selector
-// (latest by default), the FEC purpose groups (PacPurposes) first and then the operating spending by FEC category (folded when
+// (latest by default), the FEC's committee totals (PacTotals) first, then the FEC purpose groups (PacPurposes) and then the operating spending by FEC category (folded when
 // over 90% has no category) as horizontal bars with the dollar figure and share of spent. "No FEC category on the filing"
 // is always the first row, with an explainer. Refunds are their own column and never subtracted. Bars are neutral
 // (never red: red means a tie). Figures and the link come from lib/domain/finance.ts and lib/format.ts.
@@ -10,6 +10,7 @@ import { plural, reportedMoney } from "@/lib/format";
 import { FINANCE } from "@/lib/copy-finance";
 import { foldCategories, sponsorLinkText } from "@/lib/domain/finance-purposes";
 import { PacPurposes } from "@/components/member/PacPurposes";
+import { PacTotals } from "@/components/member/PacTotals";
 import { Explain } from "@/components/shared/Explain";
 import { ExternalIcon } from "@/components/shared/ExternalIcon";
 
@@ -81,6 +82,7 @@ export function LeadershipPacPanel({ group }: { group: PacGroup }) {
           </select>
         </div>
       </header>
+      <PacTotals y={y} name={group.name} />
       <PacPurposes y={y} name={group.name} />
       {head}
       {fold ? (

@@ -1,0 +1,72 @@
+{
+ "api_version": "1.0",
+ "pagination": {
+  "count": 4,
+  "is_count_exact": true,
+  "page": 1,
+  "pages": 1,
+  "per_page": 100
+ },
+ "results": [
+  {
+   "committee_id": "C00235655",
+   "committee_type": "Q",
+   "cycle": 2024,
+   "coverage_start_date": "2023-01-01T00:00:00",
+   "coverage_end_date": "2024-12-31T00:00:00",
+   "receipts": 1296928.82,
+   "disbursements": 1512862.76,
+   "fed_candidate_committee_contributions": 580000.0,
+   "operating_expenditures": 643262.76,
+   "contribution_refunds": 0.0,
+   "other_disbursements": 289600.0,
+   "last_cash_on_hand_end_period": 170864.14,
+   "net_operating_expenditures": 643262.75
+  },
+  {
+   "committee_id": "C00344234",
+   "committee_type": "Q",
+   "cycle": 2024,
+   "coverage_start_date": "2023-01-01T00:00:00",
+   "coverage_end_date": "2024-12-31T00:00:00",
+   "receipts": 7955839.73,
+   "disbursements": 8313286.18,
+   "fed_candidate_committee_contributions": 2070210.78,
+   "operating_expenditures": 4320038.44,
+   "contribution_refunds": 137789.9,
+   "other_disbursements": 1785000.0,
+   "last_cash_on_hand_end_period": 9929082.07,
+   "net_operating_expenditures": 4320013.94
+  },
+  {
+   "committee_id": "C00235655",
+   "committee_type": "Q",
+   "cycle": 2026,
+   "coverage_start_date": "2025-01-01T00:00:00",
+   "coverage_end_date": "2026-10-14T00:00:00",
+   "receipts": 278966.32,
+   "disbursements": 434547.89,
+   "fed_candidate_committee_contributions": 9500.0,
+   "operating_expenditures": 184347.89,
+   "contribution_refunds": 0.0,
+   "other_disbursements": 240700.0,
+   "last_cash_on_hand_end_period": 15282.57,
+   "net_operating_expenditures": 184058.59
+  },
+  {
+   "committee_id": "C00344234",
+   "committee_type": "Q",
+   "cycle": 2026,
+   "coverage_start_date": "2025-01-01T00:00:00",
+   "coverage_end_date": "2026-10-14T00:00:00",
+   "receipts": 3811921.29,
+   "disbursements": 8067055.36,
+   "fed_candidate_committee_contributions": 1196000.0,
+   "operating_expenditures": 5833520.61,
+   "contribution_refunds": 65986.75,
+   "other_disbursements": 971548.0,
+   "last_cash_on_hand_end_period": 5673948.0,
+   "net_operating_expenditures": 5833371.15
+  }
+ ]
+}

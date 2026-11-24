@@ -711,6 +711,8 @@ type CampaignFinance = {
     leadership_pac_cycles: number[];// cycles whose oppexp file was loaded (2004 on; 2000 and 2002 do not exist)
     purposes_cycles: number[];      // cycles whose OpenFEC purpose-group request completed (2004 on); [] = none
     purposes_source: string;        // endpoint, coverage, access date; or why unavailable
+    totals_cycles: number[];        // cycles with at least one committee-totals object (2004 on); [] = none
+    totals_source: string;          // endpoint, access date; or why unavailable
     leadership_pac_note: string | null; // set exactly when leadership_pac is []
   };
 };
@@ -747,6 +749,14 @@ type LeadershipPacYear = {
   categories: { category: string | null; label: string; total: number; count: number; refunds: number; refund_count: number }[];
                                     // by code, no-code rows (null) last; their four figures sum to the four above; all >= 0
   purposes: { purpose: string; total: number | null; count: number }[] | null; // FEC groups of ALL disbursements; null = not fetched
+  totals: PacTotals | null;         // the FEC's committee summary for the cycle; null = unavailable (never zeros)
+};
+
+type PacTotals = {                  // exact dollars to the cent, each null if blank or negative; at least one is set; see docs/leadership-pac-totals.md
+  receipts: number | null; disbursements: number | null;               // money in; ALL money out (the published parts need not add up to it)
+  contributions_to_committees: number | null; operating_expenditures: number | null;  // contributions made to other federal committees and candidates; operating spending (one part of disbursements)
+  contribution_refunds: number | null; other_disbursements: number | null; cash_on_hand: number | null; // refunds paid out; other disbursements; cash at the end of coverage
+  coverage_end_date: string;        // YYYY-MM-DD: every figure above is cumulative for the cycle up to this date
 };
 ```
 
@@ -764,6 +774,7 @@ Rules
 - **Spending: aggregates only.** The operating-expenditures file is streamed and summed by the FEC's `CATEGORY` code (001-012 for House, Senate and party/PAC filers; 101-107 for presidential filers; labels are the FEC's wording). Memo items (`MEMO_CD` = X, itemisations of an amount already counted) are dropped, a transaction re-reported in a later filing (same committee, transaction id, date and amount) counts once, rows of exactly zero are skipped, and the file's own cycle decides the `cycle`. A blank or unrecognised code goes to `category: null`. Most Form 3X rows (PACs) carry no category, so most of a leadership PAC's rows fall under `null` (2024 cycle: about 86% of rows and 78% of dollars). The FEC has no other category field in the bulk file and free-text purposes are not read.
 - **Refunds are not netted.** A negative row is a refund or void reported by the committee (money returned to it, or a correction of an earlier row). It is never subtracted from what was spent: `total` and `count` cover the positive rows only, `refunds` and `refund_count` the negative ones, per category and per committee-cycle. A category can show more refunded than spent, for example when the original row is in an earlier cycle's file. The two are not paired.
 - **Purpose groups (OpenFEC `/v1/schedules/schedule_b/by_purpose/`).** `purpose` is the FEC's label as given (upper case: ADMINISTRATIVE, CONTRIBUTIONS, REFUNDS, OTHER ...); `total` and `count` as the FEC reports them for that committee and cycle, sorted by total descending then label. They group ALL Schedule B disbursements (contributions to candidates, refunds, transfers, operating expenses), so their sum is not the operating-expenditure `total`; REFUNDS is the FEC's own group and nothing is netted. A negative total is not published (`total: null`) and is listed in `meta.reports.fec_spending.purposes`. `null` = not fetched (no key, API failure, cycle not covered); `[]` = the request completed and the FEC returned no group for the committee, not a zero amount. PAC-years exist only where oppexp has rows; purposes alone never create one.
+- **Committee totals (OpenFEC `/v1/totals/pac/`).** The FEC's summary of what the committee filed for the cycle up to `coverage_end_date`, fetched in batches of 100 committees per cycle; failures publish `totals: null`. They are not summed from the rows above and never create a PAC-year. Field meanings, the reconciliation with the spending figures and the request budget: `docs/leadership-pac-totals.md`.
 - **Coverage.** `loans_cycles` and `leadership_pac_cycles` list the files actually loaded. A member with no candidacy row in a loaded weball file and no leadership PAC row gets `campaign_finance: null` (not a block of zeros), as does a member with no FEC id. A member with a block but no leadership PAC gets `leadership_pac: []` and the note. A committee-cycle with no rows in the file has no entry: absence is not a reported zero.
 
 What it does not show

@@ -178,7 +178,7 @@ def test_purposes_ride_on_pac_years_that_have_oppexp_rows_and_validate(built):
     assert all(p["purposes"] == [] for p in other)                      # asked, completed, no group returned
     asked = {i for _, q in s.calls for i in q["committee_id"]}
     assert "C00999999" not in asked                                      # a committee with no oppexp rows is never asked for
-    assert sec["purposes"]["cycles"] == [2024] and sec["purposes"]["requests"] == len(s.calls)
+    assert sec["purposes"]["cycles"] == [2024] and sec["purposes"]["requests"] == len([1 for p, _ in s.calls if p.endswith("by_purpose/")])
     cov = doc["members"]["S001217"]["coverage"]
     assert cov["purposes_cycles"] == [2024] and "accessed 20" in cov["purposes_source"]
     c = Checker()

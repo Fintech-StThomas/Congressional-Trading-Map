@@ -220,8 +220,8 @@ def test_run_writes_blocks_links_coverage_and_audit(built):
         [None] if any(c["category"] is None for c in pac["categories"]) else [])
     assert doc["members"]["T000483"]["leadership_pac"] == []
     cov = doc["members"]["T000483"]["coverage"]
-    assert cov.pop("purposes_source").startswith("OpenFEC")
-    assert cov == {"loans_cycles": [2000, 2024], "leadership_pac_cycles": [2024], "purposes_cycles": [], "leadership_pac_note": spending.NOTE_NO_PAC}
+    assert cov.pop("purposes_source").startswith("OpenFEC") and cov.pop("totals_source").startswith("OpenFEC")
+    assert cov == {"loans_cycles": [2000, 2024], "leadership_pac_cycles": [2024], "purposes_cycles": [], "totals_cycles": [], "leadership_pac_note": spending.NOTE_NO_PAC}
     assert s["coverage"]["leadership_pac_note"] is None
     assert doc["links"]["C00409276"] == {"member": "S001217", "method": "fec_candidate_id"}
     assert sec["oppexp_coverage"]["2000"].startswith("not published") and sec["oppexp_coverage"]["2024"] == "loaded"
@@ -269,9 +269,9 @@ GOOD = {
                         "categories": [{"category": "001", "label": "Administrative/salary/overhead expenses", "total": 20.5,
                                         "count": 2, "refunds": 4, "refund_count": 2},
                                        {"category": None, "label": spending.NO_CATEGORY, "total": 10, "count": 1,
-                                        "refunds": 0, "refund_count": 0}], "purposes": None}],
+                                        "refunds": 0, "refund_count": 0}], "purposes": None, "totals": None}],
     "coverage": {"loans_cycles": [2024], "leadership_pac_cycles": [2024], "purposes_cycles": [],
-                 "purposes_source": "OpenFEC (not available in this build)", "leadership_pac_note": None},
+                 "purposes_source": "OpenFEC (not available in this build)", "totals_cycles": [], "totals_source": "OpenFEC (n/a)", "leadership_pac_note": None},
 }
 LINKS = {"C00409276": {"member": "M1", "method": "fec_candidate_id"}}
 

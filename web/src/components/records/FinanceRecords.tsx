@@ -8,11 +8,14 @@ import { LOAN_COLS, PAC_COLS, coverageLine, loanRows, pacRows } from "@/lib/doma
 import { RECEIPT_COLS, receiptsRows } from "@/lib/domain/finance-receipts";
 import { RECEIPTS } from "@/lib/copy-finance-receipts";
 import { PURPOSE_COLS, purposeTableRows } from "@/lib/domain/finance-purposes";
+import { TOTALS_COLS, totalsTableRows } from "@/lib/domain/finance-totals";
+import { TOTALS } from "@/lib/copy-finance-totals";
 import { FINANCE } from "@/lib/copy-finance";
 import { DataTable, type TableCite } from "./DataTable";
 
 export function FinanceRecords({ id, cf, cite }: { id: string; cf: CampaignFinance | null | undefined; cite: TableCite }) {
   const purposeRowsList = purposeTableRows(cf);
+  const totalsRowsList = totalsTableRows(cf);
   return (
     <section id="rec-money" className="rec__sec" aria-labelledby="rec-money-h" data-testid="rec-money">
       <h2 id="rec-money-h">{FINANCE.title}</h2>
@@ -31,6 +34,10 @@ export function FinanceRecords({ id, cf, cite }: { id: string; cf: CampaignFinan
           <p className="rec__note">{FINANCE.records.pacIntro}</p>
           {cf.leadership_pac.length === 0 && <p className="rec__note" data-testid="rec-pac-none">{cf.coverage.leadership_pac_note ?? FINANCE.records.pacNone}</p>}
           <DataTable id="pac" title={FINANCE.records.pacTitle} cols={PAC_COLS} rows={pacRows(cf)} file={`${id}-leadership-pac`} cite={cite} />
+          <h3 className="rec__h3">{TOTALS.records.title}</h3>
+          <p className="rec__note">{TOTALS.records.intro}</p>
+          {cf.leadership_pac.length > 0 && totalsRowsList.length === 0 && <p className="rec__note" data-testid="rec-totals-none">{TOTALS.records.none}</p>}
+          <DataTable id="totals" title={TOTALS.records.title} cols={TOTALS_COLS} rows={totalsRowsList} file={`${id}-leadership-pac-totals`} cite={cite} />
           <h3 className="rec__h3">{FINANCE.records.purposesTitle}</h3>
           <p className="rec__note">{FINANCE.records.purposesIntro}</p>
           {cf.leadership_pac.length > 0 && purposeRowsList.length === 0 && <p className="rec__note" data-testid="rec-purposes-none">{FINANCE.records.purposesNone}</p>}

@@ -286,7 +286,7 @@ about 115 MB). `weball` was read for all 14 cycles (44,913 rows).
 Key: environment variable `FEC_API_KEY` (repository secret, given to the "Run pipeline" step only); never printed, cached or put
 in an error. Missing key, HTTP error, bad JSON or `PT_CACHE_ONLY=1`: a warning, the cache is used if there is one (reported as
 `stale_cache` / `stale_cycles`), otherwise the build goes on without (sponsors from the bulk files, `purposes: null`). Never fails the run.
-Cache: `pipeline/.cache/fec/api/` (gitignored, kept by the daily job's cache). One shared request counter, hard stop at 400 per run.
+Cache: `pipeline/.cache/fec/api/` (gitignored, kept by the daily job's cache). One shared request counter, hard stop at 500 per run.
 - `/v1/committees/?designation=D&per_page=100&sort=committee_id`: 16 pages, 1,507 leadership PACs, 1,373 with `sponsor_candidate_ids`.
   Refetched after 7 days. Only id, name, sponsor ids and cycles are kept. Live 2026-11-24: 1,013 PACs link to a member by exact id
   (596 not linked before; 486 -> 1,082 linked in all).
@@ -294,7 +294,6 @@ Cache: `pipeline/.cache/fec/api/` (gitignored, kept by the daily job's cache). O
   only for committee-cycles with oppexp rows. Two latest cycles refetched after 12 h, older after 7 days; a new committee at once.
   Requests, live: 253 for all 12 cycles (about 5 min); 29 per recent cycle. The API lists some identical group rows twice (36 of
   21,656): counted once. 86 groups had a negative total: published as `total: null` and listed in the report.
-Tests: `test_fec_api.py`, `test_fec_purposes.py` (recorded pages in `pipeline/tests/fixtures/fec_api/`).
-
-Tests: `pipeline/tests/test_fec_spending.py` with recorded rows in `pipeline/tests/fixtures/fec_spending/` (payee name,
-city, state, ZIP, purpose and memo text blanked).
+- `/v1/totals/pac/?committee_id=...&cycle=...` (`totals_api.py`): the FEC committee summary per PAC cycle, up to 100 committees per request, same cache and refresh rules as the purpose groups; at most 22 requests a normal day and 132 for all cycles (11 batches a cycle for at most 1,082 linked PACs; about 18 and 69 expected). Rules, requests and the real-data check: `docs/leadership-pac-totals.md`.
+Tests: `test_fec_api.py`, `test_fec_purposes.py`, `test_fec_totals.py` (recorded pages in `pipeline/tests/fixtures/fec_api/`); `test_fec_spending.py` with recorded
+rows in `pipeline/tests/fixtures/fec_spending/` (payee name, city, state, ZIP, purpose and memo text blanked).

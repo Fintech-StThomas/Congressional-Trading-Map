@@ -2,13 +2,15 @@
 // make-fixtures.mjs. Static and deterministic: it draws no random numbers, so no other fixture value shifts.
 //   X000008  loans and receipts with blank figures, a presidential row and a negative cash on hand
 //   X000001  a leadership PAC: a no-category row, a category refunded more than spent, receipts [], two cycles, FEC purpose groups (one
-//            unpublished negative total; the second PAC has [] in 2022, 95% uncategorised, and null in 2024), a second PAC, combined sponsor links
+//            unpublished negative total; the second PAC has [] in 2022, 95% uncategorised, and null in 2024), a second PAC, combined sponsor links,
+//            FEC committee totals (one figure not reported; the second PAC has null totals in 2022 and no `totals` field at all in 2024, like a file built before totals)
 //   X000003  loans and receipts, no leadership PAC (note set)
 //   X000012  campaign_finance null
 // Every other member has no field at all, which the site reads the same as null.
 
 const COVERAGE = { loans_cycles: [2016, 2018, 2020, 2022, 2024, 2026], leadership_pac_cycles: [2016, 2018, 2020, 2022, 2024, 2026],
-  purposes_cycles: [2018, 2020, 2022, 2024], purposes_source: "SAMPLE: OpenFEC /committee/{id}/reports by_purpose (invented figures for the fixtures)." };
+  purposes_cycles: [2018, 2020, 2022, 2024], purposes_source: "SAMPLE: OpenFEC /committee/{id}/reports by_purpose (invented figures for the fixtures).",
+  totals_cycles: [2022, 2024], totals_source: "SAMPLE: OpenFEC /totals/pac/ (invented figures for the fixtures)." };
 const NOTE = "SAMPLE: no leadership PAC is linked to this member in the FEC files loaded.";
 
 const loan = (cycle, candidate_id, office, f) => ({
@@ -22,8 +24,13 @@ const rec = (cycle, candidate_id, office, f) => ({
 });
 const cat = (category, label, total, count, refunds = 0, refund_count = 0) => ({ category, label, total, count, refunds, refund_count });
 const purpose = (purpose, total, count) => ({ purpose, total, count });
-const pac = (committee_id, committee_name, cycle, categories, purposes = null, sponsor_link = "fec_candidate_id") => ({
-  committee_id, committee_name, cycle, sponsor_link, purposes,
+const totals = (cycle, f) => ({
+  receipts: null, disbursements: null, contributions_to_committees: null, operating_expenditures: null, contribution_refunds: null,
+  other_disbursements: null, cash_on_hand: null, coverage_end_date: `${cycle}-12-31`, ...f,
+});
+// `tot` undefined leaves the `totals` field out (a file built before totals existed); null is "unavailable"
+const pac = (committee_id, committee_name, cycle, categories, purposes = null, sponsor_link = "fec_candidate_id", tot = undefined) => ({
+  committee_id, committee_name, cycle, sponsor_link, purposes, ...(tot === undefined ? {} : { totals: tot }),
   total: categories.reduce((s, c) => s + c.total, 0), count: categories.reduce((s, c) => s + c.count, 0),
   refunds: categories.reduce((s, c) => s + c.refunds, 0), refund_count: categories.reduce((s, c) => s + c.refund_count, 0),
   categories,
@@ -59,7 +66,8 @@ const BLOCKS = {
       ], [
         purpose("OTHER", 120000, 70), purpose("CONTRIBUTIONS", 60000, 14), purpose("ADMINISTRATIVE", 20000, 9),
         purpose("REFUNDS", 1200, 2), purpose("TRANSFERS", null, 1),
-      ], "fec_api_sponsor_id+fec_candidate_id"),
+      ], "fec_api_sponsor_id+fec_candidate_id",
+      totals(2022, { receipts: 240000.5, disbursements: 203300, contributions_to_committees: 60000, operating_expenditures: 140000.25, contribution_refunds: 1200, other_disbursements: 2099.75, cash_on_hand: 86000 })),
       pac("C00900001", "SAMPLE FORWARD FUND", 2024, [
         cat("001", "Administrative/Salary/Overhead Expenses", 42000, 15, 500, 1),
         cat("004", "Travel", 9000, 4, 15000, 3),
@@ -68,11 +76,12 @@ const BLOCKS = {
       ], [
         purpose("OTHER", 250000, 120), purpose("CONTRIBUTIONS", 100000, 22), purpose("REFUNDS", 19500, 9),
         purpose("ADVERTISING", 7000, 3), purpose("ADMINISTRATIVE", 5000, 6), purpose("TRAVEL", 0, 0),
-      ], "fec_api_sponsor_id+fec_candidate_id"),
+      ], "fec_api_sponsor_id+fec_candidate_id",
+      totals(2024, { receipts: 512300.1, disbursements: 411500, contributions_to_committees: 100000, operating_expenditures: 300000, contribution_refunds: 19500, other_disbursements: null, cash_on_hand: null, coverage_end_date: "2024-10-16" })),
       pac("C00900002", "SAMPLE LEADERSHIP COMMITTEE", 2022, [
         cat("006", "Fundraising Expenses", 500, 1),
         cat(null, "No FEC category on the filing", 9500, 12),
-      ], [], "leadership_file_exact_name"),
+      ], [], "leadership_file_exact_name", null),
       pac("C00900002", "SAMPLE LEADERSHIP COMMITTEE", 2024, [
         cat("006", "Fundraising Expenses", 18000, 7),
         cat(null, "No FEC category on the filing", 2000, 3),

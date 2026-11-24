@@ -13,6 +13,9 @@ tables exist: builds `campaign_finance` for each member from two bulk files and 
    Campaign receipts per cycle come from the same rows (receipts.py).
 3. FEC purpose groups (purposes_api.py, OpenFEC, needs FEC_API_KEY): added to each PAC-year as `purposes` (null when not
    fetched). PAC-years exist only where oppexp has rows; purposes alone never create one.
+4. FEC committee totals (totals_api.py, OpenFEC, same key): receipts, total disbursements, contributions to other committees,
+   operating expenditures, cash on hand and the coverage end date per PAC-year as `totals` (null when unavailable, never
+   zeros). Like the purposes they never create a PAC-year. Rules: docs/leadership-pac-totals.md.
 Members with neither a candidacy row nor a leadership-PAC row get no entry (the assembler publishes null).
 """
 from __future__ import annotations
@@ -29,7 +32,7 @@ from typing import Any
 import duckdb
 
 from ..util import dumps
-from . import download, purposes_api, receipts as receipts_mod, refs
+from . import download, purposes_api, receipts as receipts_mod, refs, totals_api
 from .load import q
 from .spending_oppexp import CATEGORY_LABELS, FIRST_OPPEXP_CYCLE, LayoutChanged, aggregate, iter_rows
 
@@ -80,23 +83,25 @@ def loan_rows(con: duckdb.DuckDBPyConnection, cycles: list[int], cand_to_bio: di
 
 
 def _block(loans: list[dict], pacs: list[dict], wb: list[int], op: list[int], pc: tuple[list[int], str],
-           receipts: list[dict] | None = None) -> dict[str, Any]:
+           receipts: list[dict] | None = None, tc: tuple[list[int], str] = ([], "")) -> dict[str, Any]:
     return {"loans": loans, "receipts": receipts or [], "leadership_pac": pacs,
             "coverage": {"loans_cycles": wb, "leadership_pac_cycles": op, "purposes_cycles": pc[0],
-                         "purposes_source": pc[1], "leadership_pac_note": None if pacs else NOTE_NO_PAC}}
+                         "purposes_source": pc[1], "totals_cycles": tc[0], "totals_source": tc[1],
+                         "leadership_pac_note": None if pacs else NOTE_NO_PAC}}
 
 
 def pac_entry(cmte: str, cycle: int, name: str, method: str, cats: dict[str | None, list],
-              purposes: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+              purposes: list[dict[str, Any]] | None = None, totals: dict[str, Any] | None = None) -> dict[str, Any]:
     """One committee-cycle: categories ordered by code (no-category last); total and count are their sums.
-    `purposes` = the FEC's purpose groups of the cycle (purposes_api), None when not fetched."""
+    `purposes` = the FEC's purpose groups of the cycle (purposes_api), None when not fetched.
+    `totals` = the FEC's committee totals of the cycle (totals_api), None when unavailable."""
     cs = [{"category": c, "label": CATEGORY_LABELS.get(c, NO_CATEGORY), "total": _money(v[0]), "count": v[1],
            "refunds": _money(v[2]), "refund_count": v[3]}
           for c, v in sorted(cats.items(), key=lambda kv: (kv[0] is None, kv[0] or ""))]
     return {"committee_id": cmte, "committee_name": name, "cycle": cycle, "sponsor_link": method,
             "total": _money(sum(c["total"] for c in cs)), "count": sum(c["count"] for c in cs),
             "refunds": _money(sum(c["refunds"] for c in cs)), "refund_count": sum(c["refund_count"] for c in cs),
-            "categories": cs, "purposes": purposes}
+            "categories": cs, "purposes": purposes, "totals": totals}
 
 
 def spending_by_cycle(links: dict[str, tuple[str, str]], cycles: list[int], report: dict[str, Any],
@@ -153,15 +158,18 @@ def run(con: duckdb.DuckDBPyConnection, members: refs.Members, cycles: list[int]
     purposes, prep = purposes_api.fetch_all({cy: ids for cy, ids in wanted.items() if ids})
     sec["purposes"] = prep
     pcov = purposes_api.coverage(prep, date.today().isoformat())
+    totals, trep = totals_api.fetch_all({cy: ids for cy, ids in wanted.items() if ids})
+    sec["totals"] = trep
+    tcov = totals_api.coverage(trep, date.today().isoformat())
     pacs: dict[str, list[dict]] = defaultdict(list)
     for cycle in sorted(spend):
         for cmte, cats in sorted(spend[cycle].items()):
             bio, method = links[cmte]
             if cats:
                 pacs[bio].append(pac_entry(cmte, cycle, names.get(cmte) or cmte, method, cats,
-                                           purposes.get((cycle, cmte))))
+                                           purposes.get((cycle, cmte)), totals.get((cycle, cmte))))
     op = sorted(spend)
-    blocks = {bio: _block(loans.get(bio, []), pacs.get(bio, []), cycles, op, pcov, receipts.get(bio))
+    blocks = {bio: _block(loans.get(bio, []), pacs.get(bio, []), cycles, op, pcov, receipts.get(bio), tcov)
               for bio in sorted(set(loans) | set(pacs))}
     sec["members_with_block"] = len(blocks)
     sec["members_with_leadership_pac_rows"] = len(pacs)

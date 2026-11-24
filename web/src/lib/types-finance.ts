@@ -9,6 +9,8 @@ export type CampaignFinance = {
     leadership_pac_cycles: number[];// cycles whose oppexp file was loaded (2004 on)
     purposes_cycles: number[];      // cycles whose OpenFEC purpose-group request completed; [] = none
     purposes_source: string;        // endpoint, coverage, access date; or why unavailable
+    totals_cycles?: number[];       // cycles with at least one committee-totals object; [] = none (absent in files built before totals existed)
+    totals_source?: string;         // endpoint, access date; or why unavailable
     leadership_pac_note: string | null; // set exactly when leadership_pac is []
   };
 };
@@ -58,4 +60,18 @@ export type LeadershipPacYear = {
   refund_count: number;
   categories: LeadershipPacCategory[]; // category null (no usable code) last; the four figures sum to the four above
   purposes: LeadershipPacPurpose[] | null; // FEC groups of ALL the committee's disbursements; null = not available, [] = FEC returned none
+  totals?: PacTotals | null;        // the FEC's committee summary for the cycle; null = unavailable; absent in files built before totals existed (read as "render nothing")
+};
+
+/** The FEC committee summary for one leadership PAC cycle (OpenFEC /totals/pac/). Exact dollars to the cent; each figure null when blank or negative (never zero);
+ *  at least one is set. All are cumulative for the cycle up to coverage_end_date. docs/leadership-pac-totals.md. */
+export type PacTotals = {
+  receipts: number | null;                      // money in
+  disbursements: number | null;                 // ALL money out (the published parts need not add up to it)
+  contributions_to_committees: number | null;   // contributions made to other federal committees and candidates (FEC fed_candidate_committee_contributions)
+  operating_expenditures: number | null;        // operating spending: one part of disbursements
+  contribution_refunds: number | null;          // refunds of contributions the committee paid out
+  other_disbursements: number | null;
+  cash_on_hand: number | null;                  // at the end of coverage
+  coverage_end_date: string;                    // YYYY-MM-DD
 };

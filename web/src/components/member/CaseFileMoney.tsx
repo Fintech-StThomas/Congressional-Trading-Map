@@ -4,6 +4,7 @@
 import type { CampaignFinance } from "@/lib/types";
 import { categoryRows, committeeUrl, coverageLine, cycleOf, defaultCycle, loanLine, loansNewestFirst, pacGroups, shareText } from "@/lib/domain/finance";
 import { purposeRows, purposeText } from "@/lib/domain/finance-purposes";
+import { totalsCaseLine } from "@/lib/domain/finance-totals";
 import { plural, reportedMoney } from "@/lib/format";
 import { candidateUrl, latestReceiptsLine, receiptsLine, receiptsOf } from "@/lib/domain/finance-receipts";
 import { FINANCE } from "@/lib/copy-finance";
@@ -58,8 +59,10 @@ export function CaseFileMoney({ cf }: { cf: CampaignFinance | null | undefined }
           const rows = categoryRows(y);
           const url = committeeUrl(g.id);
           const purposes = purposeRows(y);
+          const totalsLine = totalsCaseLine(y);
           return (
             <div key={g.id}>
+            {totalsLine && <p className="cf__note" data-testid="cf-totals">{totalsLine}{url ? ` ${url}` : ""}</p>}
             {purposes.length > 0 && (
               <table className="cf__table" data-testid="cf-purposes">
                 <caption className="cf__cap">{FINANCE.purposesTitle}: {g.name} ({g.id}), {y.cycle} cycle. {FINANCE.purposesNote} {FINANCE.purposesRefundsNote}</caption>

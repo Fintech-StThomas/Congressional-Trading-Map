@@ -1,0 +1,36 @@
+/* "Money in and out, as summarised by the FEC" in a leadership PAC panel (components/member/PacTotals.tsx). Neutral tokens only:
+   red means a tie and nothing else. Figures are a compact definition grid that wraps at phone width. */
+.fin__totalsbox {
+  margin-top: 12px;
+  padding: 10px 14px 12px;
+  border: 1px solid var(--rule-soft);
+  border-radius: var(--r-sm);
+  background: var(--bg-2);
+}
+.fin__totalsbox .fin__h5 {
+  margin-top: 0;
+}
+.fin__figs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px 18px;
+  margin: 8px 0 4px;
+}
+.fin__fig dt {
+  font-size: 12px;
+  color: var(--text-3);
+}
+.fin__fig dd {
+  margin: 2px 0 0;
+  font-size: 15px;
+  color: var(--text);
+}
+.fin__through {
+  margin: 4px 0 8px;
+}
+@media print {
+  .fin__totalsbox {
+    break-inside: avoid;
+    background: none;
+  }
+}
