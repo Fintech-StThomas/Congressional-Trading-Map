@@ -17,6 +17,8 @@ Local equivalents, from the repository root:
 ```bash
 python -m unittest scripts.ci.test_check_status
 python scripts/ci/check_status.py origin/main HEAD
+python -m unittest scripts.ci.test_check_lines
+python scripts/ci/check_lines.py
 python -m pytest -q pipeline/tests
 cd web
 npm ci
