@@ -10,8 +10,11 @@ on:
 permissions:
   contents: read
 
+# One queue per event and branch: a newer push still cancels an older push run (and a newer PR update an older PR
+# run), but a push run and the pull-request run for the same commit no longer cancel each other. A cancelled run of
+# a required check left pull requests blocked although the other run of the same check had passed.
 concurrency:
-  group: checks-${{ github.head_ref || github.ref_name }}
+  group: checks-${{ github.event_name }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
