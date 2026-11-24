@@ -137,3 +137,8 @@ test("hosted builds treat RELEASE_BASE_URL as real data, like DATA_BASE_URL", as
   assert.equal(sampleFallbackError({ VERCEL: "1", RELEASE_BASE_URL: BASE }, false), null);
   assert.equal(sampleFallbackError({ CI: "1", RELEASE_BASE_URL: " " }, false) === null, false);
 });
+
+test("the release pointer refreshes within five minutes, never slower than the data", async () => {
+  const { POINTER_REVALIDATE_SECONDS, REVALIDATE_SECONDS } = await import("../src/lib/data/remote.ts");
+  assert.ok(POINTER_REVALIDATE_SECONDS <= 300 && POINTER_REVALIDATE_SECONDS <= REVALIDATE_SECONDS);
+});
