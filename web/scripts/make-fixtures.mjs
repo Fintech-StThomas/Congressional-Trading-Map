@@ -11,6 +11,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildFixtureDelays } from "./fixture-delays.mjs";
+import { applyAmendments } from "./fixture-amended.mjs";
 import { withFinance } from "./fixture-finance.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -404,6 +405,7 @@ for (const [id, days] of Object.entries(RECENT)) {
   });
   TRADES[id].sort((a, b) => (b.date ?? b.available ?? "").localeCompare(a.date ?? a.available ?? ""));
 }
+const AMENDED = applyAmendments(TRADES); // after the re-dating above: marks three older X000001 trades
 
 // ---- cases ----------------------------------------------------------------------------
 const CASE_EXCLUDED = new Set(["sits_with", "legislates_with"]);
@@ -545,6 +547,7 @@ for (const m of MEMBERS) {
   const TCOLS = ["id", "version", "amended", "date", "available", "lag_days", "late", "owner", "action", "partial", "ticker", "ticker_source", "asset", "asset_class", "low", "high", "org", "doc"];
   const filings = {};
   for (const t of TRADES[m.id]) filings[t.doc] = `https://example.org/sample-record/ptr/${t.doc}.pdf`;
+  Object.assign(filings, AMENDED.filings[m.id]);
   // Member ledger cols: type, kind, other, via, exact, low, high, count, first, last, note
   const mine = ledgerRows.filter((r) => r[0] === m.id).map((r) => [r[1], "org", ...r.slice(2), "in"]);
   const mineEdges = edges.filter((e) => touches(e, m.id));
@@ -560,7 +563,7 @@ for (const m of MEMBERS) {
   for (const r of mine) nodes[r[2]] = { name: orgById[r[2]].name, kind: orgById[r[2]].kind, ticker: null };
   const tr = TRADES[m.id];
   const tally = (f) => tr.reduce((o, t) => ((o[f(t)] = (o[f(t)] ?? 0) + 1), o), {});
-  if (tr.length) write(`trades/${m.id}.json`, { cols: TCOLS, rows: tr.map((t) => TCOLS.map((c) => t[c] ?? null)), filings });
+  if (tr.length) write(`trades/${m.id}.json`, { cols: TCOLS, rows: tr.map((t) => TCOLS.map((c) => t[c] ?? null)), filings, amendments: AMENDED.amendments[m.id] ?? {} });
   write(`members/${m.id}.json`, withFinance(m.id, {
     member: { ...s, terms: terms(m), committees: COMMITTEES[m.id] ?? [], fec_ids: [`H0SAMPLE${m.id.slice(-3)}`] },
     board: boardIds,
@@ -645,12 +648,9 @@ write("meta.json", {
     { id: "committees", name: "SAMPLE committee rosters", url: "https://example.org/sample-source/committees", revision: "sample-r1", retrieved: "2026-11-01", rows: 96, unmatched: 0 },
     { id: "congress_bills", name: "SAMPLE bill co-sponsorship records", url: "https://example.org/sample-source/bills", revision: "sample-r1", retrieved: "2026-11-01", rows: 410, unmatched: 0 },
   ],
-  counts,
+  counts: { ...counts, ...AMENDED.counts },
   unmatched: { orgs_unmatched_names: 23, tickers_without_sec_match: 2, ptr_rows_without_member: 0 },
-  exclusions: [
-    { reason: "SAMPLE: filer is not a member of Congress (candidate or staff report)", count: 14 },
-    { reason: "SAMPLE: scanned report could not be extracted", count: 3 },
-  ],
+  exclusions: AMENDED.exclusions,
   coverage: [
     "SAMPLE: periodic transaction reports exist from July 2012; nothing earlier was filed.",
     "SAMPLE: 2026 money data is partial until the year's final reports are filed.",

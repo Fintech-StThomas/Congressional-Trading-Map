@@ -38,7 +38,7 @@ test("top ties: largest disclosed amount first, ranges as displayed, opposing sp
 test("the card: name, seat, party letter, counts, ties with labels, escaped data, built date", () => {
   const html = buildEmbedHtml({ member, ties: topTies(file, "M000001"), release: null, built: "2026-11-13T04:00:00Z", theme: "light" });
   assert.match(html, /^<!doctype html>/);
-  for (const s of ["Jane Q. Doe", "Senator, California", "Democrat", ">12<", ">7<", ">1<", "Stock trades: Acme &lt;Corp&gt;", "$15,001–$50,000", "13 Nov 2026"]) assert.ok(html.includes(s), s);
+  for (const s of ["Jane Q. Doe", "Senator, California", "Democrat", ">12<", ">7<", ">1<", "Household stock trades, bought and sold combined: Acme &lt;Corp&gt;", "$15,001–$50,000", "13 Nov 2026"]) assert.ok(html.includes(s), s);
   assert.doesNotMatch(html, /<Corp>/);
   assert.doesNotMatch(html, /<script|javascript:|onerror|dangerouslySet/i);
 });

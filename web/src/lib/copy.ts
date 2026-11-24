@@ -241,11 +241,11 @@ export const RELEASE = {
 
 // ---------------------------------------------------------------- disclosure timing (/delays)
 // Observed elapsed days between the transaction date as filed and the date the report became public.
-// Never a finding that any report was late or unlawful (docs/validation/disclosure-timing-audit.md).
+// Never a finding that any report missed a deadline or was unlawful (docs/validation/disclosure-timing-audit.md).
 export const DELAYS = {
   title: "Disclosure timing",
   description:
-    "Observed days between each stock trade's date as filed and the date its report became public, in bands, for every member and site-wide. Elapsed days only: not a finding that any report was late or unlawful.",
+    "Observed days between each stock trade's date as filed and the date its report became public, in bands, for every member and site-wide. Elapsed days only: not a finding that any report missed a deadline or was unlawful.",
   lede:
     "How many days passed between the transaction date written on each periodic transaction report and the date the report became publicly available, counted from the filings and the source dataset.",
   /** The prominent neutral caveat. */
@@ -254,22 +254,19 @@ export const DELAYS = {
     "These are observed elapsed days between the transaction date as filed and the date the report became public.",
     "The law’s 30-day clock runs from the date the filer was notified of the transaction. That date is not in the data, so only the outer 45-day bound can be compared, and only as elapsed days.",
     "Committee extensions or waivers are not in the data either.",
-    "Amended reports may carry the amendment’s date, so an amended trade can look later than its first appearance.",
-    "This is not a finding that any report was late, or that any person broke any rule.",
+    "This is not a finding that any report missed a deadline, or that any person broke any rule.",
   ],
   /** Used when the data's own definition is missing or incomplete. */
   fallbackMeasured: "days from the transaction date as filed to the date the report became publicly available",
   fallbackCaveats: [
     "Observed elapsed days, not a finding about whether any filing was on time or lawful.",
+    "Each trade is counted once, from the earliest date it was public; a later filing that corrected its transaction date puts it under date corrected, with no elapsed days.",
     "Trades with no transaction date or no availability date are counted as undated, never as 0 days.",
     "A negative value means the recorded availability date precedes the transaction date; it is counted separately.",
   ],
   measuredHeading: "How it is measured",
   methodLink: "Method and sources",
-  auditSummary:
-    "Dates: the transaction date is as filed (empty on some rows; on some scanned filings the day of the month is approximate). The public date is the source dataset’s availability instant, read as a US Eastern calendar date. For an amended report the site shows the current version only, and it is not known whether that version’s availability date is the original filing’s or the amendment’s.",
   bandsHeading: "Every trade, by days from transaction to public",
-  bandsNote: "Bands are not additive with “amended”: an amended trade is also counted in the band it falls in. Percentages are of all trades.",
   bandLabels: {
     "0-30": "0 to 30 days",
     "31-45": "31 to 45 days",
@@ -282,7 +279,6 @@ export const DELAYS = {
   negativeLabel: "Public before the stated transaction date",
   negativeNote: "Likely an entry or extraction error; in no band and no statistic.",
   amendedLabel: "Of which amended",
-  amendedNote: "Overlaps the rows above.",
   overLabel: "Over 45 days",
   chamberHeading: "By chamber of the filing",
   chamberNote: "The chamber the source dataset records for the filing, which is not always the member’s chamber.",
@@ -291,7 +287,7 @@ export const DELAYS = {
   membersHeading: "By member",
   membersNote:
     "Members with at least one published trade. “Over 45 days” counts trades public more than 45 days after the stated transaction date; its share is of trades with both dates. Median, 90th percentile and longest are over trades with a non-negative day count.",
-  csvNote: "Observed elapsed days between the transaction date as filed and the date the report became public; not a finding that any report was late or unlawful.",
+  csvNote: "Observed elapsed days between the transaction date as filed and the date the report became public; not a finding that any report missed a deadline or was unlawful.",
   csvFile: "paper-trail-disclosure-timing",
   unavailableTitle: "Not available in this data build yet",
   unavailableBody:
@@ -353,7 +349,7 @@ export const COVERAGE = {
     derived: "This tie is a statistical derivation, not a filed record.",
     weak: "The evidence for this tie is thin or incomplete.",
     committee: "One end is a committee that is not matched to a named company; a committee is shown under its own name.",
-    partialList: "Only some of the underlying records are listed; the others are in the same source filings.",
+    partialList: "Only some of the underlying records are listed; the others are in other filings of the same source.",
     noAmount: "No amount is disclosed for this tie; it is not zero.",
     openEnded: "The amount is an open-ended range; its top is not known.",
   },
@@ -699,13 +695,13 @@ export const EMBED = {
   pinned: "To fix the card to one archived data release, use the /embed/r/<release>/m/<member> address; otherwise the card shows the latest data and its date moves with each build.",
   footerShort: SITE.disclaimer,
   source: "Source: Paper Trail",
-  counts: { trades: "Trades", orgs: "Organisations", cases: "Cases" },
+  counts: { trades: "Household trades", orgs: "Organisations", cases: "Cases" },
   sourceLine: (release: string, built: string) => `data release ${release} · built ${built}`,
   latestBuild: "latest build",
   noTies: "No ties are published for this member.",
   topTies: "Top ties by disclosed amount",
   notFound: "This member card is not available.",
-  height: 340,
+  height: 680,
   copy: "Copy embed code",
   copied: "Embed code copied.",
   copyFailed: "Copying is not available here. Select the code and press Ctrl+C (Cmd+C on a Mac).",

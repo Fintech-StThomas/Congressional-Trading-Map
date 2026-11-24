@@ -9,6 +9,7 @@ import { recordUrlFor, boardHref, dataUrl, memberHref, orgFeedHref } from "@/lib
 import { ORG_FEED } from "@/lib/copy-discovery";
 import { FollowButton } from "@/components/shared/FollowButton";
 import { FAMILY_LABEL, TYPE_LABEL } from "@/lib/domain/edges";
+import { PRECISE } from "@/lib/copy-precision";
 import { amountText, count, seat, yearSpan } from "@/lib/format";
 import { getJSON, IS_SAMPLE_CLIENT, loadSearchIndex, resolveTie } from "@/lib/data/fetch";
 import { ORG_KIND_LABEL, type BoardMember, type NameBook } from "@/lib/domain/names";
@@ -183,7 +184,7 @@ export function OrgView({ sources }: { sources: Record<string, string> }) {
         <ul className="ledger__totals ledger__totals--wide">
           {Object.entries(file.ledger_totals).map(([t, v]) => (
             <li key={t}>
-              <span>{TYPE_LABEL[t as keyof typeof TYPE_LABEL] ?? t}</span>
+              <span>{TYPE_LABEL[t as keyof typeof TYPE_LABEL] ?? t}{t === "traded" ? ` (${PRECISE.household}, ${PRECISE.combined})` : ""}</span>
               <span className="mono">{count(v.edges)} members · {count(v.records)} records · {amountText(v) ?? "no amount"}</span>
             </li>
           ))}
@@ -233,10 +234,10 @@ export function OrgView({ sources }: { sources: Record<string, string> }) {
                     </td>
                     <td data-label="Tie">
                       <span className="ties__type">
-                        <LineSample style={e.family === "context" ? "context" : "filed"} />
+                        <LineSample style={e.family === "context" ? "context" : e.type === "outside_spending" && e.note !== "support" ? "against" : "filed"} />
                         <span>{TYPE_LABEL[e.type]}</span>
                       </span>
-                      <span className="ties__sub">{FAMILY_LABEL[e.family]}</span>
+                      <span className="ties__sub">{FAMILY_LABEL[e.family]}{e.type === "traded" ? ` · ${PRECISE.household}, ${PRECISE.combined}` : ""}</span>
                     </td>
                     <td data-label="Amount" className="num mono">{amountText(e.amount) ?? <span className="nd">not disclosed</span>}</td>
                     <td data-label="Records" className="num mono">{count(e.count)}</td>

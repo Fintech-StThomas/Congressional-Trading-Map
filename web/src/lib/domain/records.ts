@@ -2,6 +2,8 @@
 // tables, plus CSV. Pure and free of runtime imports so tests can load it directly.
 import type { Edge, MemberFileWire } from "../types.ts";
 import { recordUrlFor as idUrl } from "../urls.ts";
+import { AMEND } from "../copy-amend.ts";
+import { laterFilingUrls, laterFilingsText, readAmendments } from "./amendments.ts";
 
 export type Cell = string | number | boolean | null;
 export type Col = { key: string; label: string; kind: "text" | "num" | "date" | "bool" | "links"; width?: number };
@@ -9,7 +11,7 @@ export type RecTable = { id: string; title: string; cols: Col[]; rows: Cell[][] 
 
 type Names = (id: string) => string;
 type Wire = Pick<MemberFileWire, "member" | "edges" | "ledger" | "cases" | "coverage"> & { ledger_totals?: MemberFileWire["ledger_totals"] };
-type TradeWire = { cols: string[]; rows: unknown[][]; filings: Record<string, string> } | null;
+type TradeWire = { cols: string[]; rows: unknown[][]; filings: Record<string, string>; amendments?: unknown } | null;
 
 export const TIE_COLS: Col[] = [
   { key: "published", label: "Published as", kind: "text", width: 96 },
@@ -70,13 +72,20 @@ export const TRADE_COLS_ALL: Col[] = [
   ["action", "Action", "text", 76], ["partial", "Partial", "bool", 64], ["ticker", "Ticker", "text", 76], ["ticker_source", "Ticker source", "text", 90],
   ["asset", "Asset as filed", "text", 260], ["asset_class", "Asset class", "text", 84], ["low", "Low $", "num", 90], ["high", "High $", "num", 90],
   ["org", "Org id", "text", 100], ["doc", "Filing id", "text", 110], ["url", "Filing", "links", 120],
+  ["later", AMEND.csvLabel, "text", 200], ["later_urls", AMEND.csvLinks, "links", 160],
 ].map(([key, label, kind, width]) => ({ key, label, kind, width }) as Col);
 
 export function tradeRows(t: TradeWire): Cell[][] {
   if (!t) return [];
   const at = Object.fromEntries(t.cols.map((c, i) => [c, i]));
   const keys = TRADE_COLS_ALL.map((c) => c.key);
-  return t.rows.map((r) => keys.map((k) => (k === "url" ? t.filings[String(r[at.doc])] ?? null : ((r[at[k]] ?? null) as Cell))));
+  const later = readAmendments(t);
+  return t.rows.map((r) => keys.map((k) => {
+    if (k === "url") return t.filings[String(r[at.doc])] ?? null;
+    if (k === "later") return laterFilingsText(later[String(r[at.id])]);
+    if (k === "later_urls") return laterFilingUrls(later[String(r[at.id])], t.filings);
+    return (r[at[k]] ?? null) as Cell;
+  }));
 }
 
 export const DOC_COLS: Col[] = [
@@ -104,6 +113,8 @@ export function documentRows(file: Wire, trades: TradeWire, sourceName: (id: str
       const doc = String(r[at.doc]);
       add(trades.filings[doc], "Periodic transaction report", (r[at.available] as string | null) ?? null, doc);
     }
+    for (const list of Object.values(readAmendments(trades)))
+      for (const a of list) add(trades.filings[a.doc], "Periodic transaction report (later filing of a trade)", a.available, a.doc);
   }
   for (const e of file.edges as Edge[]) {
     for (const v of e.evidence) add(v.url, sourceName(v.source), v.date, v.record);
@@ -152,7 +163,8 @@ export function caveats(file: Wire, trades: TradeWire): string[] {
     if (noTicker) out.push(`${noTicker.toLocaleString("en-US")} trades have no ticker; none is guessed.`);
     if (noDate) out.push(`${noDate.toLocaleString("en-US")} trades have no transaction date; their year comes from the date the report became public.`);
     if (unknownClass) out.push(`${unknownClass.toLocaleString("en-US")} trades have no asset type on the filing (“unknown”).`);
-    if (amended) out.push(`${amended.toLocaleString("en-US")} trades were amended; only the current version is listed, with its version number.`);
+    if (amended && trades.amendments !== undefined) out.push(`${amended.toLocaleString("en-US")} trades are flagged amended; each is listed once, timed from its first filing, with the later filings in the “${AMEND.csvLabel}” column. A row a later filing marks Deleted stays listed.`);
+    else if (amended) out.push(`${amended.toLocaleString("en-US")} trades were amended; only the current version is listed, with its version number.`);
   }
   const cov = file.coverage ?? [];
   if (cov.some((c) => c.trades === "none")) out.push("Some years served have no trade coverage (House filings in the trade dataset begin in 2014; nothing exists before July 2012).");

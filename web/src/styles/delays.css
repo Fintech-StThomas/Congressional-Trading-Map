@@ -256,3 +256,25 @@
 .trades__timing a {
   color: var(--text);
 }
+
+/* "Later filings" cell: up to two short lines (what a later filing says, then links); the full text is in the title. */
+.vtable tbody td.trades__later {
+  white-space: normal;
+  font-size: 12px;
+  line-height: 1.2;
+  color: var(--text-2);
+}
+.trades__laterbox {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.trades__latertext,
+.trades__laterlinks {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.vtable .tradetable th.trades__laterh { width: 300px; }
+.vtable .tradetable.has-later { min-width: 1216px; }
+@media print { .vtable .tradetable.has-later { min-width: 0; } }

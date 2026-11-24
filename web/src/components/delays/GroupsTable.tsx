@@ -1,6 +1,7 @@
 // A table of delay groups (chambers or years): one row per group with every band, the over-45-days count and share,
 // the apart-from-bands counts, and the percentile figures. Missing figures read "n/a", never 0.
 import { DELAYS } from "@/lib/copy";
+import { DELAYS_AMEND } from "@/lib/copy-amend";
 import { BAND_KEYS, overCount, overShare } from "@/lib/domain/delays";
 import { count, days, percent } from "@/lib/format";
 import type { DelayGroup } from "@/lib/types";
@@ -8,6 +9,8 @@ import type { DelayGroup } from "@/lib/types";
 export type GroupRow = { key: string; label: string; g: DelayGroup };
 
 export function GroupsTable({ id, heading, note, first, rows }: { id: string; heading: string; note: string; first: string; rows: GroupRow[] }) {
+  // Files built before the date-corrected bucket have no such count: the column is left out rather than shown as 0.
+  const corrected = rows.some((r) => r.g.date_corrected !== undefined);
   return (
     <section className="dl-sec" aria-labelledby={id}>
       <h2 id={id}>{heading}</h2>
@@ -23,6 +26,7 @@ export function GroupsTable({ id, heading, note, first, rows }: { id: string; he
               <th scope="col" className="dl-num">Share of dated</th>
               <th scope="col" className="dl-num">Before stated date</th>
               <th scope="col" className="dl-num">No date</th>
+              {corrected && <th scope="col" className="dl-num">{DELAYS_AMEND.column}</th>}
               <th scope="col" className="dl-num">Median</th>
               <th scope="col" className="dl-num">90th pct.</th>
               <th scope="col" className="dl-num">Longest</th>
@@ -41,6 +45,7 @@ export function GroupsTable({ id, heading, note, first, rows }: { id: string; he
                   <td className="dl-num mono">{percent(overShare(over, g.dated))}</td>
                   <td className="dl-num mono">{count(g.negative)}</td>
                   <td className="dl-num mono">{count(g.undated)}</td>
+                  {corrected && <td className="dl-num mono">{g.date_corrected === undefined ? "n/a" : count(g.date_corrected)}</td>}
                   <td className="dl-num mono">{days(g.median)}</td>
                   <td className="dl-num mono">{days(g.p90)}</td>
                   <td className="dl-num mono">{days(g.max)}</td>

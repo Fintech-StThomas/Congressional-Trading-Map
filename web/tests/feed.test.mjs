@@ -26,7 +26,7 @@ test("escaping: every XML special character, control characters stripped, non-st
 });
 
 test("title: member, party-state, action, asset and the amount range as displayed", () => {
-  assert.equal(itemTitle(member, trade()), "Jane Q. Doe (D-CA): buy Acme Corp common stock, $15,001–$50,000");
+  assert.equal(itemTitle(member, trade()), "Jane Q. Doe (D-CA), owner spouse: buy Acme Corp common stock, $15,001–$50,000");
   assert.match(itemTitle(member, trade({ action: "sell", partial: true })), /: sell \(partial\) Acme/);
   assert.match(itemTitle(member, trade({ asset: "", ticker: "ACME" })), /: buy ACME,/);
   assert.match(itemTitle(member, trade({ asset: "", ticker: null })), new RegExp(FEED.noAsset));

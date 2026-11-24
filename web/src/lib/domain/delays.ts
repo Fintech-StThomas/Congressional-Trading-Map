@@ -11,12 +11,15 @@ export const MEMBER_BAND_COLS = ["b0_30", "b31_45", "b46_90", "b91_365", "b366_p
 export const THRESHOLD_DAYS = 45;
 const OUTER_EDGES = [30, 90, 365] as const;
 
+/** The columns every delays.json has, in the order of the earlier builds. `date_corrected` is the pipeline's LAST column
+ *  and absent from archived releases; it is read by name when present, never required (old permalinks stay readable). */
 const MEMBER_COLS: DelayMemberCol[] = [
   "id", "count", "dated", ...MEMBER_BAND_COLS, "negative", "undated", "amended", "median", "p90", "max", "first_year", "last_year",
 ];
 
-/** The minimal trade fields the rules need (a decoded TradeRow satisfies it). */
-export type DelayTrade = { date: string | null; lag_days: number | null; amended: boolean };
+/** The minimal trade fields the rules need (a decoded TradeRow satisfies it). `available` tells a withheld lag (date
+ *  corrected: both dates present) from a missing date; leave it out and a null lag counts as undated. */
+export type DelayTrade = { date: string | null; lag_days: number | null; amended: boolean; available?: string | null };
 
 /** One member's row of delays.json, as an object. */
 export type DelayMemberRow = {
@@ -25,6 +28,8 @@ export type DelayMemberRow = {
   negative: number; undated: number; amended: number;
   median: number | null; p90: number | null; max: number | null;
   first_year: number | null; last_year: number | null;
+  /** null when the file predates the column (those trades are then inside `undated`): never shown as 0. */
+  date_corrected: number | null;
 };
 
 // ---------------------------------------------------------------- the pipeline's rules
@@ -46,19 +51,22 @@ export function nearestRank(sorted: readonly number[], p: number): number | null
 }
 
 type Acc = {
-  count: number; bands: number[]; negative: number; undated: number; amended: number;
+  count: number; bands: number[]; negative: number; undated: number; amended: number; dateCorrected: number;
   lags: number[]; years: number[];
 };
 
 function accumulate(trades: readonly DelayTrade[], thresholdDays: number): Acc {
-  const a: Acc = { count: 0, bands: [0, 0, 0, 0, 0], negative: 0, undated: 0, amended: 0, lags: [], years: [] };
+  const a: Acc = { count: 0, bands: [0, 0, 0, 0, 0], negative: 0, undated: 0, amended: 0, dateCorrected: 0, lags: [], years: [] };
   for (const t of trades) {
     a.count++;
     if (t.amended) a.amended++;
     if (t.date) a.years.push(Number(String(t.date).slice(0, 4)));
     const lag = t.lag_days;
-    if (lag === null || lag === undefined || Number.isNaN(lag)) a.undated++;
-    else if (lag < 0) a.negative++;
+    if (lag === null || lag === undefined || Number.isNaN(lag)) {
+      // Both dates present but no lag: a later version changed the transaction date (see the data dictionary, Trade.lag_days).
+      if (t.date && t.available) a.dateCorrected++;
+      else a.undated++;
+    } else if (lag < 0) a.negative++;
     else {
       a.bands[bandIndex(lag, thresholdDays)]++;
       a.lags.push(lag);
@@ -76,8 +84,8 @@ function bandsOf(b: number[]): DelayBands {
 export function delayGroupFromTrades(trades: readonly DelayTrade[], thresholdDays = THRESHOLD_DAYS): DelayGroup {
   const a = accumulate(trades, thresholdDays);
   return {
-    count: a.count, dated: a.count - a.undated, bands: bandsOf(a.bands), negative: a.negative, undated: a.undated,
-    amended: a.amended, median: nearestRank(a.lags, 50), p90: nearestRank(a.lags, 90), max: a.lags.length ? a.lags[a.lags.length - 1] : null,
+    count: a.count, dated: a.count - a.undated - a.dateCorrected, bands: bandsOf(a.bands), negative: a.negative, undated: a.undated,
+    date_corrected: a.dateCorrected, amended: a.amended, median: nearestRank(a.lags, 50), p90: nearestRank(a.lags, 90), max: a.lags.length ? a.lags[a.lags.length - 1] : null,
   };
 }
 
@@ -89,6 +97,7 @@ export function delayRowFromTrades(id: string, trades: readonly DelayTrade[], th
     id, count: g.count, dated: g.dated, b0_30: a.bands[0], b31_45: a.bands[1], b46_90: a.bands[2], b91_365: a.bands[3], b366_plus: a.bands[4],
     negative: g.negative, undated: g.undated, amended: g.amended, median: g.median, p90: g.p90, max: g.max,
     first_year: a.years.length ? Math.min(...a.years) : null, last_year: a.years.length ? Math.max(...a.years) : null,
+    date_corrected: a.dateCorrected,
   };
 }
 
@@ -128,6 +137,7 @@ export function decodeDelayMembers(table: Delays["members"] | null | undefined):
     negative: num(r.negative), undated: num(r.undated), amended: num(r.amended),
     median: numOrNull(r.median), p90: numOrNull(r.p90), max: numOrNull(r.max),
     first_year: numOrNull(r.first_year), last_year: numOrNull(r.last_year),
+    date_corrected: table.cols.includes("date_corrected") ? num(r.date_corrected) : null,
   }));
 }
 
@@ -161,9 +171,11 @@ export type DelayViewRow = {
   id: string; name: string; party: "D" | "R" | "I" | null; place: string | null; state: string | null; chamber: "sen" | "rep" | null; current: boolean | null;
   count: number; dated: number; over: number; overShare: number | null;
   median: number | null; p90: number | null; max: number | null; undated: number; amended: number;
+  /** null for a file that predates the column (never shown as 0). */
+  dateCorrected: number | null;
 };
 
-export type DelaySortKey = "name" | "count" | "dated" | "over" | "overShare" | "median" | "p90" | "max" | "undated" | "amended";
+export type DelaySortKey = "name" | "count" | "dated" | "over" | "overShare" | "median" | "p90" | "max" | "undated" | "amended" | "dateCorrected";
 
 export type MemberLabel = { name: string; party: "D" | "R" | "I"; state: string; chamber: "sen" | "rep"; current: boolean };
 
@@ -176,7 +188,7 @@ export function viewRows(rows: readonly DelayMemberRow[], who: (id: string) => M
       id: r.id, name: m?.name ?? r.id, party: m?.party ?? null,
       place: m ? `${m.state} · ${m.chamber === "sen" ? "Senate" : "House"}${m.current ? "" : " · former"}` : null, state: m?.state ?? null, chamber: m?.chamber ?? null, current: m?.current ?? null,
       count: r.count, dated: r.dated, over, overShare: overShare(over, r.dated),
-      median: r.median, p90: r.p90, max: r.max, undated: r.undated, amended: r.amended,
+      median: r.median, p90: r.p90, max: r.max, undated: r.undated, amended: r.amended, dateCorrected: r.date_corrected,
     };
   });
 }
@@ -207,7 +219,7 @@ export function filterViewRows(rows: readonly DelayViewRow[], f: DelayFilter): D
 
 export const DELAY_CSV_HEADERS = [
   "member_id", "member", "party", "state", "chamber", "current", "trades", "dated", "over_45_days", "over_45_days_share_of_dated",
-  "median_days", "p90_days", "max_days", "undated", "amended", "note",
+  "median_days", "p90_days", "max_days", "undated", "date_corrected", "amended", "note",
 ];
 
 function cell(v: string | number | boolean | null): string {
@@ -223,7 +235,7 @@ export function delaysCsv(rows: readonly DelayViewRow[], note: string): string {
   for (const r of rows) {
     lines.push([
       r.id, r.name, r.party, r.state, r.chamber, r.current, r.count, r.dated, r.over,
-      r.overShare === null ? null : Number(r.overShare.toFixed(4)), r.median, r.p90, r.max, r.undated, r.amended, note,
+      r.overShare === null ? null : Number(r.overShare.toFixed(4)), r.median, r.p90, r.max, r.undated, r.dateCorrected, r.amended, note,
     ].map(cell).join(","));
   }
   return lines.join("\r\n") + "\r\n";

@@ -13,6 +13,7 @@ import { memberHref, recordsHref, releaseMemberHref, releaseRecordsHref, safeHtt
 import { YEAR_MAX, YEAR_MIN } from "../years.ts";
 import { encodeAssumptions, isDefault, type Assumptions } from "./assume.ts";
 import { filteredAmount, typeLabel } from "./edges.ts";
+import { NO_OFFICIAL, officialFromEvidence, officialFromIds, officialLine, type Official } from "./citation-official.ts";
 
 export const CITATION_SCHEMA = "paper-trail.citation/1";
 /** Record ids listed in a table citation; beyond this the packet says it is truncated. */
@@ -36,6 +37,8 @@ export type Citation = {
   title: string;
   kind: "tie" | "member" | "records" | "table";
   subject: { members: { id: string; name: string }[]; orgs: { id: string; name: string }[] };
+  /** The official record ids and addresses, listed first: the sources below are the datasets that extracted the rows. */
+  official: Official;
   identifiers: { edge_ids: string[]; evidence_records: string[]; trade_ids: string[]; filing_docs: string[]; evidence_total: number | null; truncated: boolean };
   evidence: { record: string | null; label: string; date: string | null; source: string; source_name: string; url: string | null }[];
   sources: { id: string; name: string; url: string | null; revision: string | null; retrieved: string | null }[];
@@ -126,6 +129,7 @@ export function buildTieCitation(p: {
     title: `${typeLabel(edge)}: ${p.names.from} ${edge.directed ? "to" : "and"} ${p.names.to}`,
     kind: "tie",
     subject: { members, orgs },
+    official: officialFromEvidence(edge.evidence, [edge.via?.id, edge.from.id, edge.to.id]),
     identifiers: { ...NO_IDS, edge_ids: [edge.id], evidence_records: uniqueSorted(edge.evidence.map((e) => e.record)), evidence_total: edge.evidence_total },
     evidence,
     sources: sourceRefs(env, uniqueSorted(edge.evidence.map((e) => e.source))),
@@ -152,6 +156,9 @@ export type ViewInput = {
   /** The `?as=` switches in effect (case file only). */
   assumptions?: Assumptions | null;
   counts?: Record<string, number | null>;
+  /** The member's FEC candidate ids (member file `fec_ids`), cited as official ids. */
+  fec_candidate_ids?: string[];
+  official?: Official;
   dates?: { first: string | null; last: string | null };
   table?: { title: string; filters: { column: string; value: string }[]; shown: number; total: number; ids?: { edge_ids?: string[]; trade_ids?: string[]; filing_docs?: string[] } };
 };
@@ -170,6 +177,7 @@ export function buildViewCitation(v: ViewInput): Citation {
     title,
     kind: v.kind,
     subject: { members: [member], orgs: [] },
+    official: v.official ?? officialFromIds(ids?.filing_docs ?? [], v.fec_candidate_ids),
     identifiers: { ...NO_IDS, edge_ids: cap(ids?.edge_ids), trade_ids: cap(ids?.trade_ids), filing_docs: cap(ids?.filing_docs), truncated },
     evidence: [],
     sources: sourceRefs(env, null),
@@ -203,7 +211,7 @@ export function citationText(c: Citation): string {
   if (subj.length) lines.push(`Subject: ${subj.join("; ")}`);
   if (c.amount) {
     const a = c.amount;
-    const basis = !a.disclosed ? "no amount disclosed, not zero" : a.exact != null ? "exact figure filed" : a.open_ended ? "open-ended disclosed range, no top stated" : "disclosed range, not a midpoint";
+    const basis = !a.disclosed ? "no amount disclosed, not zero" : a.exact != null ? "whole dollars as filed; cents are not kept" : a.open_ended ? "open-ended disclosed range, no top stated" : "disclosed range, not a midpoint";
     lines.push(`Amount as displayed: ${a.displayed} (${basis})`);
     if (c.amount_in_years) lines.push(`Within ${c.filters.years?.[0]}–${c.filters.years?.[1]} only: ${c.amount_in_years.displayed}, ${c.amount_in_years.records} ${c.amount_in_years.records === 1 ? "record" : "records"}`);
   }
@@ -218,7 +226,10 @@ export function citationText(c: Citation): string {
   ].filter(Boolean);
   if (ids.length) lines.push(`Identifiers: ${ids.join("; ")}${c.identifiers.truncated ? ` (first ${MAX_IDS} of each; the JSON packet is truncated the same way)` : ""}`);
   const names = c.sources.map((s) => s.name);
-  if (names.length) lines.push(`Source: ${[...new Set(names)].join("; ")}`);
+  // The official record leads; the dataset that extracted the rows comes second.
+  const official = officialLine(c.official ?? NO_OFFICIAL, c.sources);
+  if (official) lines.push(official);
+  else if (names.length) lines.push(`Extracted by: ${[...new Set(names)].join("; ")}`);
   const urls = [...new Set(c.evidence.map((e) => e.url).filter((u): u is string => Boolean(u)))];
   if (urls.length) lines.push(`Official records: ${urls.join(" ")}`);
   else if (c.kind === "tie" && !c.ledger_only) lines.push("Official records: no public link for the listed records");

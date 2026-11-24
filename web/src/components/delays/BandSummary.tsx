@@ -1,6 +1,7 @@
 // The site-wide count per band as a table with a bar: numbers and words always visible, the bar is only a picture of them.
 // Undated and negative lags are their own rows (never banded); amended overlaps and is noted apart. No colour carries meaning.
 import { DELAYS } from "@/lib/copy";
+import { DELAYS_AMEND } from "@/lib/copy-amend";
 import { BAND_KEYS, overCount, overShare, share } from "@/lib/domain/delays";
 import { count, days, percent } from "@/lib/format";
 import type { DelayGroup } from "@/lib/types";
@@ -27,7 +28,7 @@ export function BandSummary({ g }: { g: DelayGroup }) {
   return (
     <section className="dl-sec" aria-labelledby="dl-bands">
       <h2 id="dl-bands">{DELAYS.bandsHeading}</h2>
-      <p className="dl-sub">{DELAYS.bandsNote}</p>
+      <p className="dl-sub">{g.date_corrected !== undefined ? DELAYS_AMEND.bandsNote : DELAYS_AMEND.bandsNoteOld}</p>
       <table className="dl-table dl-bands">
         <caption className="visually-hidden">Trades by days from transaction date to public availability</caption>
         <thead>
@@ -39,10 +40,11 @@ export function BandSummary({ g }: { g: DelayGroup }) {
           ))}
           <Row label={DELAYS.negativeLabel} note={DELAYS.negativeNote} n={g.negative} total={g.count} kind="apart" />
           <Row label={DELAYS.undatedLabel} note={DELAYS.undatedNote} n={g.undated} total={g.count} kind="apart" />
+          {g.date_corrected !== undefined && <Row label={DELAYS_AMEND.label} note={DELAYS_AMEND.note} n={g.date_corrected} total={g.count} kind="apart" />}
         </tbody>
         <tfoot>
           <tr><th scope="row">All published trades</th><td className="dl-num mono">{count(g.count)}</td><td className="dl-num mono">{percent(share(g.count, g.count))}</td><td /></tr>
-          <tr className="dl-apart"><th scope="row">{DELAYS.amendedLabel}<span className="dl-note">{DELAYS.amendedNote}</span></th><td className="dl-num mono">{count(g.amended)}</td><td className="dl-num mono">{percent(share(g.amended, g.count))}</td><td /></tr>
+          <tr className="dl-apart"><th scope="row">{DELAYS.amendedLabel}<span className="dl-note">{DELAYS_AMEND.amendedNote}</span></th><td className="dl-num mono">{count(g.amended)}</td><td className="dl-num mono">{percent(share(g.amended, g.count))}</td><td /></tr>
         </tfoot>
       </table>
       <p className="dl-sub" data-testid="delays-over">

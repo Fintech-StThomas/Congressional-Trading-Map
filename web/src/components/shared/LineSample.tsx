@@ -1,6 +1,7 @@
 // A short sample of a string style (filed, weak, derived, context) for legends, chips and tables.
 import type { StringStyle } from "@/lib/domain/edges";
 import { frayed as fray } from "@/lib/board/fray";
+import "@/styles/against.css";
 
 /**
  * A short sample of a string, drawn the way the board draws it: a wool core with
@@ -28,7 +29,7 @@ export function LineSample({ style, width = 28, scale = 1 }: { style: StringStyl
     <svg className={`linesample linesample--${style}`} viewBox={`0 0 ${w} 12`} width={w * scale} height={12 * scale} aria-hidden="true">
       <path className="linesample__shadow" d={d} transform="translate(0.4 1.4)" />
       <path className="linesample__core" d={d} />
-      {style !== "context" && <path className="linesample__ply" d={d} />}
+      {style !== "context" && style !== "against" && <path className="linesample__ply" d={d} />}
     </svg>
   );
 }

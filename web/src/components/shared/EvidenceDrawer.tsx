@@ -7,6 +7,7 @@ import type { Edge, NodeRef } from "@/lib/types";
 import { CORRECTIONS, notShown, SITE } from "@/lib/copy";
 import { BOARD_UI } from "@/lib/copy-ui";
 import { CorrectionLink } from "./CorrectionLink";
+import { PRECISE } from "@/lib/copy-precision";
 import { weakTag, WEAK_WHY, typeLabel, TYPE_RULE, FAMILY_LABEL, filteredAmount, plainStat, stringStyle } from "@/lib/domain/edges";
 import { amountText, count, date, NOT_DISCLOSED, plural } from "@/lib/format";
 import { IS_SAMPLE_CLIENT } from "@/lib/data/fetch";
@@ -168,7 +169,7 @@ export function EvidenceDrawer({ edge, book, sources, range, onClose, loading, s
         <ul className="marks" aria-label="How this string is drawn">
           <li>
             <LineSample style={style} />
-            {edge.basis === "derived" ? <Explain term="statistical">Derived by a statistical rule</Explain> : "Filed record names both ends"}
+            {edge.basis === "derived" ? <Explain term="statistical">Derived by a statistical rule</Explain> : style === "against" ? PRECISE.againstMark : "Filed record names both ends"}
           </li>
           {edge.weak && <li>Thin or incomplete evidence</li>}
           <li>{FAMILY_LABEL[edge.family]}</li>
@@ -177,7 +178,10 @@ export function EvidenceDrawer({ edge, book, sources, range, onClose, loading, s
         <dl className="facts">
           <div>
             <dt><Explain term="range">Amount</Explain></dt>
-            <dd className="mono">{amountText(totals) ?? <span className="nd">{NOT_DISCLOSED}</span>}</dd>
+            <dd className="mono">
+              {amountText(totals) ?? <span className="nd">{NOT_DISCLOSED}</span>}
+              {edge.type === "traded" && <span className="sub"> {PRECISE.household}, {PRECISE.combined}</span>}
+            </dd>
           </div>
           <div>
             <dt>Records</dt>
@@ -263,7 +267,7 @@ export function EvidenceDrawer({ edge, book, sources, range, onClose, loading, s
         </ol>
         {shown < edge.evidence_total && (
           <p className="drawer__more">
-            The {count(edge.evidence_total - shown)} other records are in the same source filings; the largest and most recent are listed.
+            {PRECISE.drawerMore(edge.type, edge.evidence_total - shown, /C\d{8}/.exec(edge.via?.id ?? edge.from.id)?.[0] ?? null)}
           </p>
         )}
         <p className="disclaimer">{SITE.disclaimer}</p>

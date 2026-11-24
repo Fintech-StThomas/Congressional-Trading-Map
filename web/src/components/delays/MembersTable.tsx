@@ -4,6 +4,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { DELAYS } from "@/lib/copy";
+import { DELAYS_AMEND } from "@/lib/copy-amend";
 import { delaysCsv, filterViewRows, sortViewRows, type DelayFilter, type DelaySortKey, type DelayViewRow } from "@/lib/domain/delays";
 import { count, days, percent } from "@/lib/format";
 import { memberHref } from "@/lib/urls";
@@ -22,6 +23,7 @@ const COLS: { k: DelaySortKey; label: string; num: boolean }[] = [
   { k: "p90", label: "90th pct.", num: true },
   { k: "max", label: "Longest", num: true },
   { k: "undated", label: "No date", num: true },
+  { k: "dateCorrected", label: DELAYS_AMEND.column, num: true },
   { k: "amended", label: "Amended", num: true },
 ];
 
@@ -29,6 +31,8 @@ export function MembersTable({ rows }: { rows: DelayViewRow[] }) {
   const [sort, setSort] = useState<{ k: DelaySortKey; desc: boolean }>({ k: "count", desc: true });
   const [filter, setFilter] = useState<DelayFilter>({ chamber: "all", currentOnly: false, query: "" });
   const [limit, setLimit] = useState(PAGE);
+  // A file built before the date-corrected bucket has no such count: leave the column out rather than show 0.
+  const cols = useMemo(() => (rows.some((r) => r.dateCorrected !== null) ? COLS : COLS.filter((c) => c.k !== "dateCorrected")), [rows]);
   const view = useMemo(() => sortViewRows(filterViewRows(rows, filter), sort.k, sort.desc), [rows, filter, sort]);
   const shown = view.slice(0, limit);
   const filtered = view.length !== rows.length;
@@ -69,7 +73,7 @@ export function MembersTable({ rows }: { rows: DelayViewRow[] }) {
           <caption className="visually-hidden">Disclosure timing by member. Column buttons sort the table.</caption>
           <thead>
             <tr>
-              {COLS.map((c) => (
+              {cols.map((c) => (
                 <th key={c.k} scope="col" className={c.num ? "dl-num" : undefined} aria-sort={sort.k === c.k ? (sort.desc ? "descending" : "ascending") : "none"}>
                   <button type="button" onClick={() => setSort((s) => ({ k: c.k, desc: s.k === c.k ? !s.desc : c.k !== "name" }))}>
                     {c.label}
@@ -96,11 +100,12 @@ export function MembersTable({ rows }: { rows: DelayViewRow[] }) {
                 <td className="dl-num mono">{days(r.p90)}</td>
                 <td className="dl-num mono">{days(r.max)}</td>
                 <td className="dl-num mono">{count(r.undated)}</td>
+                {cols.length === COLS.length && <td className="dl-num mono">{r.dateCorrected === null ? "n/a" : count(r.dateCorrected)}</td>}
                 <td className="dl-num mono">{count(r.amended)}</td>
               </tr>
             ))}
             {view.length === 0 && (
-              <tr><td colSpan={COLS.length} className="dl-none">No members match.</td></tr>
+              <tr><td colSpan={cols.length} className="dl-none">No members match.</td></tr>
             )}
           </tbody>
         </table>

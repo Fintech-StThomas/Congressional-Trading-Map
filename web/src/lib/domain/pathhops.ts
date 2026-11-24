@@ -21,7 +21,7 @@ function fromEdge(e: Edge, file: string, source: Hop["source"] = "edge"): Hop {
   return {
     key: e.id, edge: e.id, file, full: true, source, type: e.type, label: typeLabel(e), family: e.family, basis: e.basis,
     directed: e.directed, from: e.from, to: e.to, amount: e.amount, count: e.count, first: e.first || null, last: e.last || null,
-    years: y?.years ?? null, yearsBasis: y?.basis ?? null, side: spendingSide(e), via: e.via?.name ?? null,
+    years: y?.years ?? null, yearsBasis: y?.basis ?? null, side: spendingSide(e), via: e.via?.name ?? null, note: e.note,
   };
 }
 
@@ -42,7 +42,7 @@ export function hopsFromMemberFile(file: MemberFileWire): Hop[] {
       label: typeLabel({ type: r.type, note: r.note, via: r.via }), family: FAMILY_OF[r.type] ?? "money",
       basis: DERIVED_TYPES.has(r.type) ? "derived" : "filed", directed, from, to,
       amount: { low: r.low, high: r.high, exact: r.exact }, count: r.count, first: r.first, last: r.last,
-      years: y?.years ?? null, yearsBasis: y?.basis ?? null, side, via: r.via?.name ?? null,
+      years: y?.years ?? null, yearsBasis: y?.basis ?? null, side, via: r.via?.name ?? null, note: r.note,
     });
   }
   return out;
@@ -78,7 +78,7 @@ export function hopsFromOrgFile(file: OrgFileWire): Hop[] {
       basis: DERIVED_TYPES.has(type) ? "derived" : "filed", directed, from, to,
       amount: { low: (r.low as number | null) ?? null, high: (r.high as number | null) ?? null, exact: (r.exact as number | null) ?? null },
       count: Number(r.count ?? 0), first, last, years: y?.years ?? null, yearsBasis: y?.basis ?? null,
-      side: spendingSide({ note, via: null }), via: null,
+      side: spendingSide({ note, via: null }), via: null, note,
     } satisfies Hop;
   });
 }

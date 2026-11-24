@@ -1,5 +1,6 @@
 // The printable case file: a print-first document rendered with the member page
 // and shown only in print (window.print). Server component; no client code.
+import { AMEND } from "@/lib/copy-amend";
 import type { Edge, MemberFileWire, MetaSource } from "@/lib/types";
 import { ledgerTieCount, type LedgerRow, type TradeRow } from "@/lib/data/decode";
 import { directionWord, typeLabel, amountLabel } from "@/lib/domain/edges";
@@ -23,7 +24,9 @@ function rowAmount(r: { exact: number | null; low: number | null; high: number |
   return "not disclosed";
 }
 
-export function CaseFile({ file, board, against, names, ledger, trades, sources, built, orgName, caseMinTypes }: {
+export function CaseFile({ file, board, against, names, ledger, trades, sources, built, orgName, caseMinTypes, foldedAmendments = false }: {
+  /** The trade file carries `amendments` (a build that folds amended reprints): say so; older builds keep the older wording. */
+  foldedAmendments?: boolean;
   file: MemberFileWire; board: Edge[]; against: { shown: Edge[]; more: number }; names: (id: string) => string; ledger: LedgerRow[]; trades: TradeRow[];
   sources: MetaSource[]; built: string | null; orgName: (id: string) => string; caseMinTypes: number;
 }) {
@@ -155,7 +158,7 @@ export function CaseFile({ file, board, against, names, ledger, trades, sources,
       {nTrades > 0 && (
         <section className="cf__sec">
           <h3>Household trades</h3>
-          <p className="cf__note">{count(nTrades)} periodic transaction reports as filed (current versions). Amounts are disclosed ranges. The {Math.min(TOP_TRADES, trades.length)} most recent are listed; all {count(nTrades)} are in the full file: {fullUrl}</p>
+          <p className="cf__note">{count(nTrades)} periodic transaction reports as filed ({foldedAmendments ? AMEND.printNote : "current versions"}). Amounts are disclosed ranges. The {Math.min(TOP_TRADES, trades.length)} most recent are listed; all {count(nTrades)} are in the full file: {fullUrl}</p>
           <div className="cf__three">
             <table className="cf__table cf__mini">
               <thead><tr><th>Year</th><th className="num">Trades</th></tr></thead>
@@ -176,7 +179,7 @@ export function CaseFile({ file, board, against, names, ledger, trades, sources,
               {trades.slice(0, TOP_TRADES).map((t) => (
                 <tr key={t.id}>
                   <td className="mono">{t.date ?? "—"}</td><td>{t.owner}</td><td>{t.action}</td><td className="mono">{t.ticker ?? "—"}</td>
-                  <td className="cf__small">{t.asset}</td><td className="num mono">{rowAmount({ exact: null, low: t.low, high: t.high })}</td><td className="mono">{t.available ?? "—"}</td>
+                  <td className="cf__small">{t.asset}{t.amended ? ` (${AMEND.amended})` : ""}</td><td className="num mono">{rowAmount({ exact: null, low: t.low, high: t.high })}</td><td className="mono">{t.available ?? "—"}</td>
                 </tr>
               ))}
             </tbody>

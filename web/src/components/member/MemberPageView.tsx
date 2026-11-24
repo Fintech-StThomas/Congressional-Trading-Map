@@ -18,6 +18,7 @@ import { CASES_UI } from "@/lib/copy-ui";
 import type { Edge, OrgSummary } from "@/lib/types";
 import { TieSection } from "@/components/member/TieSection";
 import { TradesTable } from "@/components/member/TradesTable";
+import { amendmentsFor } from "@/lib/domain/amendments";
 import { LedgerTable } from "@/components/member/LedgerTable";
 import { moneyTotals } from "@/lib/domain/money-totals";
 import { moneyYearSeries } from "@/lib/domain/money-years";
@@ -139,7 +140,7 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
     holdings, meta: coverageMeta(meta), tradeValues: tradeValueStats(tradeFile),
   });
   const cite: MemberCiteProps = {
-    member: { id: m.id, name: m.name }, hasTrades: nTrades > 0, limitations: facts.map((f) => f.text),
+    member: { id: m.id, name: m.name }, fecIds: m.fec_ids, hasTrades: nTrades > 0, limitations: facts.map((f) => f.text),
     counts: { trades: m.counts.trades, organisations: m.counts.orgs, members: m.counts.members, cases: m.counts.cases },
     dates: { first: ts?.first ?? null, last: ts?.last ?? null },
   };
@@ -250,13 +251,13 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
         </p>
         <CoverageNote facts={facts} scopes={["trades", "owner", "values"]} label="Coverage for trades" testId="coverage-trades" />
         <ErrorBoundary label="trades table">
-          <TradesTable initial={initialTrades} total={nTrades} fullUrl={data.fileUrl(`trades/${m.id}.json`)} />
+          <TradesTable initial={initialTrades} total={nTrades} fullUrl={data.fileUrl(`trades/${m.id}.json`)} later={amendmentsFor(tradeFile, initialTrades.map((t) => t.id))} />
         </ErrorBoundary>
         {nTrades > initialTrades.length && <p className="print-only">The full list of {count(nTrades)} trades is on the website; this dossier prints the {initialTrades.length} most recent.</p>}
       </section>
 
       <style>{`@media print { @page { @top-left { content: "${SITE.name} · ${caseNo}"; } } }`}</style>
-      <CaseFile file={file} board={pickBoard(m.id, file.edges)} against={pickAgainst(file.edges)} names={nameOf} ledger={ledger} trades={initialTrades} sources={metaSources(meta)} built={built} orgName={orgName} caseMinTypes={minTypes} />
+      <CaseFile file={file} board={pickBoard(m.id, file.edges)} against={pickAgainst(file.edges)} names={nameOf} ledger={ledger} trades={initialTrades} sources={metaSources(meta)} built={built} orgName={orgName} caseMinTypes={minTypes} foldedAmendments={tradeFile?.amendments !== undefined} />
       <MemberCitePrint {...cite} />
 
       <footer className="provenance">

@@ -4,7 +4,7 @@
 import type { Amount, Edge, EdgeType, NodeRef } from "../types.ts";
 import { amountText } from "../format.ts";
 import { YEAR_MAX, YEAR_MIN } from "../years.ts";
-import { spendingSide } from "./pick.ts";
+import { isAgainst, spendingSide } from "./pick.ts";
 
 export type Family = Edge["family"];
 export const FAMILIES: Family[] = ["money", "holding", "people", "context"];
@@ -132,9 +132,11 @@ export function strokeWidth(e: Edge, range?: [number, number]): number {
   return Math.round((1.6 + t * 3.6) * 10) / 10;
 }
 
-export type StringStyle = "filed" | "derived" | "weak" | "context";
+/** "against" is spending against the member: never a tie, so it is drawn with no red mark. */
+export type StringStyle = "filed" | "derived" | "weak" | "context" | "against";
 
 export function stringStyle(e: Edge): StringStyle {
+  if (isAgainst(e)) return "against";
   if (e.family === "context") return "context";
   if (e.basis === "derived") return "derived";
   if (e.weak) return "weak";

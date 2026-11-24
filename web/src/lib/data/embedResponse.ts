@@ -5,6 +5,7 @@ import type { Data } from "./reader.ts";
 import { metaBuilt } from "./meta.ts";
 import { isMemberId } from "./ids.ts";
 import { buildEmbedHtml, topTies, type EmbedTheme } from "../domain/embed.ts";
+import { decodeTradeFile } from "./decode.ts";
 import { embedHeaders } from "../security-headers.ts";
 
 const NOT_FOUND = () => new Response("Not found", { status: 404, headers: { "Content-Type": "text/plain; charset=utf-8" } });
@@ -13,7 +14,10 @@ export async function embedResponse(data: Data, id: string, theme: EmbedTheme): 
   if (!isMemberId(id) || !(await data.isKnownMember(id))) return NOT_FOUND(); // shape and (remote) membership before any member file
   const [member, file, meta] = await Promise.all([data.getMemberIndex().then((m) => m.get(id)), data.getMemberFile(id), data.getMeta()]);
   if (!member) return NOT_FOUND();
-  const html = buildEmbedHtml({ member, ties: file ? topTies(file, id) : [], release: data.release, built: metaBuilt(meta), theme });
+  // Buys and sells apart for the trade ties: the card reads the member's trade rows (none when the member has no trade file).
+  // A failed trade-file read drops the detail line; the card itself still renders.
+  const trades = file && file.edges.some((e) => e.type === "traded") ? await data.getTradeFile(id).then((f) => decodeTradeFile(f), () => []) : [];
+  const html = buildEmbedHtml({ member, ties: file ? topTies(file, id, undefined, trades) : [], release: data.release, built: metaBuilt(meta), theme });
   const headers = new Headers({ "Content-Type": "text/html; charset=utf-8" });
   for (const h of embedHeaders(process.env)) headers.set(h.key, h.value); // the same rules next.config.ts applies to /embed/*
   return new Response(html, { headers });

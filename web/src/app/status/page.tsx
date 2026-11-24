@@ -7,6 +7,7 @@ import { STATUS } from "@/lib/copy";
 import { IS_SAMPLE, latestData } from "@/lib/data/server";
 import { metaBuild, metaCoverageNotes, metaSources } from "@/lib/data/meta";
 import { REVALIDATE_SECONDS } from "@/lib/data/remote";
+import { siteTerms } from "@/lib/domain/method-build";
 import { readLatestRun, type DailyRun } from "@/lib/domain/runstatus";
 import { count, date, releaseShort } from "@/lib/format";
 import { correctionsLogUrl, dailyRunApiUrl, safeHttpUrl } from "@/lib/urls";
@@ -114,7 +115,7 @@ export default async function StatusPage() {
       {notes.length > 0 && (
         <section className="section" aria-labelledby="st-cov">
           <h2 id="st-cov">{STATUS.coverageHeading}</h2>
-          <ul className="status__list">{notes.map((n) => <li key={n}>{n}</li>)}</ul>
+          <ul className="status__list">{notes.map((n) => <li key={n}>{siteTerms(n)}</li>)}</ul>
         </section>
       )}
 
