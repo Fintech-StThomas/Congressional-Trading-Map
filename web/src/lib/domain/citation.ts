@@ -35,7 +35,7 @@ export type AmountBlock = { displayed: string; low: number | null; high: number 
 export type Citation = {
   schema: typeof CITATION_SCHEMA;
   title: string;
-  kind: "tie" | "member" | "records" | "table";
+  kind: "tie" | "member" | "records" | "table" | "org" | "delays";
   subject: { members: { id: string; name: string }[]; orgs: { id: string; name: string }[] };
   /** The official record ids and addresses, listed first: the sources below are the datasets that extracted the rows. */
   official: Official;
@@ -80,31 +80,31 @@ export function amountBlock(a: Amount): AmountBlock {
 const asQuery = (a: Assumptions | null | undefined) => (a && !isDefault(a) ? `?as=${encodeAssumptions(a)}` : "");
 
 /** The permanent link exists only when a data release is known; the latest link always does. */
-function links(release: string | null, path: { latest: string; pinned: ((r: string) => string) | null }, query: string): Pick<Citation, "links" | "permanence_note"> {
+export function links(release: string | null, path: { latest: string; pinned: ((r: string) => string) | null }, query: string): Pick<Citation, "links" | "permanence_note"> {
   const permanent = release && path.pinned ? siteUrl(path.pinned(release) + query) : null;
   return { links: { permanent, latest: siteUrl(path.latest + query) }, permanence_note: permanent ? null : CITE.noPermanent };
 }
 
-const validRelease = (r: string | null | undefined): string | null => (isReleaseId(r) ? r : null);
+export const validRelease = (r: string | null | undefined): string | null => (isReleaseId(r) ? r : null);
 
 function uniqueSorted(xs: (string | null | undefined)[]): string[] {
   return [...new Set(xs.filter((x): x is string => Boolean(x)))].sort();
 }
 
-function sourceRefs(env: CiteEnv, ids: string[] | null): Citation["sources"] {
+export function sourceRefs(env: CiteEnv, ids: string[] | null): Citation["sources"] {
   const all = env.sources ?? [];
   const pick = ids ? ids.map((id) => all.find((s) => s.id === id) ?? { id, name: id }) : all;
   return pick.map((s) => ({ id: s.id, name: s.name, url: safeHttpUrl(s.url ?? null), revision: s.revision ?? null, retrieved: s.retrieved ?? null }));
 }
 
-const base = (env: CiteEnv) => ({
+export const base = (env: CiteEnv) => ({
   data: { release: validRelease(env.release), built: env.built },
   retrieved: env.retrieved,
   method_version: METHOD_VERSION,
   disclaimer: SITE.disclaimer,
 });
 
-const NO_IDS: Citation["identifiers"] = { edge_ids: [], evidence_records: [], trade_ids: [], filing_docs: [], evidence_total: null, truncated: false };
+export const NO_IDS: Citation["identifiers"] = { edge_ids: [], evidence_records: [], trade_ids: [], filing_docs: [], evidence_total: null, truncated: false };
 
 // ---------------------------------------------------------------- a tie and its evidence
 
@@ -258,7 +258,7 @@ export function citationJson(c: Citation): string {
 
 /** A file name for the JSON download, from the ids in the packet: paper-trail-citation-<ids>.json. */
 export function citationFilename(c: Citation): string {
-  const part = c.kind === "tie" ? c.identifiers.edge_ids[0] : c.subject.members[0]?.id;
+  const part = c.kind === "tie" ? c.identifiers.edge_ids[0] : c.kind === "org" ? c.subject.orgs[0]?.id : c.kind === "delays" ? "delays" : c.subject.members[0]?.id;
   const extra = c.kind === "table" ? c.title.replace(/^.*?: /, "").replace(/ \(full file\)$/, "") : c.kind === "records" ? "full-file" : "";
   const raw = ["paper-trail-citation", c.kind === "tie" ? "tie" : "", part ?? "page", extra].filter(Boolean).join("-");
   return `${raw.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/-+/g, "-").replace(/-$/, "")}.json`;

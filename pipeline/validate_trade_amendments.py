@@ -56,6 +56,19 @@ def check_trade_file(c: Any, tf: dict[str, Any], where: str) -> None:
                     "amendments: the trade is timed from its earliest public filing", f"{where}:{tid}")
 
 
+def lag_null_is_valid(row: dict[str, Any], tf: dict[str, Any]) -> bool:
+    """`lag_days` is null iff a date is missing, or both dates are present and a later dataset version corrected the
+    transaction date (or would have made the lag negative): then the trade is flagged amended and is either a later
+    dataset version (version > 1; its versions may share one filing, so no "Version" entry is listed) or lists a later
+    filing in `amendments` (a "Version" or a folded "Amended"/"Deleted" printing that corrected the date)."""
+    if row["date"] is None or row["available"] is None:
+        return row["lag_days"] is None
+    if row["lag_days"] is not None:
+        return True
+    later = (tf.get("amendments") or {}).get(row["id"])
+    return row["amended"] is True and (row["version"] > 1 or (isinstance(later, list) and len(later) > 0))
+
+
 def check_same_key(c: Any, published: dict[str, list[list[Any]]], meta: dict[str, Any]) -> None:
     """published: member id -> rows of trades/<id>.json."""
     trades = [{"member": mid, **dict(zip(TRADE_COLUMNS, r))} for mid, rows in published.items() for r in rows]

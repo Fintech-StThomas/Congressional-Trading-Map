@@ -3,7 +3,7 @@
 import { IS_PINNED } from "./mode.ts";
 import { releaseData, type Data } from "./server.ts";
 import { isReleaseId } from "./release.ts";
-import { isMemberId } from "./ids.ts";
+import { isMemberId, isOrgId } from "./ids.ts";
 
 /** The reader for `release` when the release exists and (if given) `memberId` is one of its members; else null. */
 export async function permalinkData(release: string, memberId?: string): Promise<Data | null> {
@@ -11,6 +11,13 @@ export async function permalinkData(release: string, memberId?: string): Promise
   const data = await releaseData(release);
   if (!data || (memberId !== undefined && !(await data.isKnownMember(memberId)))) return null;
   return data;
+}
+
+/** The reader for `release` when the release exists and `orgId` is an organisation in it; else null (never the latest data). */
+export async function permalinkOrgData(release: string, orgId: string): Promise<Data | null> {
+  if (!isOrgId(orgId)) return null;
+  const data = await permalinkData(release);
+  return data && (await data.getOrgIndex()).has(orgId) ? data : null;
 }
 
 /** What a 200 permalink JSON answer carries: the release never changes. Errors never get it (see next.config.ts). */

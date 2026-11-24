@@ -278,3 +278,6 @@
 .vtable .tradetable th.trades__laterh { width: 300px; }
 .vtable .tradetable.has-later { min-width: 1216px; }
 @media print { .vtable .tradetable.has-later { min-width: 0; } }
+
+/* "Cite this" under the lede: hidden in print (the control carries no-print). */
+.delays .dl-cite { margin: 0.75rem 0 1rem; }

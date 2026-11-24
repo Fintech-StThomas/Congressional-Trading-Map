@@ -43,3 +43,7 @@
   .cmp__table th, .cmp__table td { border-bottom: 1px solid #999; }
   .cmp__explain, .cmp__release { break-inside: avoid; background: none; }
 }
+.cmp__older { display: grid; gap: 4px; margin-top: 4px; }
+.cmp__older label { font-size: 12px; color: var(--text-2); font-weight: 600; }
+.cmp__older input { min-height: 36px; max-width: 100%; font-size: 12px; }
+.cmp__older p { margin: 0; min-height: 1.2em; }

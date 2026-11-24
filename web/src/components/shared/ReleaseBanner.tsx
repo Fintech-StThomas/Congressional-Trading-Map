@@ -5,11 +5,12 @@ import { RELEASE } from "@/lib/copy";
 import { date, releaseShort } from "@/lib/format";
 import { Notice } from "./Notice";
 
-export function ReleaseBanner({ release, built, latestHref }: { release: string; built: string | null; latestHref: string }) {
+/** `body` replaces the member-page sentence on pages that are not a member's (organisation, disclosure timing). */
+export function ReleaseBanner({ release, built, latestHref, body }: { release: string; built: string | null; latestHref: string; body?: string }) {
   return (
     <Notice tone="snapshot" className="release-banner" data-testid="release-banner" data-release={release}>
       <p>
-        <strong>{RELEASE.banner(releaseShort(release), built ? date(built) : null)}</strong> {RELEASE.bannerBody}
+        <strong>{RELEASE.banner(releaseShort(release), built ? date(built) : null)}</strong> {body ?? RELEASE.bannerBody}
       </p>
       <p className="release-banner__latest no-print">
         <Link href={latestHref}>{RELEASE.latestLink}</Link>

@@ -28,7 +28,7 @@ from .holdings.rules import redact_beneficiary
 from .util import BUILD, OUT, read_json
 from .validate_delays import check_delays
 from .validate_fec_spending import check_campaign_finance, load_links
-from .validate_trade_amendments import check_folding, check_trade_file
+from .validate_trade_amendments import check_folding, check_trade_file, lag_null_is_valid
 
 DATE = "date"
 OWNERS = {"self", "spouse", "joint", "dependent", "unspecified"}
@@ -302,7 +302,7 @@ def check_trades(c: Checker, mf: dict[str, Any], where: str, orgs: set[str]) -> 
                 and row["ticker_source"] in TICKER_SOURCES, "trade enums", f"{where}:{row['id']}")
         c.check(opt(is_date)(row["date"]) and opt(is_date)(row["available"]), "schema", f"{where}:{row['id']} dates")
         c.check(row["low"] is None or row["high"] is None or row["low"] <= row["high"], "trade low <= high", row["id"])
-        c.check(row["lag_days"] is None if row["date"] is None or row["available"] is None else row["lag_days"] is not None or row["amended"] is True, "lag null iff a date is missing or a later version corrected the date", row["id"])
+        c.check(lag_null_is_valid(row, t), "lag null iff a date is missing or a later version or printing corrected the date (flagged amended, version > 1 or a later filing listed)", row["id"])
         c.check(row["late"] is None if row["lag_days"] is None else row["late"] == (row["lag_days"] > LATE_DAYS), "late = lag_days > 45", row["id"])
         c.check(row["doc"] in mf["filings"], "trade doc has a filing URL", row["id"])
         c.check(row["org"] is None or row["org"] in orgs, "trade org exists", f"{row['id']}:{row['org']}")

@@ -107,7 +107,7 @@ Production stays on `DATA_BASE_URL` until the archive publisher is activated; no
 | Prebuilt / ISR | same routes as remote mode; the live twins serve per-member, per-state and paged routes |
 | Browser data | `/releases/<id>/<file>` (a `beforeFiles` rewrite to the bucket, `Cache-Control: immutable`) and the generated JSON at `/r/<id>/board-data/<state>`, `/r/<id>/board-member/<id>`, `/r/<id>/search-index` |
 | Release list | `/releases/index.json` (a `beforeFiles` rewrite to the bucket's `index.json`, `Cache-Control: no-cache`: it is mutable and never used to decide what is current). Read by `/changes` and, on the server, by `resolveRelease` (`lib/data/server.ts`): `/r/<id>/...` is served only for an id this list names or the current release, re-read every 5 minutes. `/changes` validates it strictly (`validateReleaseIndex`) and shows "comparisons need archived data releases" when it is empty or missing |
-| Permalinks | `/r/<id>/m/<member>` and `/r/<id>/m/<member>/records`: one release, a banner, `noindex`, canonical link to the latest page. An unavailable release (never published, withdrawn, malformed id) is a 404 that says so; it is never replaced by the latest data |
+| Permalinks | `/r/<id>/m/<member>`, `/r/<id>/m/<member>/records`, `/r/<id>/o/<org>` and `/r/<id>/delays` (wording in `lib/copy-permalink.ts`; `npm run test:pinned` runs every file in `tests/pinned/`): one release, a banner, `noindex`, canonical link to the latest page. An unavailable release (never published, withdrawn, malformed id) is a 404 that says so; it is never replaced by the latest data |
 
 How a request stays on one release:
 

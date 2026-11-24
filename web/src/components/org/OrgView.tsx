@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Edge, OrgFileWire } from "@/lib/types";
 import { decodeOrgTies, orgTieTotal, type TieEdge } from "@/lib/data/decode";
-import { recordUrlFor, boardHref, dataUrl, memberHref, orgFeedHref } from "@/lib/urls";
+import { recordUrlFor, boardHref, dataUrl, memberHref, orgFeedHref, releaseMemberHref } from "@/lib/urls";
 import { ORG_FEED } from "@/lib/copy-discovery";
 import { FollowButton } from "@/components/shared/FollowButton";
 import { FAMILY_LABEL, TYPE_LABEL } from "@/lib/domain/edges";
@@ -20,6 +20,7 @@ import { PartyTag } from "@/components/shared/Print";
 import { LineSample } from "@/components/shared/LineSample";
 import { OrgReach, OrgSplit } from "./OrgReach";
 import { ConnectLink } from "@/components/connect/ConnectLink";
+import { OrgActions } from "./OrgActions";
 
 /** Feed discovery for readers: <link rel="alternate"> to this organisation's feed (the page is one static shell, so it is added once the id is known). */
 function addFeedAlternate(id: string, name: string) {
@@ -35,8 +36,11 @@ function addFeedAlternate(id: string, name: string) {
 
 type Key = "member" | "type" | "amount" | "count" | "last";
 
-/** The organisation page, rendered in the browser from the org shard. */
-export function OrgView({ sources }: { sources: Record<string, string> }) {
+/**
+ * The organisation page, rendered in the browser from the org shard. `id` and `release` are given by the permanent page
+ * (/r/<release>/o/<id>); the latest page (one static shell) reads the id from its address and has no release of its own.
+ */
+export function OrgView({ sources, id: fixedId, release = null }: { sources: Record<string, string>; id?: string; release?: string | null }) {
   const [orgId, setOrgId] = useState<string | null>(null);
   const [file, setFile] = useState<OrgFileWire | null>(null);
   const [members, setMembers] = useState<Record<string, BoardMember>>({});
@@ -50,7 +54,7 @@ export function OrgView({ sources }: { sources: Record<string, string> }) {
 
   useEffect(() => {
     const raw = window.location.pathname.replace(/^\/o\//, "").replace(/\/$/, "");
-    const id = decodeURIComponent(raw);
+    const id = fixedId ?? decodeURIComponent(raw);
     setOrgId(id);
     let live = true;
     (async () => {
@@ -73,7 +77,7 @@ export function OrgView({ sources }: { sources: Record<string, string> }) {
       live = false;
       document.head.querySelectorAll("link[data-org-feed]").forEach((n) => n.remove());
     };
-  }, []);
+  }, [fixedId]);
 
   const ties = useMemo(() => (file ? decodeOrgTies(file) : []), [file]);
   // Listed ties plus the money ties only ledger_totals counts (disjoint by contract).
@@ -167,6 +171,10 @@ export function OrgView({ sources }: { sources: Record<string, string> }) {
         <div className="dossier__actions">
           <Link className="btn btn--paper" href={boardHref({ o: o.id })}>Open on the board</Link>
           <ConnectLink a={o.id} />
+          <OrgActions
+            org={{ id: o.id, name: o.name }} listed={ties.length} total={totalTies} members={o.degree} query={q} sources={sources}
+            rows={rows.map((e) => ({ edge: e, member: { id: memberOf(e), name: members[memberOf(e)]?.name ?? null, party: members[memberOf(e)]?.party ?? null, state: members[memberOf(e)]?.state ?? null } }))}
+          />
           <FollowButton kind="org" id={o.id} name={o.name} />
           <Link className="btn btn--small" href={orgFeedHref(o.id)} prefetch={false} title={ORG_FEED.subscribeTitle} data-testid="org-feed-link">{ORG_FEED.subscribe}</Link>
           {record && (
@@ -224,7 +232,7 @@ export function OrgView({ sources }: { sources: Record<string, string> }) {
                 return (
                   <tr key={e.id} className={open?.id === e.id ? "is-active" : undefined}>
                     <td data-label="Member">
-                      <Link href={memberHref(mid)} className="ties__name">{m?.name ?? mid}</Link>
+                      <Link href={release ? releaseMemberHref(release, mid) : memberHref(mid)} className="ties__name">{m?.name ?? mid}</Link>
                       {m && (
                         <span className="ties__sub">
                           <PartyTag party={m.party} /> {seat(m, false)}

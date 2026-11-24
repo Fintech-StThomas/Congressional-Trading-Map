@@ -4,11 +4,18 @@ import "@/styles/delays.css";
 import Link from "next/link";
 import { DELAYS } from "@/lib/copy";
 import { DELAYS_AMEND } from "@/lib/copy-amend";
-import { latestData } from "@/lib/data/server";
+import type { Data } from "@/lib/data/server";
+import { metaBuilt, metaSources } from "@/lib/data/meta";
 import { decodeDelayMembers, readDelays, viewRows } from "@/lib/domain/delays";
 import { count } from "@/lib/format";
+import { delaysHref } from "@/lib/urls";
+import { PERMALINK } from "@/lib/copy-permalink";
 import type { Delays } from "@/lib/types";
 import { ReleasePin } from "@/components/shared/ReleasePin";
+import { ReleaseBanner } from "@/components/shared/ReleaseBanner";
+import { CiteEnvProvider } from "@/components/shared/CiteEnv";
+import { DelaysCite } from "./DelaysCite";
+import "@/styles/cite.css";
 import { BandSummary } from "./BandSummary";
 import { GroupsTable } from "./GroupsTable";
 import { MembersTable } from "./MembersTable";
@@ -42,12 +49,15 @@ function Definition({ d, newBuild = true }: { d: Delays["definition"] | undefine
   );
 }
 
-export async function DelaysView() {
-  const data = await latestData();
+/** The page for one data reader: the latest release at /delays, or `pinned` (a permanent page, /r/<release>/delays) with its banner. */
+export async function DelaysView({ data, pinned = false }: { data: Data; pinned?: boolean }) {
   const delays = readDelays(await data.readData<unknown>("delays.json", null));
+  const meta = await data.getMeta();
+  const built = metaBuilt(meta);
   const head = (
     <>
       <ReleasePin release={data.release} />
+      {pinned && data.release && <ReleaseBanner release={data.release} built={built} latestHref={delaysHref()} body={PERMALINK.bannerBody} />}
       <h1>{DELAYS.title}</h1>
       <p className="lede">{DELAYS.lede}</p>
     </>
@@ -80,9 +90,15 @@ export async function DelaysView() {
     .concat(Object.keys(delays.by_year).includes("none") ? ["none"] : [])
     .map((y) => ({ key: y, label: y === "none" ? "None (no transaction date)" : y, g: delays.by_year[y] }));
 
+  const sources = metaSources(meta).map((x) => ({
+    id: x.id, name: typeof x.name === "string" ? x.name : x.id, url: typeof x.url === "string" ? x.url : null,
+    revision: x.revision ? String(x.revision) : null, retrieved: x.retrieved ? String(x.retrieved) : null,
+  }));
   return (
+    <CiteEnvProvider release={data.release} built={built} sources={sources}>
     <div className="page delays">
       {head}
+      <div className="dl-cite"><DelaysCite counts={{ published_trades: delays.totals.count, members: rows.length }} /></div>
       <Caveat />
       <Definition d={delays.definition} newBuild={delays.totals.date_corrected !== undefined} />
       <BandSummary g={delays.totals} />
@@ -95,5 +111,6 @@ export async function DelaysView() {
       </section>
       <p className="dl-sub">{count(delays.totals.count)} published trades in this build.</p>
     </div>
+    </CiteEnvProvider>
   );
 }

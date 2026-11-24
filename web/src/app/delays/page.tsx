@@ -2,6 +2,7 @@
 // and by member. Static in local mode; in remote and pinned modes it reads delays.json through the Data reader.
 import type { Metadata } from "next";
 import { DELAYS } from "@/lib/copy";
+import { latestData } from "@/lib/data/server";
 import { DelaysView } from "@/components/delays/DelaysView";
 
 export const metadata: Metadata = {
@@ -9,6 +10,6 @@ export const metadata: Metadata = {
   description: DELAYS.description,
 };
 
-export default function DelaysPage() {
-  return <DelaysView />;
+export default async function DelaysPage() {
+  return <DelaysView data={await latestData()} />;
 }

@@ -10,6 +10,9 @@ import { isMemberId } from "@/lib/data/ids";
 import { isReleaseId } from "@/lib/data/release";
 import { loadMemberSide, loadReleaseIndex, type SideResult } from "@/lib/data/compareLoad";
 import { defaultPair, releaseOptionLabel, type ReleaseIndexEntry } from "@/lib/domain/compare";
+import { RELEASE_PICKER, RELEASE_PICKER_CAP } from "@/lib/copy-permalink";
+import { pickerEntries } from "@/lib/domain/releaseOptions";
+import { ReleaseIdInput } from "./ReleaseIdInput";
 import { ChangesResult, Explanation, type OkSide } from "./ChangesResult";
 import "@/styles/changes.css";
 
@@ -28,13 +31,15 @@ function Shell({ children }: { children: React.ReactNode }) {
 
 function Picker({ id, label, value, entries, onChange }: { id: string; label: string; value: string | null; entries: ReleaseIndexEntry[]; onChange: (v: string) => void }) {
   const listed = entries.some((e) => e.release_id === value);
+  const shown = pickerEntries(entries, [value]);
   return (
     <div className="cmp__pick">
       <label htmlFor={id}>{label}</label>
       <select id={id} value={value ?? ""} onChange={(e) => onChange(e.target.value)} data-testid={id}>
         {value && !listed && <option value={value}>{releaseShort(value)} (not in the list)</option>}
-        {entries.map((e) => <option key={e.release_id} value={e.release_id}>{releaseOptionLabel(e)}</option>)}
+        {shown.map((e) => <option key={e.release_id} value={e.release_id}>{releaseOptionLabel(e)}</option>)}
       </select>
+      {entries.length > RELEASE_PICKER_CAP && <ReleaseIdInput id={`${id}-id`} entries={entries} onPick={onChange} />}
     </div>
   );
 }
@@ -121,6 +126,7 @@ export function ChangesView({ pinned }: { pinned: boolean }) {
         <Picker id="cmp-to" label={COMPARE.toLabel} value={sel.to} entries={entries} onChange={(v) => set({ ...sel, to: v })} />
       </form>
       <p className="cmp__sub no-print">{COMPARE.indexAdvisory}</p>
+      {entries.length > RELEASE_PICKER_CAP && <p className="cmp__sub no-print" data-testid="cmp-older">{RELEASE_PICKER.olderLine(RELEASE_PICKER_CAP, entries.length)}</p>}
       {!key && <div className="cmp__state" role="status" data-testid="cmp-same"><p>{COMPARE.sameRelease}</p></div>}
       {key && failed === key && <div className="cmp__state" role="alert" data-testid="cmp-error"><p>{COMPARE.loadError}</p></div>}
       {key && failed !== key && !current && <p role="status" aria-busy="true">{COMPARE.loading}</p>}
