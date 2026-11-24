@@ -36,3 +36,11 @@ export const FINANCE = {
     pacNone: "No leadership PAC linked to this member in the cycles loaded.",
   },
 } as const;
+
+/** The explainer for the campaign-money "no category" row; Explain.tsx merges it with lib/copy.ts EXPLAIN. */
+export const FINANCE_EXPLAIN = {
+  nocategory: {
+    label: "No FEC category on the filing",
+    body: "The FEC files most PAC spending without a category code, so this row is usually the largest. It means the filing carries no category, not that the money went anywhere in particular. The amount is as filed; the site does not guess a category.",
+  },
+} as const;

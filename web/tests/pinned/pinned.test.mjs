@@ -500,9 +500,7 @@ test("a page left open says newer data exists: after 30 visible minutes, never w
   const open = async (path) => {
     const p = await browser.newPage();
     const asked = [];
-    p.on("request", (r) => {
-      if (new URL(r.url()).pathname === "/releases/current.json") asked.push(Date.now());
-    });
+    p.on("request", (r) => new URL(r.url()).pathname === "/releases/current.json" && asked.push(Date.now()));
     // The tab's visibility is scriptable so the hidden case can be exercised.
     await p.addInitScript(() => {
       window.__visible = true;
@@ -511,8 +509,7 @@ test("a page left open says newer data exists: after 30 visible minutes, never w
     await p.clock.install();
     await p.goto(`${site}${path}`);
     await p.getByTestId("footer-age").waitFor();
-    // Requests made while the page loads (the stale banner's one visible check of what is published now, the
-    // permalink's snapshot comparison) are counted apart: the rules below are about what happens afterwards.
+    // Pointer reads during load (stale-banner check, snapshot comparison) are counted apart from later polling.
     await p.waitForLoadState("networkidle");
     return { p, asked, atLoad: asked.length };
   };
@@ -545,8 +542,7 @@ test("a page left open says newer data exists: after 30 visible minutes, never w
   const perm = await open(`/r/${A}/m/${MEMBER}`);
   await perm.p.clock.runFor(35 * 60 * 1000);
   await perm.p.waitForTimeout(300);
-  assert.ok(perm.atLoad >= 1, "the snapshot comparison read the pointer");
-  assert.equal(perm.asked.length, perm.atLoad, "a permalink never polls");
+  assert.ok(perm.atLoad >= 1 && perm.asked.length === perm.atLoad, "read at load for the snapshot comparison, never polled");
   assert.equal(await perm.p.getByTestId("newer-data-note").count(), 0);
   await perm.p.close();
 });

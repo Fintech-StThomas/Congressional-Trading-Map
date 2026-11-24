@@ -72,6 +72,13 @@ export function financeFor(id) {
 }
 
 /** Extra FEC ids a fixture member needs so every loan row's candidate id is one of its own. */
-export function extraFecIds(id) {
+function extraFecIds(id) {
   return id === "X000008" ? ["P0SAMPLE08"] : [];
+}
+
+/** A fixture member file with its campaign_finance block (when it has one) and any extra FEC ids that block needs. */
+export function withFinance(id, file) {
+  const cf = financeFor(id);
+  const member = { ...file.member, fec_ids: [...file.member.fec_ids, ...extraFecIds(id)] };
+  return cf === undefined ? { ...file, member } : { ...file, member, campaign_finance: cf };
 }

@@ -1,6 +1,7 @@
 // The member page ("case file") for one data reader: header and counts, cases, ties with evidence, the ledger of
-// further ties, activity by year, campaign money (FEC loans and leadership PAC spending), holdings, trades, and the print-only case file. Shared by the latest route
-// (app/m/[id], with its live twin) and the release permalink (app/r/[release]/m/[id]), which adds a banner.
+// further ties, activity by year, campaign money (FEC loans, leadership PAC spending), holdings, trades, and the
+// print-only case file. Shared by the latest route (app/m/[id], with its live twin) and the release permalink
+// (app/r/[release]/m/[id]), which adds a banner.
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -9,7 +10,6 @@ import { decodeLedger, decodeTradeFile, ledgerTotals } from "@/lib/data/decode";
 import { countByBasis, countWire } from "@/lib/domain/datebasis";
 import { sortEdges, TYPE_LABEL } from "@/lib/domain/edges";
 import { count, date, money, plural, seat, stateName, yearRange } from "@/lib/format";
-import { SECTION_INDEX } from "@/lib/copy-ui";
 import { boardHref, memberHref, recordsHref, releaseRecordsHref } from "@/lib/urls";
 import { toBoardMember, type NameBook } from "@/lib/domain/names";
 import { caseMinTypes, metaSources, sourceNames } from "@/lib/data/meta";
@@ -37,7 +37,7 @@ import { CiteEnvProvider } from "@/components/shared/CiteEnv";
 import { CoverageNote } from "@/components/shared/CoverageNote";
 import { MemberCitePrint, type MemberCiteProps } from "@/components/member/MemberCite";
 import { MemberHeader } from "@/components/member/MemberHeader";
-import { SectionIndex } from "@/components/member/SectionIndex";
+import { memberSections, SectionIndex } from "@/components/member/SectionIndex";
 import { coverageFacts, coverageMeta, tradeValueStats } from "@/lib/domain/coverage";
 import "@/styles/cite.css";
 import { ViewSwitch } from "@/components/shared/ViewSwitch";
@@ -168,16 +168,7 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
       <ViewPrintLine casefile />
       <MemberHeader m={m} release={release} hasReleases={Boolean(data.release)} nTrades={nTrades} lateCount={lateCount} cite={cite} />
 
-      <SectionIndex
-        links={[
-          ...(file.cases.length > 0 ? [{ id: "cases", label: SECTION_INDEX.cases }] : []),
-          { id: "ties", label: SECTION_INDEX.ties },
-          { id: "activity", label: SECTION_INDEX.activity },
-          { id: "money", label: SECTION_INDEX.money },
-          { id: "holdings", label: SECTION_INDEX.holdings },
-          { id: "trades", label: SECTION_INDEX.trades },
-        ]}
-      />
+      <SectionIndex links={memberSections(file.cases.length > 0)} />
 
       {file.cases.length > 0 && (
         <section className="section" id="cases" aria-labelledby="cases-h">
