@@ -26,6 +26,10 @@ jobs:
           persist-credentials: false
       - name: Test status checker
         run: python -m unittest scripts.ci.test_check_status
+      - name: File line cap
+        run: |
+          python -m unittest scripts.ci.test_check_lines
+          python scripts/ci/check_lines.py
       - name: Require STATUS.md for code changes
         if: github.event_name == 'pull_request'
         env:

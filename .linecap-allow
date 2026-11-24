@@ -1,0 +1,30 @@
+# Files already over the 300-line cap: `<lines> <path>`. A file may not grow past its count.
+# Counts only go down; remove a line when its file is under 300. Regenerate: check_lines.py --write-allow
+1743 web/src/styles/board.css
+1244 web/src/styles/pages.css
+1022 docs/data-dictionary.md
+945 web/tests/smoke.test.mjs
+892 web/src/styles/reach.css
+888 web/src/lib/copy.ts
+852 web/src/styles/globals.css
+662 web/scripts/make-fixtures.mjs
+643 pipeline/holdings/run.py
+563 pipeline/fec/build.py
+548 web/tests/pinned/pinned.test.mjs
+508 web/src/styles/saved.css
+472 pipeline/validate.py
+430 pipeline/fec/run.py
+413 web/src/components/board/BoardApp.tsx
+399 pipeline/README.md
+390 web/src/components/board/BoardCanvas.tsx
+379 web/src/lib/domain/paths.ts
+362 docs/SECURITY-REVIEW.md
+359 pipeline/tests/test_publish_release.py
+346 web/src/lib/domain/saved.ts
+343 pipeline/tests/test_fec_spending.py
+339 web/src/styles/connect.css
+338 web/src/components/wall/WallView.tsx
+335 pipeline/lda/download.py
+322 web/src/lib/domain/compare.ts
+312 pipeline/tests/test_withdraw_release.py
+303 web/src/components/member/MemberPageView.tsx
