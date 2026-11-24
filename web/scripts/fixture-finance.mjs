@@ -1,12 +1,14 @@
 // Invented campaign_finance blocks for a few fixture members (FEC loans and leadership PAC spending), imported by
 // make-fixtures.mjs. Static and deterministic: it draws no random numbers, so no other fixture value shifts.
 //   X000008  loans with a blank figure and a presidential row
-//   X000001  a leadership PAC: a no-category row, a category refunded more than spent, two cycles, a second PAC
+//   X000001  a leadership PAC: a no-category row, a category refunded more than spent, two cycles, FEC purpose groups (one
+//            unpublished negative total; the second PAC has [] in 2022, 95% uncategorised, and null in 2024), a second PAC, combined sponsor links
 //   X000003  loans, no leadership PAC (note set)
 //   X000012  campaign_finance null
 // Every other member has no field at all, which the site reads the same as null.
 
-const COVERAGE = { loans_cycles: [2016, 2018, 2020, 2022, 2024, 2026], leadership_pac_cycles: [2016, 2018, 2020, 2022, 2024, 2026] };
+const COVERAGE = { loans_cycles: [2016, 2018, 2020, 2022, 2024, 2026], leadership_pac_cycles: [2016, 2018, 2020, 2022, 2024, 2026],
+  purposes_cycles: [2018, 2020, 2022, 2024], purposes_source: "SAMPLE: OpenFEC /committee/{id}/reports by_purpose (invented figures for the fixtures)." };
 const NOTE = "SAMPLE: no leadership PAC is linked to this member in the FEC files loaded.";
 
 const loan = (cycle, candidate_id, office, f) => ({
@@ -15,8 +17,9 @@ const loan = (cycle, candidate_id, office, f) => ({
   through: `${cycle}-12-31`, ...f,
 });
 const cat = (category, label, total, count, refunds = 0, refund_count = 0) => ({ category, label, total, count, refunds, refund_count });
-const pac = (committee_id, committee_name, cycle, categories) => ({
-  committee_id, committee_name, cycle, sponsor_link: "fec_candidate_id",
+const purpose = (purpose, total, count) => ({ purpose, total, count });
+const pac = (committee_id, committee_name, cycle, categories, purposes = null, sponsor_link = "fec_candidate_id") => ({
+  committee_id, committee_name, cycle, sponsor_link, purposes,
   total: categories.reduce((s, c) => s + c.total, 0), count: categories.reduce((s, c) => s + c.count, 0),
   refunds: categories.reduce((s, c) => s + c.refunds, 0), refund_count: categories.reduce((s, c) => s + c.refund_count, 0),
   categories,
@@ -41,17 +44,27 @@ const BLOCKS = {
         cat("001", "Administrative/Salary/Overhead Expenses", 30000, 12),
         cat("012", "Political Contributions", 20000, 6),
         cat(null, "No FEC category on the filing", 150000, 80, 1200, 2),
-      ]),
+      ], [
+        purpose("OTHER", 120000, 70), purpose("CONTRIBUTIONS", 60000, 14), purpose("ADMINISTRATIVE", 20000, 9),
+        purpose("REFUNDS", 1200, 2), purpose("TRANSFERS", null, 1),
+      ], "fec_api_sponsor_id+fec_candidate_id"),
       pac("C00900001", "SAMPLE FORWARD FUND", 2024, [
         cat("001", "Administrative/Salary/Overhead Expenses", 42000, 15, 500, 1),
         cat("004", "Travel", 9000, 4, 15000, 3),
         cat("012", "Political Contributions", 28000, 9),
         cat(null, "No FEC category on the filing", 321000, 140, 4000, 5),
-      ]),
+      ], [
+        purpose("OTHER", 250000, 120), purpose("CONTRIBUTIONS", 100000, 22), purpose("REFUNDS", 19500, 9),
+        purpose("ADVERTISING", 7000, 3), purpose("ADMINISTRATIVE", 5000, 6), purpose("TRAVEL", 0, 0),
+      ], "fec_api_sponsor_id+fec_candidate_id"),
+      pac("C00900002", "SAMPLE LEADERSHIP COMMITTEE", 2022, [
+        cat("006", "Fundraising Expenses", 500, 1),
+        cat(null, "No FEC category on the filing", 9500, 12),
+      ], [], "leadership_file_exact_name"),
       pac("C00900002", "SAMPLE LEADERSHIP COMMITTEE", 2024, [
         cat("006", "Fundraising Expenses", 18000, 7),
         cat(null, "No FEC category on the filing", 2000, 3),
-      ]),
+      ], null, "leadership_file_exact_name"),
     ],
     coverage: { ...COVERAGE, leadership_pac_note: null },
   }),

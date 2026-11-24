@@ -160,6 +160,35 @@
   display: block;
   font-family: var(--sans);
 }
+.fin__link {
+  grid-column: 1;
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+.fin__h5 {
+  font-size: 13.5px;
+  margin: 18px 0 2px;
+}
+.fin__purposes {
+  margin-top: 12px;
+}
+.fin__purnote {
+  margin: 0 0 6px;
+  max-width: 72ch;
+}
+.fin__bars--purposes .fin__bar {
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 2.2fr);
+}
+.fin__fold {
+  margin-top: 6px;
+}
+.fin__fold summary {
+  cursor: pointer;
+  font-size: 13.5px;
+  color: var(--text-2);
+  padding: 6px 0;
+}
 .fin__refnote {
   margin: 8px 0 0;
   max-width: 72ch;
@@ -208,8 +237,12 @@
   .fin__cols {
     display: none;
   }
-  .fin__bar {
+  .fin__bar,
+  .fin__bars--purposes .fin__bar {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .fin__bars--purposes .fin__spent {
+    grid-column: 1 / -1;
   }
   .fin__label,
   .fin__track {
@@ -226,6 +259,11 @@
 }
 
 @media print {
+  /* a folded category table still prints */
+  .fin__fold::details-content {
+    content-visibility: visible;
+    display: block;
+  }
   .cf__cap {
     caption-side: top;
     text-align: left;
