@@ -41,6 +41,11 @@ def publication_budget() -> dict[str, Any]:
                  f"their {MONEY_MEMBERS_PER_ORG} largest members; ledger_totals cover the rest.")}
 
 
+def merged_exclusions(reports: dict[str, Any]) -> dict[str, Any]:
+    """meta.json `exclusions`: the trade exclusions plus the FEC stage's (conduit_pass_through)."""
+    return {**reports.get("hf_trades", {}).get("exclusions", {}), **reports.get("fec", {}).get("exclusions", {})}
+
+
 def run() -> None:
     spine = read_json(BUILD / "spine.json")
     sources, reports, money_cov = load_sources()
@@ -152,7 +157,7 @@ def run() -> None:
             "trades_with_unmatched_ticker": reports.get("sec", {}).get("trades_unmatched_ticker"),
             "edges_dropped_at_assembly": edge_report["edges_dropped"],
         },
-        "exclusions": trades_report.get("exclusions", {}),
+        "exclusions": merged_exclusions(reports),
         "assembly": {**edge_report, "org_files": org_files, "party_split": split_report},
         "coverage_notes": [
             f"House trades: the dataset's House filings begin {trades_report['coverage']['rep']['first_filing']}; "

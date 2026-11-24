@@ -18,8 +18,7 @@ from typing import Any, Callable
 import pyarrow.parquet as pq
 
 from .assemble import case_ok, shard
-from .config import (BOARD_EDGES, FORMER_MEMBER_LEDGER_ROWS, LATE_DAYS, LEDGER_ONLY_TYPES, MAX_EVIDENCE,
-                     MONEY_EDGES_PER_MEMBER, ORG_INDEX_TOP, SAMPLE_SEED, SAMPLE_SIZE)
+from .config import BOARD_EDGES, FORMER_MEMBER_LEDGER_ROWS, LATE_DAYS, LEDGER_ONLY_TYPES, MAX_EVIDENCE, MONEY_EDGES_PER_MEMBER, ORG_INDEX_TOP, SAMPLE_SEED, SAMPLE_SIZE
 from .contract import (FAMILY, MEMBER_LEDGER_COLS, ORG_INDEX_COLS, ORG_TIE_COLS, PARTIES, SPLIT_MEASURES, TRADE_COLUMNS,
                        WALL_COLS, WALL_YEARS_COLS)
 from .assemble.orgs import year_party
@@ -27,10 +26,10 @@ from .edges import edge_id, sum_amounts
 from .holdings.rules import redact_beneficiary
 from .util import BUILD, OUT, read_json
 from .validate_delays import check_delays
+from .validate_fec_conduits import check_conduits
 from .validate_fec_spending import check_campaign_finance, load_links
 from .validate_trade_amendments import check_folding, check_trade_file, lag_null_is_valid
 
-DATE = "date"
 OWNERS = {"self", "spouse", "joint", "dependent", "unspecified"}
 ACTIONS = {"buy", "sell", "exchange", "other"}
 CLASSES = {"stock", "option", "fund", "bond", "crypto", "private", "other", "unknown"}
@@ -455,6 +454,7 @@ def main() -> int:
 
     check_delays(c, read_json(OUT / "delays.json"), members, published_trades, trade_summaries, is_date)
     check_folding(c, published_trades, meta, OUT)
+    check_conduits(c, meta)   # listed conduit PACs: exclusion counted, review of kept rows printed
 
     # Row counts across stages: no join may have multiplied or lost trades.
     resolved = pq.read_metadata(BUILD / "trades_resolved.parquet").num_rows

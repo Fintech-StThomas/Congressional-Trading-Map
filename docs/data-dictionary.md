@@ -436,7 +436,7 @@ type Meta = {
   };
   unmatched: { trades_without_ticker: number | null; tickers_without_sec_match: number | null;
                trades_with_unmatched_ticker: number | null; edges_dropped_at_assembly: { [reason: string]: number } };
-  exclusions: { [what: string]: { rows: number; reason: string; filings?: unknown[][]; members?: string[] } }; // trades; `amended_rows_without_original`, `same_key_other_filing` and `lag_withheld_date_corrected` count rows that are KEPT (their reason says so)
+  exclusions: { [what: string]: { rows: number; reason: string; filings?: unknown[][]; members?: string[] } }; // trades; `amended_rows_without_original`, `same_key_other_filing` and `lag_withheld_date_corrected` count rows that are KEPT (their reason says so); FEC: `conduit_pass_through` (also `dollars`, `committees`, `by_cycle`; see docs/fec-conduits.md)
   assembly: { edges_read: { [file: string]: number }; edges_after_merge: number;
               edges_dropped: { [reason: string]: number }; edges_dropped_examples: { [reason: string]: string[] };
               org_files: string[];
@@ -567,7 +567,7 @@ Rules:
   entries follow the same rule and always sum to the edge totals.
 - `by_year`, `first` and `last` use the record date; a trade without a transaction date uses its availability date.
 - Joins must not multiply rows; the pipeline asserts row counts before and after each join and reports unmatched records.
-- Exclusions (non-members, failed extractions) are counted and listed in `meta.json`.
+- Exclusions (non-members, failed extractions, forwarded contributions) are counted and listed in `meta.json`. `pac_money` and `funds` are the giving committee's own money as it reported it (FEC bulk file pas2, types 24K, 24Z, 24P): rows of the three payment platforms, rows whose memo says EARMARK, and every 24K row, in the listed cycle files, of the PACs on the reviewed exact-id list in `pipeline/fec/conduits.py` (they forward contributions earmarked by individuals and report them like their own; their own direct gifts are left out with them) are not counted, the last under `exclusions.conduit_pass_through` with rows and dollars. A contribution the giver coded 24G (transfer to an affiliated committee) is not in pas2 and is not seen. Ids, evidence and limits: `docs/fec-conduits.md`.
 - Derived edges are drawn only when they clear a published threshold over a baseline, and always carry `stat`.
 - `sits_with` and `legislates_with` are context edges. They never count toward a `Case`.
 - `sits_with`: one edge per member pair sharing at least one current full committee (not subcommittee); `count` is the

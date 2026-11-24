@@ -2,7 +2,7 @@
 
 Steps: download/cache (download.py) -> parse (load.py) -> resolve identities (refs.py, build.prepare_reference_tables,
 build.resolve_orgs) -> classify every pas2 row under one rule (build.classify_rows) -> emit plug-in files (this
-file, build.aggregate, build.fundraises_with, build.org_records) -> self-check (asserts below, weball comparison).
+file, build.aggregate, build.fundraises_with, build.org_records) -> self-check (asserts below; weball comparison in crosscheck.py; conduit lists and review in conduits.py).
 Rules: pipeline/fec/README.md; contract: docs/data-dictionary.md ("Intermediate plug-in format").
 
 Writes
@@ -26,7 +26,7 @@ from pathlib import Path
 
 from .. import util
 from ..util import dumps
-from . import build, download, load, refs, spending
+from . import build, conduits, crosscheck, download, load, refs, spending
 from .load import q
 
 BUILD = refs.BUILD
@@ -36,9 +36,6 @@ ORG_FILE = BUILD / "orgs" / "fec.jsonl"
 SOURCE_FILE = BUILD / "sources" / "fec.json"
 SIZE_WARN = 150 * 1024 * 1024
 ALL_CYCLES = list(range(2000, 2027, 2))
-
-# Five well-known members across parties and both chambers for the weball check.
-SANITY_MEMBERS = ["P000197", "S000148", "M000355", "O000172", "J000289", "C001098"]
 
 
 def write_jsonl(path: Path, rows: list[dict]) -> tuple[int, int]:
@@ -258,6 +255,8 @@ def _audit_tables(con, report: dict) -> None:
               f"${r['amount']:,.0f}")
     table("earmarked contributions forwarded by conduits (excluded), top 15", ("committee", "name", "rows", "dollars"),
           [(c, (nm or "")[:60], n, float(s)) for c, nm, n, s in earm])
+    # listed conduit PACs: what the rule removed (-> meta.json exclusions) and what still looks forwarded (review)
+    conduits.report_all(con, report, SOURCE_FILE.parent.parent)
 
 
 def _sanity(con, members: refs.Members, report: dict, summ: Summary, sizes: dict) -> None:
@@ -325,40 +324,7 @@ def _sanity(con, members: refs.Members, report: dict, summ: Summary, sizes: dict
           [(c, n, float(s)) for c, n, s in rows])
     report["pac_money_current_members_by_cycle"] = {str(c): {"rows": n, "dollars": round(float(s), 2)} for c, n, s in rows}
 
-    # weball comparison
-    out = []
-    for bio in SANITY_MEMBERS:
-        if bio not in members.info:
-            continue
-        ids = members.info[bio].get("fec_ids") or []
-        idl = ",".join(f"'{i}'" for i in ids)
-        if not idl:
-            continue
-        wb = q(con, f"""SELECT cycle, sum(try_cast(OTHER_POL_CMTE_CONTRIB AS DOUBLE)), sum(try_cast(POL_PTY_CONTRIB AS DOUBLE))
-                        FROM weball WHERE CAND_ID IN ({idl}) GROUP BY 1 ORDER BY 1""")
-        for cyc, other, party in wb:
-            if cyc not in (2018, 2020, 2022, 2024):
-                continue
-            mine = q(con, f"""SELECT
-                    sum(amt) FILTER (WHERE rule='keep:pac_money' AND g.kind <> 'party'),
-                    sum(amt) FILTER (WHERE rule='keep:funds'),
-                    sum(amt) FILTER (WHERE rule='drop:giver_campaign_of_non_member'),
-                    sum(amt) FILTER (WHERE rule='keep:pac_money' AND g.kind = 'party')
-                  FROM p_rules r LEFT JOIN giver_org g USING (CMTE_ID)
-                  WHERE to_member = '{bio}' AND dt BETWEEN DATE '{cyc - 1}-01-01' AND DATE '{cyc}-12-31'""")[0]
-            pac, funds, nonmem, pty = (float(x or 0) for x in mine)
-            ours = pac + funds + nonmem
-            out.append({"member": bio, "name": names[bio], "cycle": cyc, "weball_other_committees": other,
-                        "ours_pac_money_nonparty": pac, "ours_funds_in": funds, "ours_nonmember_campaigns": nonmem,
-                        "ours_total_comparable": ours, "diff": ours - float(other or 0),
-                        "diff_pct": (100 * (ours - float(other)) / float(other)) if other else None,
-                        "weball_party": party, "ours_party": pty})
-    report["weball_check"] = out
-    table("weball check: contributions from other committees (cycle = Jan odd year .. Dec even year by txn date)",
-          ("member", "cycle", "weball_other", "ours", "diff", "diff%", "weball_party", "ours_party"),
-          [(f"{o['member']} {o['name'][:22]}", o["cycle"], float(o["weball_other_committees"] or 0),
-            o["ours_total_comparable"], o["diff"], "" if o["diff_pct"] is None else f"{o['diff_pct']:.1f}%",
-            float(o["weball_party"] or 0), o["ours_party"]) for o in out])
+    crosscheck.run(con, members.info, report, table)   # giver-reported rows against the recipient's weball summary
 
     # top edges
     def label(ref):

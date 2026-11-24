@@ -89,10 +89,11 @@ Every pas2 row gets exactly one label in `p_rules`. The audit below is a group-b
    (`AMNDT_IND` A rows replace the originals), so no other amendment logic is needed.
 5. **Amount equals the recipient's committee id** (≥ $10,000): a data-entry error, for example Coats's committee
    "gave" Todd Young $459,255 to committee C00459255 (memo: 2000.00). Dropped.
-6. **Earmarked or conduit money.** Rows from WinRed, ActBlue or Democracy Engine, and any row whose memo
-   contains "EARMARK", are individuals' money passed through, not the committee's own (JStreetPAC, Zinc Collective,
-   RJC, Swing Left, and AMERIPAC's earmarks among them). Recipients report these as individual contributions, so
-   excluding them also matches weball.
+6. **Earmarked or conduit money.** Rows from WinRed, ActBlue or Democracy Engine, and any row whose memo contains
+   "EARMARK", are individuals' money passed through (`drop:earmarked_via_conduit`). Separately, every 24K row of the
+   PACs listed by exact id in `conduits.py`, in the cycle files listed for each, is `drop:conduit_pass_through`: they
+   forward contributions earmarked by individuals as plain 24K rows. Their own direct gifts in those cycles are
+   dropped with them. Ids, evidence and counts: `docs/fec-conduits.md`.
 7. **Recipient.** A contribution counts only if `OTHER_ID` is an authorised campaign committee of a member: designation
    P or A in the linkage file, or in the committee master with a candidate id. If `OTHER_ID` is blank, the row's
    `CAND_ID` is used. Contributions to JFCs, leadership PACs, parties and unknown committees are dropped, each
@@ -166,6 +167,7 @@ per-cycle counts and the rule table for each cycle are in `sources/fec.json` (`f
 | drop:duplicate_rereport | 70,134 | 32,796,161 |
 | drop:amount_equals_recipient_committee_id | 2 | 835,342 |
 | drop:earmarked_via_conduit | 1,319,594 | 48,592,098 (net; WinRed rows include refunds) |
+| drop:conduit_pass_through | counted from the next `main` run | (bulk files of 2026-11-24, no OpenFEC sponsors: 5,061 rows, 9,698,173) |
 | drop:recipient_campaign_not_member | 274,861 | 593,264,809 |
 | drop:recipient_not_a_campaign_committee | 435 | 1,155,846 |
 | drop:recipient_committee_unknown | 716 | 1,038,103 |
@@ -198,15 +200,10 @@ against the OpenFEC reports and Schedule A endpoints for the recipient committee
   is within 5.5% of the recipient's original reports. Nothing in the pipeline double counts: each row is one giver's
   report of one contribution, re-reports are removed, and no second committee is involved (Jordan has one
   authorised committee; his JFC C00484360 is excluded as a giver and is not a recipient).
-- **Ted Cruz, 2022 (ours $90,080 vs $68,080, +32%).** The committee's itemised receipts from committees (Schedule A
-  line 11C, non-memo) total exactly $68,080.45 = weball. The difference is giver-reported rows that the recipient
-  never itemised: LANK PAC $10,000 and Kansas Leadership PAC $10,000 (both leadership PACs, counted as `funds`),
-  Apache PAC $2,500, Professional Insurance Agents PAC $2,500, net of small timing differences. In the other
-  direction the recipient itemises earmarked money from conduits (Senate Conservatives Fund, Club for Growth) that we
-  exclude by rule.
-- **Ted Cruz, 2018 (ours $1,522,837 vs $1,281,824, +19%).** The recipient's own itemised line 11C receipts
-  (non-memo) for the cycle total $1,463,824, within 0.5% of our pac_money ($1,471,837); weball's summary is $182,000
-  lower than the committee's own itemisation. We cannot see from the bulk files which summary line absorbed it.
+- **Ted Cruz, 2018 and 2022; Jim Jordan, 2020 after the conduit list.** See `docs/fec-conduits.md` ("The cross-check").
+  Earlier explanations here were wrong on three points: the 2018 "$182,000" was an OpenFEC double-load plus a keying
+  error, and about $113,000 of the 2018 excess was forwarded money; the 2022 difference is mostly December 2022
+  cheques received in January 2023; Senate Conservatives Fund and RJC earmarks were not excluded before the list.
 
 What the site shows is therefore "what committees reported giving", which can exceed what the recipient reports
 receiving. Recipient-side refunds (22Z) and reclassifications are invisible in pas2 (see below).
@@ -225,9 +222,9 @@ alike) are published as filed in the "(paid to ...)" evidence labels and in `rev
   recipient's own reports) are not netted, and redesignations or reattributions on the recipient side are invisible.
   This, together with timing (date contributed versus date received) and recipients treating some receipts as
   transfers, is why totals differ from weball by a few percent.
-- **Conduits and earmarks** are identified by a three-committee list and by memo text. A conduit that does not write
-  "earmark" in its memo would be counted as PAC money (candidates to check: IT STARTS TODAY,
-  California Peace Action PAC, Chamber of Digital Commerce PAC, which have many sub-$100 24K rows).
+- **Conduits and earmarks** are identified by two exact-id lists (`conduits.py`) and by memo text. A conduit not on the
+  list that writes no "earmark" memo is still counted as PAC money; `build/fec_conduit_review.json` lists
+  candidates. A contribution the giver coded 24G is not in pas2 and is never seen (`docs/fec-conduits.md`).
 - **Amendments.** We rely on the FEC having replaced amended reports; residual double reports are caught only when the
   transaction id and every money field match.
 - Party 24K amounts above the $5,000 limit (for example NRSC to Senate candidates at about $50,000) are taken as filed;

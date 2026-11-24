@@ -94,7 +94,7 @@ pipeline/
   util.py             paths, cached HTTP with retry, deterministic JSON, override file, name/ticker normalisation
   edges.py            range arithmetic (sum_amounts), by_year, evidence ranking, edge ids
   spine.py trades.py trade_amendments.py companies.py sic.py edges_trades.py edges_committees.py    core sources and edges
-  fec/                download -> load (parse) -> refs (identities) -> build (rules, edges, orgs) -> run (write, checks);
+  fec/                download -> load (parse) -> refs (identities) -> build (rules, edges, orgs; conduits = the reviewed conduit lists) -> run (write, checks; crosscheck = weball);
                       spending + spending_oppexp (loans and leadership PAC spending by category -> campaign_finance.json)
   holdings/           source (download) -> run (parse, resolve, emit) -> rules (redaction) -> validate
   lda/                download -> build (parse) -> match (identities) -> edges -> run (write, checks); off by default
@@ -372,9 +372,9 @@ contributions file (`indiv`), and publishes no individual contributor; the notic
   by FEC category and by the FEC's purpose groups) comes from `pipeline/fec/spending.py` in the `fec` stage and writes
   `build/campaign_finance.json`; the assembler copies each member's block (null when absent) and `pipeline/validate_fec_spending.py`
   checks it (no payee or address text; only aggregates are read). The OpenFEC parts need `FEC_API_KEY` (see `pipeline/fec/README.md`).
-- **FEC totals are what givers reported.** They can differ from the recipient's own summary (weball) when the
-  recipient amended its reports or never itemised a receipt; see `pipeline/fec/README.md` (Jordan 2020, Cruz 2018 and
-  2022 are worked through there).
+- **FEC totals are what givers reported.** They can differ from the recipient's own summary (weball line 11c): amended recipient reports, a December check received in January, refunds the giver nets. `docs/fec-conduits.md` works through Jordan 2020 and Cruz 2018 and 2022 and replaces the older paragraphs in `pipeline/fec/README.md`.
+- **Conduit PACs.** The 24K rows of the PACs listed by exact id and cycle in `fec/conduits.py` (they forward contributions earmarked by individuals) are not counted, their own direct gifts included; a conduit not yet on the list still counts as PAC money (`build/fec_conduit_review.json` lists candidates; counts in `meta.json.reports.fec.conduit_review`).
+- **24G rows.** A contribution the giver coded 24G (transfer to an affiliated committee) is not in pas2, so it is never seen (AFSCME to Pelosi, 2005-10-27, $5,000).
 - **Party at the time.** `OrgSummary.split` and `org-index.json` count each tie year under the party of the member's
   term in that year; years outside every term go to the nearest term (counted in `meta.json.assembly.party_split`).
   `MemberSummary.party` and the wall stay the latest term's.

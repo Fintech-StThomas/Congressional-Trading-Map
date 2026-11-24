@@ -13,7 +13,7 @@ from datetime import date
 
 import duckdb
 
-from . import download, leadership, sponsors_api
+from . import conduits, download, leadership, sponsors_api
 from .load import q
 from .refs import Companies, Members, Overrides, normalise_name
 
@@ -23,9 +23,7 @@ SUPPORT_TYPES = ("24E", "24F")                 # IE advocating; Form 7 communica
 OPPOSE_TYPES = ("24A", "24N")                  # IE opposing; Form 7 communication cost against
 OUT_OF_SCOPE = {"24C": "coordinated party expenditure (not a contribution, not independent)",
                 "24H": "honorarium to candidate", "24R": "election recount disbursement"}
-# Conduits forward individuals' earmarked money; their 24K rows are not the committee's own money.
-# ActBlue reports earmarks as 24T in the oth file, so it rarely appears here; listed for safety.
-CONDUITS = {"C00694323": "WINRED", "C00401224": "ACTBLUE", "C00468314": "DEMOCRACY ENGINE, INC., PAC"}
+# Conduits forward individuals' earmarked money, not their own: the two reviewed exact-id lists are in conduits.py.
 
 PARTY_TYPES = {"X", "Y", "Z"}
 SUPER_PAC_TYPES = {"O", "U"}
@@ -180,7 +178,7 @@ def classify_rows(con: duckdb.DuckDBPyConnection, cycles: list[int], today: str)
     contrib = ",".join(f"'{t}'" for t in CONTRIB_TYPES)
     support = ",".join(f"'{t}'" for t in SUPPORT_TYPES)
     oppose = ",".join(f"'{t}'" for t in OPPOSE_TYPES)
-    conduits = ",".join(f"'{c}'" for c in CONDUITS)
+    forwarders = conduits.sql_ids(conduits.FORWARDERS)
     q(con, f"""CREATE OR REPLACE TEMP TABLE p0 AS
       SELECT cycle, line_no, CMTE_ID, AMNDT_IND, RPT_TP, TRANSACTION_PGI, IMAGE_NUM, TRANSACTION_TP AS tp, ENTITY_TP, NAME,
              OTHER_ID, CAND_ID, TRAN_ID, FILE_NUM, MEMO_CD, MEMO_TEXT, SUB_ID,
@@ -233,8 +231,9 @@ def classify_rows(con: duckdb.DuckDBPyConnection, cycles: list[int], today: str)
           WHEN tp IN ({contrib}) AND amt >= 10000
                AND amt = try_cast(regexp_replace(coalesce(OTHER_ID, ''), '^C0*', '') AS DECIMAL(18,2))
                THEN 'drop:amount_equals_recipient_committee_id'
-          WHEN tp IN ({contrib}) AND (CMTE_ID IN ({conduits}) OR upper(coalesce(MEMO_TEXT,'')) LIKE '%EARMARK%')
+          WHEN tp IN ({contrib}) AND (CMTE_ID IN ({forwarders}) OR upper(coalesce(MEMO_TEXT,'')) LIKE '%EARMARK%')
                THEN 'drop:earmarked_via_conduit'
+          {conduits.when_sql()}
           WHEN tp IN ({contrib}) AND rcpt_cmte_member IS NULL AND OTHER_ID IS NOT NULL AND rcpt_is_cand_cmte
                THEN 'drop:recipient_campaign_not_member'
           WHEN tp IN ({contrib}) AND rcpt_cmte_member IS NULL AND OTHER_ID IS NOT NULL AND rcpt_known_cmte
