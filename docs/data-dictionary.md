@@ -704,9 +704,10 @@ two OpenFEC API listings (needs `FEC_API_KEY`; absent or failing, the block is b
 ```ts
 type CampaignFinance = {
   loans: LoanRow[];                 // one row per (cycle, candidate id), oldest cycle first; [] if none
+  receipts: ReceiptsRow[];          // same keys and order as loans, from the same weball row (see "Receipts" below); [] if none
   leadership_pac: LeadershipPacYear[]; // one row per (cycle, committee), oldest cycle first; [] if none
   coverage: {
-    loans_cycles: number[];         // cycles whose weball file was loaded (the same for every member)
+    loans_cycles: number[];         // cycles whose weball file was loaded (the same for every member); also the receipts cycles
     leadership_pac_cycles: number[];// cycles whose oppexp file was loaded (2004 on; 2000 and 2002 do not exist)
     purposes_cycles: number[];      // cycles whose OpenFEC purpose-group request completed (2004 on); [] = none
     purposes_source: string;        // endpoint, coverage, access date; or why unavailable
@@ -724,6 +725,15 @@ type LoanRow = {                    // the FEC's all-candidates summary row for 
   debts_owed_by: number | null;     // DEBTS_OWED_BY, as in the FEC summary
   through: string | null;           // CVG_END_DT: the summary covers the cycle up to this date (YYYY-MM-DD)
 };                                  // dollars, exact (not ranges); null = blank in the file or a negative figure (see below)
+
+type ReceiptsRow = {                // same weball row as LoanRow; exact dollars to the cent; null = blank, or not published (see Receipts)
+  cycle: number; candidate_id: string; office: "house" | "senate" | "president" | null;   // as in LoanRow
+  total_receipts: number | null; from_individuals: number | null;        // TTL_RECEIPTS; TTL_INDIV_CONTRIB (the file has no itemised/unitemised split)
+  from_other_committees: number | null; from_party_committees: number | null; // OTHER_POL_CMTE_CONTRIB (PACs and other committees); POL_PTY_CONTRIB
+  from_candidate: number | null; transfers_from_authorised: number | null;    // CAND_CONTRIB; TRANS_FROM_AUTH (other committees of the same candidate)
+  total_disbursements: number | null; cash_on_hand: number | null;       // TTL_DISB; COH_COP (cash at close; may be negative as filed)
+  through: string | null;           // CVG_END_DT (YYYY-MM-DD): the figures cover the cycle up to this date
+};
 
 type LeadershipPacYear = {
   committee_id: string;             // the leadership PAC, C + 8 digits
@@ -746,38 +756,20 @@ Rules
   authorised committees reported for the cycle; the five money fields are copied as summarised, to the cent.
   A blank field is `null`, never zero. A negative figure (80 figures in 44,913 rows, cycles 2000-2026) is not published (`null`) and is listed in `meta.reports.fec_spending.loans.negative_figures_not_published`.
   A zero is published as zero only when the FEC file says 0.
-- **Leadership PACs: exact sponsor linkage.** A committee is a member's leadership PAC only through the rules in `pipeline/fec/README.md`
-  ("Leadership-PAC sponsors"): OpenFEC's `sponsor_candidate_ids` for the committee contain one of the member's FEC ids (`fec_api_sponsor_id`), a filed
-  candidate id on the committee (`fec_candidate_id`), or the FEC sponsor list's name equal to the candidate-master name of that member's ids,
-  punctuation aside (`leadership_file_exact_name`). No similarity matching. If the API's ids name two members the API link is dropped; the API and a
-  name-file link that disagree: the API's exact id wins; the API and a candidate id that disagree: dropped. All reported.
-- **Spending: aggregates only.** The operating-expenditures file is streamed and summed by the FEC's `CATEGORY` code (001-012 for House, Senate and
-  party/PAC filers; 101-107 for presidential filers; labels are the FEC's wording). Memo items (`MEMO_CD` = X, itemisations of an amount already
-  counted) are dropped, a transaction re-reported in a later filing (same committee, transaction id, date and amount) counts once, rows of exactly
-  zero are skipped, and the file's own cycle decides the `cycle`. A blank or unrecognised code goes to `category: null`. Most Form 3X rows (PACs)
-  carry no category, so most of a leadership PAC's rows fall under `null` (2024 cycle: about 86% of rows and 78% of dollars). The FEC has no other
-  category field in the bulk file and free-text purposes are not read.
-- **Refunds are not netted.** A negative row is a refund or void reported by the committee (money returned to it, or a correction of an earlier row).
-  It is never subtracted from what was spent: `total` and `count` cover the positive rows only, `refunds` and `refund_count` the negative ones, per
-  category and per committee-cycle. A category can show more refunded than spent, for example when the original row is in an earlier cycle's file. The
-  two are not paired.
-- **Purpose groups (OpenFEC `/v1/schedules/schedule_b/by_purpose/`).** `purpose` is the FEC's label as given (upper case: ADMINISTRATIVE,
-  CONTRIBUTIONS, REFUNDS, OTHER ...); `total` and `count` as the FEC reports them for that committee and cycle, sorted by total descending then label.
-  They group ALL Schedule B disbursements (contributions to candidates, refunds, transfers, operating expenses), so their sum is not the
-  operating-expenditure `total`; REFUNDS is the FEC's own group and nothing is netted. A negative total is not published (`total: null`) and is listed
-  in `meta.reports.fec_spending.purposes`. `null` = not fetched (no key, API failure, cycle not covered); `[]` = the request completed and the FEC
-  returned no group for the committee, not a zero amount. PAC-years exist only where oppexp has rows; purposes alone never create one.
-- **Coverage.** `loans_cycles` and `leadership_pac_cycles` list the files actually loaded. A member with no candidacy row in a loaded weball file and
-  no leadership PAC row gets `campaign_finance: null` (not a block of zeros), as does a member with no FEC id. A member with a block but no leadership
-  PAC gets `leadership_pac: []` and the note. A committee-cycle with no rows in the file has no entry: absence is not a reported zero.
+- **Receipts: same row, same rule.** `receipts` comes from the loan row's weball row (exact id, first row per cycle and id, presidential `P` ids included) with
+  the column names above, blank = `null`, never 0. Negative `total_receipts`, `total_disbursements` or contribution figure: `null`, listed in `meta.reports.fec_spending.receipts`;
+  `cash_on_hand` is published as filed (negative in about 5% of rows). A row whose individual, committee, party, candidate or transfer figure exceeds `total_receipts`
+  by more than $1 has those five set to `null` and is listed there. Individual contributors are never read. Full rules, limits and the OpenFEC comparison: `docs/campaign-receipts.md`.
+- **Leadership PACs: exact sponsor linkage.** A committee is a member's leadership PAC only through the rules in `pipeline/fec/README.md` ("Leadership-PAC sponsors"): OpenFEC's `sponsor_candidate_ids` for the committee contain one of the member's FEC ids (`fec_api_sponsor_id`), a filed candidate id on the committee (`fec_candidate_id`), or the FEC sponsor list's name equal to the candidate-master name of that member's ids, punctuation aside (`leadership_file_exact_name`). No similarity matching. If the API's ids name two members the API link is dropped; the API and a name-file link that disagree: the API's exact id wins; the API and a candidate id that disagree: dropped. All reported.
+- **Spending: aggregates only.** The operating-expenditures file is streamed and summed by the FEC's `CATEGORY` code (001-012 for House, Senate and party/PAC filers; 101-107 for presidential filers; labels are the FEC's wording). Memo items (`MEMO_CD` = X, itemisations of an amount already counted) are dropped, a transaction re-reported in a later filing (same committee, transaction id, date and amount) counts once, rows of exactly zero are skipped, and the file's own cycle decides the `cycle`. A blank or unrecognised code goes to `category: null`. Most Form 3X rows (PACs) carry no category, so most of a leadership PAC's rows fall under `null` (2024 cycle: about 86% of rows and 78% of dollars). The FEC has no other category field in the bulk file and free-text purposes are not read.
+- **Refunds are not netted.** A negative row is a refund or void reported by the committee (money returned to it, or a correction of an earlier row). It is never subtracted from what was spent: `total` and `count` cover the positive rows only, `refunds` and `refund_count` the negative ones, per category and per committee-cycle. A category can show more refunded than spent, for example when the original row is in an earlier cycle's file. The two are not paired.
+- **Purpose groups (OpenFEC `/v1/schedules/schedule_b/by_purpose/`).** `purpose` is the FEC's label as given (upper case: ADMINISTRATIVE, CONTRIBUTIONS, REFUNDS, OTHER ...); `total` and `count` as the FEC reports them for that committee and cycle, sorted by total descending then label. They group ALL Schedule B disbursements (contributions to candidates, refunds, transfers, operating expenses), so their sum is not the operating-expenditure `total`; REFUNDS is the FEC's own group and nothing is netted. A negative total is not published (`total: null`) and is listed in `meta.reports.fec_spending.purposes`. `null` = not fetched (no key, API failure, cycle not covered); `[]` = the request completed and the FEC returned no group for the committee, not a zero amount. PAC-years exist only where oppexp has rows; purposes alone never create one.
+- **Coverage.** `loans_cycles` and `leadership_pac_cycles` list the files actually loaded. A member with no candidacy row in a loaded weball file and no leadership PAC row gets `campaign_finance: null` (not a block of zeros), as does a member with no FEC id. A member with a block but no leadership PAC gets `leadership_pac: []` and the note. A committee-cycle with no rows in the file has no entry: absence is not a reported zero.
 
 What it does not show
-- A loan figure is a cycle total as the FEC summarises it. It does not show when the loan was made, its terms, whether or when it was repaid beyond
-  the two reported repayment fields, or why. `debts_owed_by` is the FEC's field of that name.
-- Category labels are the FEC's, and the FEC assigns the code from the committee's own filing. The categories do not say what a payment was for beyond
-  that label, and they do not show who was paid.
-- `total` is what a committee reported in operating expenditures; it excludes contributions, transfers and other non-operating lines, so it is not
-  total disbursements (the purpose groups cover all of them).
+- A loan figure is a cycle total as the FEC summarises it. It does not show when the loan was made, its terms, whether or when it was repaid beyond the two reported repayment fields, or why. `debts_owed_by` is the FEC's field of that name.
+- Category labels are the FEC's, and the FEC assigns the code from the committee's own filing. The categories do not say what a payment was for beyond that label, and they do not show who was paid.
+- `total` is what a committee reported in operating expenditures; it excludes contributions, transfers and other non-operating lines, so it is not total disbursements (the purpose groups cover all of them).
 - Nothing here says a spending or loan figure is improper. The site reports what the filings say.
 
 Privacy

@@ -1,9 +1,9 @@
-// Invented campaign_finance blocks for a few fixture members (FEC loans and leadership PAC spending), imported by
+// Invented campaign_finance blocks for a few fixture members (FEC campaign receipts, loans and leadership PAC spending), imported by
 // make-fixtures.mjs. Static and deterministic: it draws no random numbers, so no other fixture value shifts.
-//   X000008  loans with a blank figure and a presidential row
-//   X000001  a leadership PAC: a no-category row, a category refunded more than spent, two cycles, FEC purpose groups (one
+//   X000008  loans and receipts with blank figures, a presidential row and a negative cash on hand
+//   X000001  a leadership PAC: a no-category row, a category refunded more than spent, receipts [], two cycles, FEC purpose groups (one
 //            unpublished negative total; the second PAC has [] in 2022, 95% uncategorised, and null in 2024), a second PAC, combined sponsor links
-//   X000003  loans, no leadership PAC (note set)
+//   X000003  loans and receipts, no leadership PAC (note set)
 //   X000012  campaign_finance null
 // Every other member has no field at all, which the site reads the same as null.
 
@@ -15,6 +15,10 @@ const loan = (cycle, candidate_id, office, f) => ({
   cycle, candidate_id, office,
   candidate_loans: null, other_loans: null, candidate_loan_repayments: null, other_loan_repayments: null, debts_owed_by: null,
   through: `${cycle}-12-31`, ...f,
+});
+const rec = (cycle, candidate_id, office, f) => ({
+  cycle, candidate_id, office, total_receipts: null, from_individuals: null, from_other_committees: null, from_party_committees: null,
+  from_candidate: null, transfers_from_authorised: null, total_disbursements: null, cash_on_hand: null, through: `${cycle}-12-31`, ...f,
 });
 const cat = (category, label, total, count, refunds = 0, refund_count = 0) => ({ category, label, total, count, refunds, refund_count });
 const purpose = (purpose, total, count) => ({ purpose, total, count });
@@ -34,11 +38,19 @@ const BLOCKS = {
       loan(2022, "H0SAMPLE008", "senate", { candidate_loans: 12500, other_loans: 0, candidate_loan_repayments: 0, other_loan_repayments: 0, debts_owed_by: 12500 }),
       loan(2024, "H0SAMPLE008", "senate", { candidate_loans: 5000, other_loans: 1200, candidate_loan_repayments: 2500, other_loan_repayments: 0, debts_owed_by: 3700, through: "2024-11-25" }),
     ],
+    receipts: [
+      rec(2016, "P0SAMPLE08", "president", { total_receipts: 1250000.5, from_individuals: 900000, from_other_committees: 20000, from_party_committees: 0, from_candidate: 250000, transfers_from_authorised: 0, total_disbursements: 1100000, cash_on_hand: 150000 }),
+      rec(2018, "H0SAMPLE008", "senate", { total_receipts: 3400000, from_individuals: 2100000, from_other_committees: null, from_party_committees: 5000, from_candidate: 40000, transfers_from_authorised: 12000, total_disbursements: 3300000, cash_on_hand: 100000 }),
+      rec(2020, "H0SAMPLE008", "senate", { total_receipts: 5000000, from_individuals: 3800000, from_other_committees: 900000, from_party_committees: 0, from_candidate: 0, transfers_from_authorised: 0, total_disbursements: 4900000, cash_on_hand: -2500.75 }),
+      rec(2022, "H0SAMPLE008", "senate", { total_receipts: 4100000, from_individuals: 3000000, from_other_committees: 700000, from_party_committees: 1500, from_candidate: 12500, transfers_from_authorised: 0, total_disbursements: 3900000, cash_on_hand: 300000 }),
+      rec(2024, "H0SAMPLE008", "senate", { total_receipts: 2600000, from_individuals: 1800000, from_other_committees: 450000, from_party_committees: 0, from_candidate: 5000, transfers_from_authorised: 20000, total_disbursements: 2400000, cash_on_hand: 520000, through: "2024-11-25" }),
+    ],
     leadership_pac: [],
     coverage: { ...COVERAGE, leadership_pac_note: NOTE },
   }),
   X000001: () => ({
     loans: [],
+    receipts: [],
     leadership_pac: [
       pac("C00900001", "SAMPLE FORWARD FUND", 2022, [
         cat("001", "Administrative/Salary/Overhead Expenses", 30000, 12),
@@ -72,6 +84,10 @@ const BLOCKS = {
     loans: [
       loan(2022, "H0SAMPLE003", "house", { candidate_loans: 8000, other_loans: 0, candidate_loan_repayments: 0, other_loan_repayments: 0, debts_owed_by: 8000 }),
       loan(2024, "H0SAMPLE003", "house", { candidate_loans: 0, other_loans: 0, candidate_loan_repayments: 8000, other_loan_repayments: 0, debts_owed_by: 0 }),
+    ],
+    receipts: [
+      rec(2022, "H0SAMPLE003", "house", { total_receipts: 610000, from_individuals: 480000, from_other_committees: 90000, from_party_committees: 0, from_candidate: 8000, transfers_from_authorised: 0, total_disbursements: 590000, cash_on_hand: 20000 }),
+      rec(2024, "H0SAMPLE003", "house", { total_receipts: 720000, from_individuals: 510000, from_other_committees: 130000, from_party_committees: 2500, from_candidate: 0, transfers_from_authorised: 0, total_disbursements: 700000, cash_on_hand: 40000 }),
     ],
     leadership_pac: [],
     coverage: { ...COVERAGE, leadership_pac_note: NOTE },

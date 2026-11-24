@@ -45,7 +45,7 @@ by recipient member id and then by edge key (`fundraises_with` and orgs are full
 | Committee master `cm` | `.../cm{YY}.zip` | 2000-2026 |
 | Candidate-committee linkage `ccl` | `.../ccl{YY}.zip` | 2000-2026 |
 | Contributions from committees to candidates and independent expenditures `pas2` | `.../pas2{YY}.zip` (member `itpas2.txt`) | 2000-2026 |
-| All-candidates summary `weball` (sanity check, and the loans in `spending.py`) | `.../weball{YY}.zip` | 2000-2026 |
+| All-candidates summary `weball` (sanity check, the loans in `spending.py` and the per-cycle receipts in `receipts.py`: `docs/campaign-receipts.md`) | `.../weball{YY}.zip` | 2000-2026 |
 | Operating expenditures `oppexp` (streamed, leadership PACs only) | `.../oppexp{YY}.zip` (member `oppexp.txt`, 25 columns) | 2004-2026 (2000 and 2002 answer 404); 50-65 MB each, 430 MB unpacked for 2024 |
 | Leadership PACs and sponsors | `https://www.fec.gov/files/bulk-downloads/data.fec.gov/leadership{YYYY}.csv` | 2010-2026 only (404 before 2010) |
 | Members (fallback) | congress-legislators `legislators-current.json`, `legislators-historical.json` | |

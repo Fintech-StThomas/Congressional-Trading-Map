@@ -10,6 +10,7 @@ tables exist: builds `campaign_finance` for each member from two bulk files and 
 2. Leadership PAC spending. `oppexp<yy>` (operating expenditures) is streamed (spending_oppexp.py) for the committee
    ids in the `lpac` table (committee -> sponsoring member, built by build._leadership from FEC candidate ids and the
    FEC leadership-PAC sponsor list, exact names only) and summed by the FEC category code (spent and refunds kept apart). Payees are never read.
+   Campaign receipts per cycle come from the same rows (receipts.py).
 3. FEC purpose groups (purposes_api.py, OpenFEC, needs FEC_API_KEY): added to each PAC-year as `purposes` (null when not
    fetched). PAC-years exist only where oppexp has rows; purposes alone never create one.
 Members with neither a candidacy row nor a leadership-PAC row get no entry (the assembler publishes null).
@@ -28,7 +29,7 @@ from typing import Any
 import duckdb
 
 from ..util import dumps
-from . import download, purposes_api, refs
+from . import download, purposes_api, receipts as receipts_mod, refs
 from .load import q
 from .spending_oppexp import CATEGORY_LABELS, FIRST_OPPEXP_CYCLE, LayoutChanged, aggregate, iter_rows
 
@@ -78,8 +79,9 @@ def loan_rows(con: duckdb.DuckDBPyConnection, cycles: list[int], cand_to_bio: di
     return out
 
 
-def _block(loans: list[dict], pacs: list[dict], wb: list[int], op: list[int], pc: tuple[list[int], str]) -> dict[str, Any]:
-    return {"loans": loans, "leadership_pac": pacs,
+def _block(loans: list[dict], pacs: list[dict], wb: list[int], op: list[int], pc: tuple[list[int], str],
+           receipts: list[dict] | None = None) -> dict[str, Any]:
+    return {"loans": loans, "receipts": receipts or [], "leadership_pac": pacs,
             "coverage": {"loans_cycles": wb, "leadership_pac_cycles": op, "purposes_cycles": pc[0],
                          "purposes_source": pc[1], "leadership_pac_note": None if pacs else NOTE_NO_PAC}}
 
@@ -142,6 +144,7 @@ def run(con: duckdb.DuckDBPyConnection, members: refs.Members, cycles: list[int]
     """Build every member's block, write the two files, return the report section."""
     sec: dict[str, Any] = {"cycles": cycles}
     loans = loan_rows(con, cycles, members.cand_to_bio, sec)
+    receipts = receipts_mod.receipt_rows(con, cycles, members.cand_to_bio, sec)   # same weball rows, see receipts.py
     links = {c: (b, m) for c, b, m in q(con, "SELECT CMTE_ID, bioguide, method FROM lpac ORDER BY 1")}
     names = dict(q(con, "SELECT CMTE_ID, CMTE_NM FROM cm_latest WHERE CMTE_ID IN (SELECT CMTE_ID FROM lpac)"))
     sec["leadership_pac_committees_linked"] = len(links)
@@ -158,7 +161,7 @@ def run(con: duckdb.DuckDBPyConnection, members: refs.Members, cycles: list[int]
                 pacs[bio].append(pac_entry(cmte, cycle, names.get(cmte) or cmte, method, cats,
                                            purposes.get((cycle, cmte))))
     op = sorted(spend)
-    blocks = {bio: _block(loans.get(bio, []), pacs.get(bio, []), cycles, op, pcov)
+    blocks = {bio: _block(loans.get(bio, []), pacs.get(bio, []), cycles, op, pcov, receipts.get(bio))
               for bio in sorted(set(loans) | set(pacs))}
     sec["members_with_block"] = len(blocks)
     sec["members_with_leadership_pac_rows"] = len(pacs)
@@ -175,7 +178,7 @@ def write_outputs(build_dir: Path, blocks: dict[str, Any], links: dict[str, tupl
                   files: list[dict[str, Any]]) -> None:
     doc = {"members": blocks, "links": {c: {"member": b, "method": m} for c, (b, m) in sorted(links.items())}}
     src = {"sources": {"fec_spending": {
-        "name": "FEC all-candidates summary (loans), operating expenditures of leadership PACs by category and, from OpenFEC, "
+        "name": "FEC all-candidates summary (loans and campaign receipts), operating expenditures of leadership PACs by category and, from OpenFEC, "
                 "the FEC's purpose groups of their disbursements",
         "url": "https://www.fec.gov/data/browse-data/?tab=bulk-data",
         "revision": max((_iso(f["last_modified"]) for f in files if f.get("last_modified")), default=None),

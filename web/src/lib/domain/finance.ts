@@ -113,7 +113,7 @@ export function coverageLine(cf: CampaignFinance): string {
 // ---------------------------------------------------------------- the full file's tables
 
 export const LOAN_COLS: Col[] = [
-  { key: "cycle", label: "Cycle", kind: "num", width: 70 },
+  { key: "cycle", label: "Cycle", kind: "text", width: 70 },
   { key: "candidate_id", label: "FEC candidate id", kind: "text", width: 130 },
   { key: "office", label: "Office", kind: "text", width: 90 },
   { key: "candidate_loans", label: "Loans from the candidate", kind: "num", width: 150 },
@@ -136,7 +136,7 @@ export function loanRows(cf: CampaignFinance | null | undefined): Cell[][] {
 export const PAC_COLS: Col[] = [
   { key: "committee_id", label: "Committee id", kind: "text", width: 110 },
   { key: "committee_name", label: "Committee", kind: "text", width: 220 },
-  { key: "cycle", label: "Cycle", kind: "num", width: 70 },
+  { key: "cycle", label: "Cycle", kind: "text", width: 70 },
   { key: "category", label: "FEC category code", kind: "text", width: 130 },
   { key: "label", label: "Category", kind: "text", width: 240 },
   { key: "total", label: "Spent", kind: "num", width: 110 },

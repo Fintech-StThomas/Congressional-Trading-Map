@@ -74,7 +74,7 @@ export function sponsorLinkText(link: string): string | null {
 export const PURPOSE_COLS: Col[] = [
   { key: "committee_id", label: "Committee id", kind: "text", width: 110 },
   { key: "committee_name", label: "Committee", kind: "text", width: 220 },
-  { key: "cycle", label: "Cycle", kind: "num", width: 70 },
+  { key: "cycle", label: "Cycle", kind: "text", width: 70 },
   { key: "purpose", label: "FEC purpose group", kind: "text", width: 160 },
   { key: "total", label: "Total (blank = not published)", kind: "num", width: 170 },
   { key: "count", label: "Disbursements", kind: "num", width: 120 },

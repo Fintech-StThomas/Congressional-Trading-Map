@@ -2,6 +2,7 @@
 // types.ts to keep files short. Same rule: change the data dictionary first, then re-copy. Re-exported by types.ts.
 export type CampaignFinance = {
   loans: LoanRow[];                 // one row per (cycle, candidate id), oldest cycle first; [] if none
+  receipts: ReceiptsRow[];          // same keys and order as loans, from the same weball row; [] if none (read an absent field as [])
   leadership_pac: LeadershipPacYear[]; // one row per (cycle, committee), oldest cycle first; [] if none
   coverage: {
     loans_cycles: number[];         // cycles whose weball file was loaded (the same for every member)
@@ -23,6 +24,23 @@ export type LoanRow = {                    // the FEC's all-candidates summary r
   debts_owed_by: number | null;
   through: string | null;           // the summary covers the cycle up to this date (YYYY-MM-DD)
 };                                  // dollars, exact (not ranges); null = blank in the file or a negative figure
+
+/** The FEC summary's receipts for one candidate id and cycle (weball TTL_RECEIPTS, TTL_INDIV_CONTRIB, OTHER_POL_CMTE_CONTRIB, POL_PTY_CONTRIB,
+ *  CAND_CONTRIB, TRANS_FROM_AUTH, TTL_DISB, COH_COP, CVG_END_DT). Dollars to the cent; null = blank or not published, never zero. */
+export type ReceiptsRow = {
+  cycle: number;
+  candidate_id: string;
+  office: "house" | "senate" | "president" | null;
+  total_receipts: number | null;
+  from_individuals: number | null;          // one total; the file has no itemised/unitemised split
+  from_other_committees: number | null;     // PACs and other political committees
+  from_party_committees: number | null;
+  from_candidate: number | null;
+  transfers_from_authorised: number | null; // from the candidate's other authorised committees
+  total_disbursements: number | null;
+  cash_on_hand: number | null;              // at the close of the coverage period; may be negative as filed
+  through: string | null;                   // coverage end date (YYYY-MM-DD)
+};
 
 export type LeadershipPacCategory = { category: string | null; label: string; total: number; count: number; refunds: number; refund_count: number };
 

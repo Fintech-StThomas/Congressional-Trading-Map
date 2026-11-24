@@ -2,7 +2,7 @@
 pipeline/validate.py for every member file; reads nothing itself except, when it exists, the committee links in
 pipeline/build/campaign_finance.json (committee -> member and method, written by pipeline/fec/spending.py).
 
-Checks: schema and key sets; amounts non-negative or null; category spent and refund sums and counts add up to the committee-cycle
+Checks: schema and key sets; receipts rows (validate_fec_receipts.py); amounts non-negative or null; category spent and refund sums and counts add up to the committee-cycle
 sums; purpose groups (validate_fec_purposes.py); candidate ids are among the member's `fec_ids` and committee ids are linked to that member (exact ids only);
 cycles even, unique and ordered; no member without an FEC id has a block; and no payee, lender, address or similar key
 and no street-address-looking text anywhere in the block.
@@ -13,6 +13,7 @@ import re
 from typing import Any, Callable
 
 from .fec.spending_oppexp import CATEGORY_LABELS
+from .validate_fec_receipts import check_receipts
 from .validate_fec_purposes import LINK_METHODS, check_coverage, check_purposes
 from .util import BUILD, read_json
 
@@ -142,14 +143,15 @@ def check_campaign_finance(c: Any, cf: Any, where: str, mid: str, fec_ids: list[
     cov_spec = {"loans_cycles": cyc, "leadership_pac_cycles": cyc, "purposes_cycles": cyc,
                 "purposes_source": lambda v: isinstance(v, str),
                 "leadership_pac_note": lambda v: v is None or (isinstance(v, str) and v != "")}
-    if not _shape(c, cf, {"loans": lambda v: True, "leadership_pac": lambda v: True, "coverage": lambda v: isinstance(v, dict)}, where):
+    if not _shape(c, cf, {"loans": lambda v: True, "receipts": lambda v: True, "leadership_pac": lambda v: True, "coverage": lambda v: isinstance(v, dict)}, where):
         return
     check_loans(c, cf["loans"], where, set(fec_ids))
+    check_receipts(c, cf["receipts"], cf["loans"], where, set(fec_ids))
     cov = cf["coverage"]
     check_pacs(c, cf["leadership_pac"], where, mid, links, cov.get("purposes_cycles") if isinstance(cov, dict) else None)
     if _shape(c, cov, cov_spec, f"{where}.coverage"):
         check_coverage(c, cov, f"{where}.coverage")
-    c.check(bool(cf["loans"]) or bool(cf["leadership_pac"]), "campaign_finance: an empty block is published as null", where)
+    c.check(bool(cf["loans"]) or bool(cf["receipts"]) or bool(cf["leadership_pac"]), "campaign_finance: an empty block is published as null", where)
     c.check((cf["coverage"].get("leadership_pac_note") is None) == bool(cf["leadership_pac"]),
             "campaign_finance: a note when and only when there is no leadership PAC", where)
     check_privacy(c, cf, where)

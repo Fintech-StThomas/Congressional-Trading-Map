@@ -5,6 +5,8 @@
 // refunds are their own columns and are never subtracted. A null block is one plain line, never zeros.
 import type { CampaignFinance } from "@/lib/types";
 import { LOAN_COLS, PAC_COLS, coverageLine, loanRows, pacRows } from "@/lib/domain/finance";
+import { RECEIPT_COLS, receiptsRows } from "@/lib/domain/finance-receipts";
+import { RECEIPTS } from "@/lib/copy-finance-receipts";
 import { PURPOSE_COLS, purposeTableRows } from "@/lib/domain/finance-purposes";
 import { FINANCE } from "@/lib/copy-finance";
 import { DataTable, type TableCite } from "./DataTable";
@@ -19,6 +21,9 @@ export function FinanceRecords({ id, cf, cite }: { id: string; cf: CampaignFinan
       ) : (
         <>
           <p className="rec__note">{coverageLine(cf)} {FINANCE.notShown}</p>
+          <h3 className="rec__h3">{RECEIPTS.records.title}</h3>
+          <p className="rec__note">{RECEIPTS.records.intro}</p>
+          <DataTable id="receipts" title={RECEIPTS.records.title} cols={RECEIPT_COLS} rows={receiptsRows(cf)} file={`${id}-campaign-receipts`} cite={cite} />
           <h3 className="rec__h3">{FINANCE.records.loansTitle}</h3>
           <p className="rec__note">{FINANCE.records.loansIntro}</p>
           <DataTable id="loans" title={FINANCE.records.loansTitle} cols={LOAN_COLS} rows={loanRows(cf)} file={`${id}-loans`} cite={cite} />

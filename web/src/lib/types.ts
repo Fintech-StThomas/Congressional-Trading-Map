@@ -206,7 +206,7 @@ type Board = {
   states: { [state: string]: string[] };        // current member ids, senators first
 };
 // END CONTRACT
-export type { CampaignFinance, LoanRow, LeadershipPacYear, LeadershipPacCategory, LeadershipPacPurpose } from "./types-finance.ts";
+export type { CampaignFinance, LoanRow, ReceiptsRow, LeadershipPacYear, LeadershipPacCategory, LeadershipPacPurpose } from "./types-finance.ts";
 
 export type {
   NodeRef, MemberSummary, Term, Committee, OrgSummary, EdgeType, Amount, Edge, Evidence, Trade,
