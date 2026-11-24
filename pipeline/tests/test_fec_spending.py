@@ -118,8 +118,7 @@ def test_refunds_can_exceed_spending_in_a_category_and_stay_non_negative():
     assert (pac["total"], pac["count"], pac["refunds"], pac["refund_count"]) == (10, 1, 76.5, 2)
     assert [(c["total"], c["refunds"]) for c in pac["categories"]] == [(10, 75.5), (0, 1)]
     c = Checker()
-    check_campaign_finance(c, {"loans": [], "leadership_pac": [pac], "coverage": {
-        "loans_cycles": [2024], "leadership_pac_cycles": [2024], "leadership_pac_note": None}},
+    check_campaign_finance(c, {"loans": [], "leadership_pac": [pac], "coverage": GOOD["coverage"]},
         "m", "M1", ["S8FL00273"], {"C00000001": {"member": "M1", "method": "fec_candidate_id"}})
     assert c.errors == {}
 
@@ -221,9 +220,9 @@ def test_run_writes_blocks_links_coverage_and_audit(built):
     assert [c["category"] for c in pac["categories"]] == sorted(c["category"] for c in pac["categories"] if c["category"]) + (
         [None] if any(c["category"] is None for c in pac["categories"]) else [])
     assert doc["members"]["T000483"]["leadership_pac"] == []
-    assert doc["members"]["T000483"]["coverage"]["leadership_pac_note"] == spending.NOTE_NO_PAC
-    assert doc["members"]["T000483"]["coverage"] == {"loans_cycles": [2000, 2024], "leadership_pac_cycles": [2024],
-                                                     "leadership_pac_note": spending.NOTE_NO_PAC}
+    cov = doc["members"]["T000483"]["coverage"]
+    assert cov.pop("purposes_source").startswith("OpenFEC")
+    assert cov == {"loans_cycles": [2000, 2024], "leadership_pac_cycles": [2024], "purposes_cycles": [], "leadership_pac_note": spending.NOTE_NO_PAC}
     assert s["coverage"]["leadership_pac_note"] is None
     assert doc["links"]["C00409276"] == {"member": "S001217", "method": "fec_candidate_id"}
     assert sec["oppexp_coverage"]["2000"].startswith("not published") and sec["oppexp_coverage"]["2024"] == "loaded"
@@ -270,8 +269,9 @@ GOOD = {
                         "categories": [{"category": "001", "label": "Administrative/salary/overhead expenses", "total": 20.5,
                                         "count": 2, "refunds": 4, "refund_count": 2},
                                        {"category": None, "label": spending.NO_CATEGORY, "total": 10, "count": 1,
-                                        "refunds": 0, "refund_count": 0}]}],
-    "coverage": {"loans_cycles": [2024], "leadership_pac_cycles": [2024], "leadership_pac_note": None},
+                                        "refunds": 0, "refund_count": 0}], "purposes": None}],
+    "coverage": {"loans_cycles": [2024], "leadership_pac_cycles": [2024], "purposes_cycles": [],
+                 "purposes_source": "OpenFEC (not available in this build)", "leadership_pac_note": None},
 }
 LINKS = {"C00409276": {"member": "M1", "method": "fec_candidate_id"}}
 

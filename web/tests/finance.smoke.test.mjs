@@ -70,7 +70,7 @@ test("campaign money: the no-category row comes first and refunds are their own 
   const pacs = p.getByTestId("fin-pac");
   assert.equal(await pacs.count(), 2);
   const first = pacs.first();
-  const firstRow = first.locator("ul.fin__bars > li").first();
+  const firstRow = first.locator("ul.fin__bars:not(.fin__bars--purposes) > li").first();
   assert.equal(await firstRow.getAttribute("data-testid"), "fin-row-nocat");
   assert.match(await firstRow.innerText(), /No FEC category on the filing/);
   assert.match(await first.getByTestId("fin-nocat-line").innerText(), /of the spending carries no FEC category/);
@@ -88,6 +88,7 @@ test("campaign money: the no-category row comes first and refunds are their own 
   assert.match(await first.getByTestId("fin-pac-totals").innerText(), /\$200,000/);
   // Bars are never red.
   const fill = await first.locator(".fin__fill").first().evaluate((el) => getComputedStyle(el).backgroundColor);
+  assert.ok(await first.getByTestId("fin-pac-totals").count(), "the operating-spending totals stay visible");
   const red = await p.evaluate(() => { const d = document.createElement("i"); d.style.color = "var(--red)"; document.body.append(d); const c = getComputedStyle(d).color; d.remove(); return c; });
   assert.notEqual(fill, red);
   await p.close();
@@ -112,6 +113,11 @@ test("campaign money: the full file has both tables with CSV and citations", asy
   await p.getByTestId("records-ready").waitFor({ timeout: 60000 });
   assert.ok(await p.getByTestId("rec-loans").count());
   assert.ok(await p.getByTestId("rec-pac").count());
+  assert.ok(await p.getByTestId("rec-purposes").count(), "the third table: FEC purpose groups");
+  assert.match(await p.getByTestId("rec-purposes-count").innerText(), /^\d+ rows$/);
+  const [dl2] = await Promise.all([p.waitForEvent("download"), p.getByTestId("rec-purposes-csv").click()]);
+  assert.match(dl2.suggestedFilename(), /X000001-fec-purpose-groups\.csv$/);
+  assert.ok(await p.getByTestId("cite-purposes").count());
   assert.match(await p.getByTestId("rec-pac-count").innerText(), /^\d+ rows$/);
   const [dl] = await Promise.all([p.waitForEvent("download"), p.getByTestId("rec-pac-csv").click()]);
   assert.match(dl.suggestedFilename(), /X000001-leadership-pac\.csv$/);
@@ -133,5 +139,87 @@ test("campaign money: no sideways scroll at phone width, and the case file print
   }
   await p.goto(base + "/m/X000001");
   assert.ok(await p.getByTestId("cf-money").count(), "the printable case file carries the block");
+  await p.close();
+});
+
+// ---- FEC purpose groups on the member page (X000001: C00900001 has groups, C00900002 has [] in 2022 and null in 2024) ----
+test("campaign money: purpose groups come first with shares, REFUNDS as a group, and the sponsor link line", async (t) => {
+  if (realData) return t.skip(SAMPLE_ONLY);
+  const p = await page(1200, 900);
+  await p.goto(base + "/m/X000001");
+  const first = p.getByTestId("fin-pac").first();
+  const box = first.getByTestId("fin-purposes");
+  assert.match(await box.innerText(), /How the FEC groups this committee's spending/);
+  assert.match(await box.innerText(), /can differ from the operating spending below/);
+  // The purpose block sits above the operating-spending table.
+  const order = await first.evaluate((el) => {
+    const a = el.querySelector('[data-testid="fin-purposes"]'), b = el.querySelector('[data-testid="fin-opex"]');
+    return Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+  assert.ok(order, "purpose groups come before the category table");
+  const rows = box.getByTestId("fin-purpose-row");
+  assert.deepEqual(await rows.evaluateAll((els) => els.map((e) => e.getAttribute("data-purpose"))), ["OTHER", "CONTRIBUTIONS", "REFUNDS", "ADVERTISING", "ADMINISTRATIVE", "TRAVEL"]);
+  const other = await rows.first().innerText();
+  assert.match(other, /Other/);
+  assert.match(other, /\$250,000/);
+  assert.match(other, /of groups/);
+  assert.match(other, /120 payments/);
+  assert.match(await rows.nth(2).innerText(), /Refunds[\s\S]*\$19,500/);
+  assert.match(await box.getByTestId("fin-purposes-refunds").innerText(), /refunds as their own group; nothing is subtracted/);
+  assert.match(await first.getByTestId("fin-sponsor-link").innerText(), /^Linked by the FEC's sponsor candidate id; Linked by the FEC candidate id on the committee record$/);
+  const second = p.getByTestId("fin-pac").nth(1);
+  assert.match(await second.getByTestId("fin-sponsor-link").innerText(), /exact match/);
+  await p.close();
+});
+
+test("campaign money: a null total reads not published; null and [] cycles say so; no red", async (t) => {
+  if (realData) return t.skip(SAMPLE_ONLY);
+  const p = await page(1200, 900);
+  await p.goto(base + "/m/X000001");
+  const first = p.getByTestId("fin-pac").first();
+  await first.getByTestId("fin-cycle").selectOption("2022");
+  const transfers = first.locator('[data-purpose="TRANSFERS"]');
+  assert.match(await transfers.innerText(), /not published \(negative figure\)/);
+  assert.doesNotMatch(await transfers.innerText(), /\$0\b/);
+  const second = p.getByTestId("fin-pac").nth(1);
+  assert.equal((await second.getByTestId("fin-purposes-unavailable").innerText()).trim(), "The FEC's groupings are not available for this cycle.");
+  await second.getByTestId("fin-cycle").selectOption("2022");
+  assert.equal((await second.getByTestId("fin-purposes-none").innerText()).trim(), "The FEC reported no groupings for this committee in this cycle.");
+  const red = await p.evaluate(() => { const d = document.createElement("i"); d.style.color = "var(--red)"; document.body.append(d); const c = getComputedStyle(d).color; d.remove(); return c; });
+  const fills = await p.locator(".fin__fill").evaluateAll((els) => els.map((e) => getComputedStyle(e).backgroundColor));
+  assert.ok(fills.length > 0 && fills.every((f) => f !== red), "no bar is red");
+  await p.close();
+});
+
+test("campaign money: the category table is folded when over 90% has no FEC category, and opens", async (t) => {
+  if (realData) return t.skip(SAMPLE_ONLY);
+  const p = await page(1200, 900);
+  await p.goto(base + "/m/X000001");
+  const first = p.getByTestId("fin-pac").first();
+  assert.equal(await first.getByTestId("fin-opex-fold").count(), 0, "80% uncategorised stays open");
+  assert.match(await first.innerText(), /Operating spending by FEC category/);
+  const second = p.getByTestId("fin-pac").nth(1);
+  await second.getByTestId("fin-cycle").selectOption("2022");
+  const fold = second.getByTestId("fin-opex-fold");
+  assert.equal(await fold.getAttribute("open"), null);
+  assert.equal(await second.getByTestId("fin-row-nocat").isVisible(), false);
+  await fold.locator("summary").click();
+  assert.equal(await second.getByTestId("fin-row-nocat").isVisible(), true);
+  assert.match(await second.getByTestId("fin-row-nocat").innerText(), /No FEC category on the filing/);
+  await p.close();
+});
+
+test("campaign money: purpose groups fit at phone width and print in the case file", async (t) => {
+  if (realData) return t.skip(SAMPLE_ONLY);
+  const p = await page(390, 844);
+  await p.goto(base + "/m/X000001");
+  await p.getByTestId("campaign-money").waitFor();
+  assert.ok((await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)) <= 0);
+  const second = p.getByTestId("fin-pac").nth(1);
+  await second.getByTestId("fin-cycle").selectOption("2022");
+  assert.ok((await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)) <= 0);
+  const cf = p.getByTestId("cf-purposes");
+  assert.equal(await cf.count(), 1, "only the PAC with groups in its latest cycle");
+  assert.match(await cf.first().innerText(), /Refunds/);
   await p.close();
 });

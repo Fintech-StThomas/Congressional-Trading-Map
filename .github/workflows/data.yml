@@ -70,6 +70,7 @@ jobs:
         timeout-minutes: 120
         env:
           LDA_API_KEY: ${{ secrets.LDA_API_KEY }}       # used only when PT_ENABLE_LDA=1 (off)
+          FEC_API_KEY: ${{ secrets.FEC_API_KEY }}       # OpenFEC: leadership-PAC sponsors and purpose groups; optional
           SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
           PT_CACHE_ONLY: ${{ inputs.cache_only && '1' || '' }}
         run: python -m pipeline.run

@@ -13,7 +13,7 @@ from datetime import date
 
 import duckdb
 
-from . import download
+from . import download, leadership, sponsors_api
 from .load import q
 from .refs import Companies, Members, Overrides, normalise_name
 
@@ -108,11 +108,12 @@ def _leadership(con: duckdb.DuckDBPyConnection, members: Members, cycles: list[i
 
     1. candidate-committee linkage rows with designation D (an FEC candidate id),
     2. committee master rows with designation D that carry a CAND_ID,
-    3. the FEC 'leadership PACs and sponsors' file (2010+), whose sponsor is a name only.
+    3. OpenFEC `sponsor_candidate_ids` (sponsors_api.py), an exact candidate id; skipped without a key or on failure.
+    4. the FEC 'leadership PACs and sponsors' file (2010+), whose sponsor is a name only.
        A sponsor name is accepted only if, after removing punctuation, it equals the FEC
        candidate-master name of candidates who all map to one and the same member. No
        fuzzy or partial matching. Unmatched sponsors are listed in the report.
-    A committee whose sources disagree is dropped and listed.
+    How the sources are combined, and which wins when they disagree: leadership.py.
     """
     cyc = ",".join(str(c) for c in cycles)
     rows: list[tuple[str, str, str]] = []
@@ -155,26 +156,14 @@ def _leadership(con: duckdb.DuckDBPyConnection, members: Members, cycles: list[i
                     ambiguous.add((cmte, sponsor))
                 else:
                     unmatched[(cmte, sponsor)] = cycle
-    by_cmte: dict[str, dict[str, set]] = {}
-    for cmte, bio, how in rows:
-        by_cmte.setdefault(cmte, {}).setdefault(bio, set()).add(how)
-    final, conflicts = [], []
-    for cmte in sorted(by_cmte):
-        bios = by_cmte[cmte]
-        if len(bios) == 1:
-            bio, hows = next(iter(bios.items()))
-            final.append((cmte, bio, "+".join(sorted(hows))))
-        else:
-            conflicts.append({"committee": cmte, "members": sorted(bios)})
+    api_rows, api_report = sponsors_api.rows_for(members.cand_to_bio)
+    final, merged = leadership.combine(rows + api_rows)
     q(con, "CREATE OR REPLACE TEMP TABLE lpac (CMTE_ID VARCHAR PRIMARY KEY, bioguide VARCHAR, method VARCHAR)")
     if final:
         con.executemany("INSERT INTO lpac VALUES (?, ?, ?)", final)
     matched_ids = {c for c, _, _ in final}
     report["leadership_pacs"] = {
-        "leadership_file_rows": lead_rows,
-        "sponsors_resolved": len(final),
-        "by_method": {m: sum(1 for _, _, h in final if h == m) for m in sorted({h for _, _, h in final})},
-        "conflicting_sources_dropped": conflicts,
+        "leadership_file_rows": lead_rows, **merged, "openfec_sponsors": api_report,
         "sponsor_name_ambiguous": sorted([{"committee": c, "sponsor": s} for c, s in ambiguous],
                                          key=lambda d: (d["committee"], d["sponsor"])),
         "sponsor_unmatched": sorted(

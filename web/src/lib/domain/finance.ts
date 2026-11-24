@@ -104,10 +104,10 @@ export function committeeUrl(id: string): string | null {
 
 // ---------------------------------------------------------------- coverage
 
-/** "Cycles loaded: loans 2018, 2020; leadership PAC spending 2018, 2020." */
+/** "Cycles loaded: loans 2018; leadership PAC spending 2018; FEC purpose groups 2018." */
 export function coverageLine(cf: CampaignFinance): string {
   const list = (xs: number[]) => (xs.length ? [...xs].sort((a, b) => a - b).join(", ") : FINANCE.coverageNone);
-  return FINANCE.coverage(list(cf.coverage.loans_cycles), list(cf.coverage.leadership_pac_cycles));
+  return FINANCE.coverage(list(cf.coverage.loans_cycles), list(cf.coverage.leadership_pac_cycles), list(cf.coverage.purposes_cycles ?? []));
 }
 
 // ---------------------------------------------------------------- the full file's tables

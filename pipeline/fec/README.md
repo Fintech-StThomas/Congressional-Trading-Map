@@ -56,8 +56,8 @@ Column lists are taken from the FEC header files (`data_dictionaries/<name>_head
 for all 70 file-cycles). All files decoded as UTF-8.
 
 Not used: individual contributions (`indiv`, which is very large and carries the sale-and-use restriction) and the
-`oth` any-transaction file. No API calls are made. The leadership-PAC bulk file replaces the OpenFEC
-`sponsor_candidate_ids` lookup.
+`oth` any-transaction file. The only API calls are the two OpenFEC listings below (leadership-PAC sponsors and purpose
+groups); without `FEC_API_KEY` they are skipped and everything else is built from the bulk files.
 
 Members come from `pipeline/build/spine.json` when it exists; otherwise from congress-legislators with the same rule
 (any term ending on or after 2000-01-01). Candidate id -> bioguide comes from the `fec` id lists; an id claimed by two
@@ -108,14 +108,16 @@ Every pas2 row gets exactly one label in `p_rules`. The audit below is a group-b
    - IEs whose `CAND_ID` is not a member: dropped.
 
 **Leadership-PAC sponsors** come only from filed sources:
-- linkage or committee-master rows with designation D that carry a candidate id (26 committees);
-- the leadership-PAC file (2010 onward), whose sponsor field is a name only (460 committees). A name is accepted only if,
-  with punctuation removed, it equals the FEC candidate-master name of candidates who all map to one member.
-  There is no fuzzy matching. 54 ambiguous names and 1,090 unmatched (committee, sponsor) rows are listed in the
-  report (many are governors or non-members).
+- OpenFEC `sponsor_candidate_ids` (`sponsors_api.py`, `fec_api_sponsor_id`): an exact candidate id equal to one of the member's;
+- linkage or committee-master rows with designation D that carry a candidate id (`fec_candidate_id`, 26 committees);
+- the leadership-PAC file (2010 onward), whose sponsor field is a name only (`leadership_file_exact_name`, 460 committees).
+  A name is accepted only if, with punctuation removed, it equals the FEC candidate-master name of candidates who all map
+  to one member. No fuzzy matching. 54 ambiguous names and 1,098 unmatched (committee, sponsor) rows are listed (many are governors or non-members).
 
-One committee whose sources named different members is dropped. Funds edges through a leadership PAC carry
-`note: "via leadership PAC"`. Before 2010 a leadership PAC counts as a member's only if it carries a filed candidate id.
+`leadership.py` combines them: methods that agree are joined (`+`, sorted). API ids naming two members: API link dropped.
+API vs name file disagree: the API wins and the row is listed in `name_file_overridden_by_api`. API vs a candidate id disagree,
+or no API row and the sources disagree: committee dropped (`conflicting_sources_dropped`). Funds edges through a leadership PAC carry
+`note: "via leadership PAC"`. Before 2010 a leadership PAC counts as a member's only with a filed candidate id or an OpenFEC sponsor id.
 
 **Org identity** (pac_money and outside_spending payers). An override row (`pipeline/crosswalk/org_overrides.csv`,
 `source` = fec / fec_committee / fec_connected_org, keyed by committee id or connected-org name, with `reviewed_by`
@@ -275,12 +277,24 @@ Rules
   Only the 2024 layout has been checked by hand (24 or 25 delimiters per line); verify the other cycles in the first full run.
 - Not built: payments to family members or member-owned firms. No bulk-file field is an exact identifier for them.
 
-Measured on 2024 (this sandbox, 2026-11-17): download of `oppexp24.zip` 64 MB in 2.4 s; stream and aggregate 2,249,911
-lines (120,846 of the 832 leadership PACs listed by the FEC; 32,220 of the 290 linked to a member) in 2.9-3.4 s; peak
-resident memory 63 MB for the stream alone, 147 MB with DuckDB and the reference tables. Only this one oppexp cycle was
-downloaded; the other 11 files (2004-2022, 2026) are 26-65 MB each, so a cold full run adds about 0.6 GB of download and about
-35 s of streaming, and a daily run refetches only the two latest cycles (about 115 MB). `weball` was read for all 14 cycles
-(44,913 rows).
+Measured on 2024 (2026-11-17): `oppexp24.zip` 64 MB downloaded in 2.4 s; 2,249,911 lines streamed in 2.9-3.4 s; peak memory 63 MB
+for the stream, 147 MB with DuckDB. The other 11 files are 26-65 MB each (cold run about 0.6 GB, daily run the two latest cycles,
+about 115 MB). `weball` was read for all 14 cycles (44,913 rows).
+
+## OpenFEC API: exact sponsors and purpose groups (`api.py`, `sponsors_api.py`, `purposes_api.py`)
+
+Key: environment variable `FEC_API_KEY` (repository secret, given to the "Run pipeline" step only); never printed, cached or put
+in an error. Missing key, HTTP error, bad JSON or `PT_CACHE_ONLY=1`: a warning, the cache is used if there is one (reported as
+`stale_cache` / `stale_cycles`), otherwise the build goes on without (sponsors from the bulk files, `purposes: null`). Never fails the run.
+Cache: `pipeline/.cache/fec/api/` (gitignored, kept by the daily job's cache). One shared request counter, hard stop at 400 per run.
+- `/v1/committees/?designation=D&per_page=100&sort=committee_id`: 16 pages, 1,507 leadership PACs, 1,373 with `sponsor_candidate_ids`.
+  Refetched after 7 days. Only id, name, sponsor ids and cycles are kept. Live 2026-11-24: 1,013 PACs link to a member by exact id
+  (596 not linked before; 486 -> 1,082 linked in all).
+- `/v1/schedules/schedule_b/by_purpose/?committee_id=...&cycle=...`: up to 100 `committee_id` per request, paged by 100 rows. Asked
+  only for committee-cycles with oppexp rows. Two latest cycles refetched after 12 h, older after 7 days; a new committee at once.
+  Requests, live: 253 for all 12 cycles (about 5 min); 29 per recent cycle. The API lists some identical group rows twice (36 of
+  21,656): counted once. 86 groups had a negative total: published as `total: null` and listed in the report.
+Tests: `test_fec_api.py`, `test_fec_purposes.py` (recorded pages in `pipeline/tests/fixtures/fec_api/`).
 
 Tests: `pipeline/tests/test_fec_spending.py` with recorded rows in `pipeline/tests/fixtures/fec_spending/` (payee name,
 city, state, ZIP, purpose and memo text blanked).

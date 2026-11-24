@@ -34,6 +34,7 @@ commit and retrieval times. To get the published data without running the pipeli
 | `PT_CACHE_ONLY=1` | reuse every cached download regardless of age (reproducible rebuilds, offline work) |
 | `PT_OUT_DIR` | publish somewhere other than `web/public/data/` (dry runs, comparisons) |
 | `PT_ENABLE_LDA=1`, `LDA_API_KEY` | switch the lobbying stage on (off by default; "off" also removes stale `lda.*` plug-in files) |
+| `FEC_API_KEY` | OpenFEC key (the repository secret in the daily job): exact leadership-PAC sponsors and FEC purpose groups, 269 requests on a cold cache (about 5 min), about 58 on a normal day, about 270 once a week; absent or failing, both are skipped with a warning |
 | `PT_ENABLE_CONGRESS=1`, `CONGRESS_API_KEY` | switch the Congress.gov sponsorship pilot on (off by default; unpublished, see "Congress.gov pilot") |
 
 To check that a change is a pure refactor, rebuild into a copy and compare hashes:
@@ -162,10 +163,9 @@ Each step runs only when every earlier one succeeded, so a build that failed a t
 never published; the failing step exits non-zero with its reason in the log, a final step adds an error annotation,
 and GitHub emails the owner. On the default branch of the main repository the workflow sets `PT_R2_REQUIRED=1`, so
 missing R2 secrets fail the publish step (exit 2) instead of skipping it; forks and other branches skip the upload.
-Actions are pinned to commit SHAs; each secret is given only to the step that needs it (the pipeline step:
-`LDA_API_KEY`, `SEC_USER_AGENT`; the publish step: the `R2_*` secrets) and never printed. Downloads are cached
-between runs (`pipeline/.cache`), and each source refetches on its own schedule, so the cache never freezes data;
-the run needs no previous build.
+Actions are pinned to commit SHAs; each secret is given only to the step that needs it (the pipeline step: `LDA_API_KEY`,
+`FEC_API_KEY`, `SEC_USER_AGENT`; the publish step: the `R2_*` secrets) and never printed. Downloads are cached between runs
+(`pipeline/.cache`), each source refetching on its own schedule, so the cache never freezes data; the run needs no previous build.
 
 After the legacy publish step, a step "Warm the site cache" (`scripts/ops/warm_cache.py`, repository variable `SITE_URL`;
 skipped when unset; never fails the job) requests the main pages and the 10 members with the most trades. Then an opt-in step "Archive immutable release" runs `python -m pipeline.publish_release
@@ -368,10 +368,9 @@ contributions file (`indiv`), and publishes no individual contributor; the notic
   deadline runs from the notification date, so a few flagged trades may have been filed on time.
 - **Memory.** Assembly holds every edge (without evidence) in memory: about 4.2 GB peak with the full FEC plug-in.
 - **Campaign finance block.** `MemberFile.campaign_finance` (loans as the FEC summarises them, leadership PAC spending
-  summed by FEC category) comes from `pipeline/fec/spending.py`, which runs inside the `fec` stage and writes
-  `build/campaign_finance.json`; the assembler copies each member's block (null when absent) and
-  `pipeline/validate_fec_spending.py` checks it, including that no payee or address text is present. Only aggregates
-  are read from `oppexp`. Payments to family or member-owned firms are not built (no exact identifier).
+  by FEC category and by the FEC's purpose groups) comes from `pipeline/fec/spending.py` in the `fec` stage and writes
+  `build/campaign_finance.json`; the assembler copies each member's block (null when absent) and `pipeline/validate_fec_spending.py`
+  checks it (no payee or address text; only aggregates are read). The OpenFEC parts need `FEC_API_KEY` (see `pipeline/fec/README.md`).
 - **FEC totals are what givers reported.** They can differ from the recipient's own summary (weball) when the
   recipient amended its reports or never itemised a receipt; see `pipeline/fec/README.md` (Jordan 2020, Cruz 2018 and
   2022 are worked through there).
