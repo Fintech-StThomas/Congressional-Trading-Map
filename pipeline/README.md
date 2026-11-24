@@ -95,15 +95,15 @@ pipeline/
   edges.py            range arithmetic (sum_amounts), by_year, evidence ranking, edge ids
   spine.py trades.py trade_amendments.py companies.py sic.py edges_trades.py edges_committees.py    core sources and edges
   fec/                download -> load (parse) -> refs (identities) -> build (rules, edges, orgs; conduits = the reviewed conduit lists) -> run (write, checks; crosscheck = weball);
-                      spending + spending_oppexp (loans and leadership PAC spending by category -> campaign_finance.json)
-  holdings/           source (download) -> run (parse, resolve, emit) -> rules (redaction) -> validate
+                      spending + spending_oppexp + receipts + purposes_api + sponsors_api + totals_api (-> campaign_finance.json)
+  holdings/           source (download) -> run (parse, resolve, emit) -> rules + address_rules (redaction) -> validate (+ address_check gate)
   lda/                download -> build (parse) -> match (identities) -> edges -> run (write, checks); off by default
   congress/           download -> facts (parse, exact ids) -> run (fact table, review sample); off by default, unpublished
   assemble/           plugins (load, merge) cases budget orgs wall members publish, run (the orchestrator)
-  validate.py         output checks; holdings/validate.py for holdings
+  validate.py         output checks (+ validate_delays, validate_trade_amendments, validate_fec_spending/_receipts/_totals/_conduits)
   publish_r2.py       upload web/public/data to Cloudflare R2 (changed files only); run by the daily workflow
   publish_release.py  opt-in content-addressed archive (release_blobs, release_refs, release_history, release_store,
-                      release_manifest, release_provider_check, withdraw_release); served by worker/
+                      release_manifest, release_provider_check, release_repair, withdraw_release); served by worker/
   crosswalk/org_overrides.csv   hand-reviewed org matches
   tests/              one test file per module: test_edges, test_trades, test_fec, test_assemble, test_holdings, ...
 ```
