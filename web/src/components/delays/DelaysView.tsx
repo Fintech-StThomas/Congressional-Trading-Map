@@ -3,11 +3,19 @@
 import "@/styles/delays.css";
 import Link from "next/link";
 import { DELAYS } from "@/lib/copy";
-import { latestData } from "@/lib/data/server";
+import { DELAYS_AMEND } from "@/lib/copy-amend";
+import type { Data } from "@/lib/data/server";
+import { metaBuilt, metaSources } from "@/lib/data/meta";
 import { decodeDelayMembers, readDelays, viewRows } from "@/lib/domain/delays";
 import { count } from "@/lib/format";
+import { delaysHref } from "@/lib/urls";
+import { PERMALINK } from "@/lib/copy-permalink";
 import type { Delays } from "@/lib/types";
 import { ReleasePin } from "@/components/shared/ReleasePin";
+import { ReleaseBanner } from "@/components/shared/ReleaseBanner";
+import { CiteEnvProvider } from "@/components/shared/CiteEnv";
+import { DelaysCite } from "./DelaysCite";
+import "@/styles/cite.css";
 import { BandSummary } from "./BandSummary";
 import { GroupsTable } from "./GroupsTable";
 import { MembersTable } from "./MembersTable";
@@ -23,7 +31,7 @@ function Caveat() {
   );
 }
 
-function Definition({ d }: { d: Delays["definition"] | undefined }) {
+function Definition({ d, newBuild = true }: { d: Delays["definition"] | undefined; newBuild?: boolean }) {
   const measured = typeof d?.measured === "string" && d.measured ? d.measured : DELAYS.fallbackMeasured;
   const caveats = Array.isArray(d?.caveats) && d.caveats.length ? d.caveats : [...DELAYS.fallbackCaveats];
   return (
@@ -35,18 +43,21 @@ function Definition({ d }: { d: Delays["definition"] | undefined }) {
       <ul className="dl-list">
         {caveats.map((c) => <li key={c}>{c}</li>)}
       </ul>
-      <p className="dl-sub">{DELAYS.auditSummary}</p>
+      <p className="dl-sub">{newBuild ? DELAYS_AMEND.auditSummary : DELAYS_AMEND.auditSummaryOld}</p>
       <p><Link href="/method">{DELAYS.methodLink}</Link></p>
     </section>
   );
 }
 
-export async function DelaysView() {
-  const data = await latestData();
+/** The page for one data reader: the latest release at /delays, or `pinned` (a permanent page, /r/<release>/delays) with its banner. */
+export async function DelaysView({ data, pinned = false }: { data: Data; pinned?: boolean }) {
   const delays = readDelays(await data.readData<unknown>("delays.json", null));
+  const meta = await data.getMeta();
+  const built = metaBuilt(meta);
   const head = (
     <>
       <ReleasePin release={data.release} />
+      {pinned && data.release && <ReleaseBanner release={data.release} built={built} latestHref={delaysHref()} body={PERMALINK.bannerBody} />}
       <h1>{DELAYS.title}</h1>
       <p className="lede">{DELAYS.lede}</p>
     </>
@@ -60,7 +71,7 @@ export async function DelaysView() {
           <h2>{DELAYS.unavailableTitle}</h2>
           <p>{DELAYS.unavailableBody}</p>
         </div>
-        <Definition d={undefined} />
+        <Definition d={undefined} newBuild={false} />
       </div>
     );
   }
@@ -79,11 +90,17 @@ export async function DelaysView() {
     .concat(Object.keys(delays.by_year).includes("none") ? ["none"] : [])
     .map((y) => ({ key: y, label: y === "none" ? "None (no transaction date)" : y, g: delays.by_year[y] }));
 
+  const sources = metaSources(meta).map((x) => ({
+    id: x.id, name: typeof x.name === "string" ? x.name : x.id, url: typeof x.url === "string" ? x.url : null,
+    revision: x.revision ? String(x.revision) : null, retrieved: x.retrieved ? String(x.retrieved) : null,
+  }));
   return (
+    <CiteEnvProvider release={data.release} built={built} sources={sources}>
     <div className="page delays">
       {head}
+      <div className="dl-cite"><DelaysCite counts={{ published_trades: delays.totals.count, members: rows.length }} /></div>
       <Caveat />
-      <Definition d={delays.definition} />
+      <Definition d={delays.definition} newBuild={delays.totals.date_corrected !== undefined} />
       <BandSummary g={delays.totals} />
       <GroupsTable id="dl-chambers" heading={DELAYS.chamberHeading} note={DELAYS.chamberNote} first="Chamber" rows={chambers} />
       <GroupsTable id="dl-years" heading={DELAYS.yearHeading} note={DELAYS.yearNote} first="Year" rows={years} />
@@ -94,5 +111,6 @@ export async function DelaysView() {
       </section>
       <p className="dl-sub">{count(delays.totals.count)} published trades in this build.</p>
     </div>
+    </CiteEnvProvider>
   );
 }

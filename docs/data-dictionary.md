@@ -48,7 +48,7 @@ Matching is exact on a normalised name, plus a hand-reviewed override file (`pip
   Objects no longer in the build are deleted only after metadata and manifest publication. A failed data-file
   upload leaves previous metadata and manifest in place, but already-uploaded files are not rolled back.
 
-## Offline release manifest (basis of the archive; production cutover pending)
+## Offline release manifest (basis of the archive; live since 2026-11-16)
 
 `python -m pipeline.release_manifest --dir <validated-data-tree> --output <outside-tree>/release.json`
 creates a deterministic descriptor for a future immutable release. It does not validate the data's meaning,
@@ -66,7 +66,7 @@ its original bytes. Relative paths and file sizes are part of the identity; file
 There is no self-hash cycle: `release_id` is added after computing the digest. A checksum proves byte identity,
 not source accuracy or authorship. Future publishing must preserve the exact files described here.
 
-## Immutable archive publication (opt-in; production cutover pending)
+## Immutable archive publication (live since 2026-11-16; gated by PT_PUBLISH_RELEASES)
 
 The archive publisher uses a separate fixed `releases/` prefix, outside the legacy publisher's `data/` cleanup.
 Content is addressed by hash, so a file that did not change is stored once however many releases contain it:
@@ -105,16 +105,16 @@ every blob, a full read of `meta.json`, and the same pointer precondition (`--fu
 ### Release history index (mutable)
 
 `releases/index.json` is `{schema_version: 1, releases: [{release_id, build_time, activated_at}]}`, newest first,
-for a future "compare releases" view. `release_id` is the 64-hex ID; `build_time` is the release's `meta.json`
-`build.time`; `activated_at` is a UTC timestamp `YYYY-MM-DDTHH:MM:SSZ`. There is one entry per release: activating
-a release already in the list (a rollback or roll-forward) moves its entry to the front with a new `activated_at`;
-re-running the activation of the release already at the front changes nothing, so a repair re-run is idempotent.
-The list holds at most 400 entries (the oldest are dropped; the release objects themselves stay). The file uses the
-pointer's `Cache-Control` and is written with the pointer's discipline (`If-Match` on the captured ETag, or
-`If-None-Match: *` when absent; bounded retries when it changed concurrently). A malformed existing index fails
+for the "compare releases" view and as the site's allow-list for permalinks. `release_id` is the 64-hex ID;
+`build_time` is the release's `meta.json` `build.time`; `activated_at` is a UTC timestamp `YYYY-MM-DDTHH:MM:SSZ`.
+One entry per release: activating a release already in the list (a rollback or roll-forward) moves its entry to the
+front with a new `activated_at`; re-running the activation of the release already at the front changes nothing, so a
+repair re-run is idempotent; a release left out by an earlier failed write is added on the next activation, with the
+repair time as `activated_at`. At most 10,000 entries (a safety bound; the oldest would be dropped, the objects stay).
+The file uses the pointer's `Cache-Control` and is written with the pointer's discipline (`If-Match` on the captured ETag, or `If-None-Match: *` when absent; bounded retries when it changed concurrently). A malformed existing index fails
 closed. It is written only after the pointer has moved. **The pointer is the only authority for which release is
-current**; the index is a convenience, is never part of a release hash, and may be repaired by re-running the
-activation. Readers must not use it to decide what is current.
+current**; the index is never part of a release hash and is repaired by re-running the activation. Readers must
+not use it for "current", but the site serves `/r/<release_id>/...` only for a listed (or the current) release.
 
 ### Withdrawal tombstone
 
@@ -286,13 +286,13 @@ type Evidence = {
 };
 
 type Trade = {
-  id: string;                 // eventId
+  id: string;                 // eventId; for a folded House amendment, the eventId of the earliest printing
   version: number;
-  amended: boolean;           // more than one version exists
-  date: string | null;        // transaction date as filed
-  available: string | null;   // date (US Eastern) the public could first see it (availableAt)
-  lag_days: number | null;    // available - date
-  late: boolean | null;       // lag_days > 45; null when a date is missing
+  amended: boolean;           // the event has more than one version, OR a later House printing marked Amended/Deleted was folded into it, OR its own House row is marked Amended/Deleted with no exactly matching earlier trade. Later filings: TradeFile.amendments[id]
+  date: string | null;        // transaction date as filed (the latest printing's)
+  available: string | null;   // date (US Eastern) the public could FIRST see the trade: the earliest version's availableAt, and the earliest filing when later House printings were folded (`doc` is that filing). Exception: a House row marked Amended with no matched original carries the amending filing's date
+  lag_days: number | null;    // available - date; never negative for a multi-version trade. null when a date is missing, AND when a later version (or a folded printing) changed the transaction date or the difference would be negative: the first public filing showed another date, so no elapsed-days figure is given ("date corrected"; then `amended` is true and both dates are present)
+  late: boolean | null;       // lag_days > 45; null when lag_days is null
   owner: "self" | "spouse" | "joint" | "dependent" | "unspecified"; // never defaulted to self
   action: "buy" | "sell" | "exchange" | "other";
   partial: boolean | null;    // partial sale; null for anything but a sale
@@ -304,7 +304,7 @@ type Trade = {
                               // asset type only; "unknown" when the filing gives none (most House rows)
   low: number | null; high: number | null; // disclosed range; no midpoint stored; high null = open-ended ("over $X")
   org: string | null;         // org id when the ticker resolves (co: or tk:)
-  doc: string;                // source filing id; its URL is MemberFile.filings[doc]
+  doc: string;                // source filing id (the earliest filing of the trade); its URL is TradeFile.filings[doc]
 };
 
 // Columnar table: each row holds the values of one record in `cols` order.
@@ -362,8 +362,9 @@ type MemberFile = {
 type TradeFile = {           // trades/<memberId>.json
   cols: (keyof Trade)[];      // id, version, amended, date, available, lag_days, late, owner, action, partial,
                               // ticker, ticker_source, asset, asset_class, low, high, org, doc
-  rows: unknown[][];          // newest first, current versions only
-  filings: { [doc: string]: string }; // filing id -> official filing URL
+  rows: unknown[][];          // newest first, current versions only; one row per trade (House reprints folded, see "Rules the pipeline must keep")
+  filings: { [doc: string]: string }; // filing id -> official filing URL; covers every row's doc and every amendments[].doc
+  amendments: { [tradeId: string]: { id: string; doc: string; status: "Amended" | "Deleted" | "Version"; available: string | null }[] }; // later filings of that row's trade, oldest first; {} when none. "Amended"/"Deleted": a later House printing folded into the row (id = that printing's own eventId, never a row; status = the filing status the source records for it). "Version": the filing of a later version of the same dataset event (id = the row's own id; House and Senate). doc = the later filing, available = the date it became public. A "Deleted" printing does NOT remove the row: the trade stays published and summed, flagged amended (owner decision pending)
 };
 
 type OrgFile = {
@@ -427,6 +428,7 @@ type Meta = {
     member_ties: number;               // edges in member-ties.json
     ledger_money_ties: number;         // money ties that are ledger rows rather than full edges
     ledger_rows_published: number; ledger_rows_former_members_cut: number;
+    trades_amended_reprints_folded: number; trades_same_key_other_filing: number; trades_lag_withheld_date_corrected: number; // folded: House printings marked Amended/Deleted folded into an earlier trade (not in `trades`); same_key: published trades equal in every key field to a trade of the same member in another filing, with no filed mark linking them: kept, never merged (per member: reports.hf_trades.amendments.same_key_other_filing); lag_withheld: published trades whose lag_days is null because the transaction date was corrected
   };
   publication_budget: {               // the constants of pipeline/config.py, see "Publication budget"
     money_edges_per_member: number; former_member_ledger_rows: number; money_members_per_org: number;
@@ -434,7 +436,7 @@ type Meta = {
   };
   unmatched: { trades_without_ticker: number | null; tickers_without_sec_match: number | null;
                trades_with_unmatched_ticker: number | null; edges_dropped_at_assembly: { [reason: string]: number } };
-  exclusions: { [what: string]: { rows: number; reason: string; filings?: unknown[][]; members?: string[] } }; // trades
+  exclusions: { [what: string]: { rows: number; reason: string; filings?: unknown[][]; members?: string[] } }; // trades; `amended_rows_without_original`, `same_key_other_filing` and `lag_withheld_date_corrected` count rows that are KEPT (their reason says so); FEC: `conduit_pass_through` (also `dollars`, `committees`, `by_cycle`; see docs/fec-conduits.md)
   assembly: { edges_read: { [file: string]: number }; edges_after_merge: number;
               edges_dropped: { [reason: string]: number }; edges_dropped_examples: { [reason: string]: string[] };
               org_files: string[];
@@ -506,18 +508,18 @@ field-level audit is [`docs/validation/disclosure-timing-audit.md`](validation/d
 ```ts
 type DelayGroup = {
   count: number;              // trades in the group
-  dated: number;              // count - undated (includes negative lags)
+  dated: number;              // count - undated - date_corrected: trades with a lag_days (includes negative lags)
   bands: { "0-30": number; "31-45": number; "46-90": number; "91-365": number; "over-365": number };
                               // trades by lag_days; the band keys are fixed text; 31-45 ends at config.LATE_DAYS
   negative: number;           // lag_days < 0 (availability recorded before the transaction); in no band, no statistic
-  undated: number;            // lag_days is null (transaction or availability date missing); never counted as 0 days
-  amended: number;            // trades that are the current version of an event with more than one version;
-                              // also counted in the bands/negative/undated bucket they belong to, so NOT additive
+  undated: number;            // lag_days is null because the transaction or availability date is missing; never counted as 0 days
+  date_corrected: number;     // lag_days is null though both dates are present: a later version changed the transaction date (see Trade.lag_days); in no band, no statistic
+  amended: number;            // trades with Trade.amended true; also counted in the bucket they belong to, so NOT additive
   median: number | null;      // nearest-rank percentiles of lag_days over dated, non-negative trades (integers)
   p90: number | null;
   max: number | null;         // all null when that set is empty
 };
-// bands + negative + undated == count in every group.
+// bands + negative + undated + date_corrected == count in every group.
 
 type Delays = {
   definition: {
@@ -525,19 +527,15 @@ type Delays = {
     threshold_days: number;   // config.LATE_DAYS (45): the outer bound the 31-45 / 46-90 bands split on
     bands: string[];          // the band keys in order
     percentile: string;       // the method, in words
-    caveats: string[];        // fixed strings: observed elapsed days, not compliance; notification dates and extensions
-                              // not in the data; amended and negative-lag handling
+    caveats: string[];        // fixed strings: observed elapsed days, not compliance; notification dates and extensions not in the data; amended, date-corrected and negative-lag handling
   };
   totals: DelayGroup;         // every published trade
-  by_chamber: { rep: DelayGroup; sen: DelayGroup };
-                              // by the chamber of the filing as recorded by the dataset (Trade rows in trades/<id>.json
-                              // carry no chamber, so this split cannot be re-derived from them, and it is not
-                              // necessarily the member's chamber when a member served in both)
-  by_year: { [year: string]: DelayGroup };   // calendar year of the transaction date; "none" when it is missing
-                              // (as trade_summary.by_year); a trade with a date but no availability date is in its
-                              // year and counted undated; keys ascending, "none" last
+  by_chamber: { rep: DelayGroup; sen: DelayGroup }; // by the chamber of the filing as recorded by the dataset (Trade rows in trades/<id>.json carry no chamber,
+                              // so this split cannot be re-derived from them, and it is not necessarily the member's chamber when a member served in both)
+  by_year: { [year: string]: DelayGroup };   // calendar year of the transaction date; "none" when it is missing (as trade_summary.by_year);
+                              // a trade with a date but no availability date is in its year and counted undated; keys ascending, "none" last
   members: Table<"id" | "count" | "dated" | "b0_30" | "b31_45" | "b46_90" | "b91_365" | "b366_plus" | "negative"
-                 | "undated" | "amended" | "median" | "p90" | "max" | "first_year" | "last_year">;
+                 | "undated" | "amended" | "median" | "p90" | "max" | "first_year" | "last_year" | "date_corrected">;
                               // one row per member with at least one published trade, sorted by id; b* are the five
                               // bands in order; first_year / last_year = earliest / latest transaction year, null
                               // when no trade has a transaction date; names come from members.json
@@ -546,14 +544,13 @@ type Delays = {
 
 Rules:
 
-- Built from the same current-version trade rows published in `trades/<id>.json`, so a member's row can be re-derived
-  from that file (`lag_days`, `date`, `amended` columns). `lag_days = available - date` in days; see Trade.
+- Built from the same trade rows published in `trades/<id>.json`, so a member's row can be re-derived from that file (`lag_days`, `date`, `amended` columns). `lag_days = available - date` in days, `available` being the trade's earliest public date; see Trade. A reprint in a later House filing is not a second trade and adds no days.
 - Percentile method (nearest rank): sort the n dated, non-negative lags ascending; the p-th percentile is the value at
   1-based position `ceil(p * n / 100)`. Median is p = 50 (the lower middle value for even n). No interpolation.
 - Output is deterministic: members sorted by id, `by_year` keys ascending, sorted JSON keys.
 - Data strings carry no ranking labels and no wording about violations. The `late` boolean in Trade is unchanged and
   means only `lag_days > 45`.
-- Validation (`pipeline/validate_delays.py`): schema; bands + negative + undated == count in every group; each member
+- Validation (`pipeline/validate_delays.py`): schema; bands + negative + undated + date_corrected == count in every group; each member
   row equals the row re-derived from its trade file and its count equals both the file's row count and
   `MemberFile.trade_summary.count`; trades over 45 days equal `trade_summary.late`; totals equal the sum of member
   rows and the figures re-derived from all trade files; chambers sum to totals; by_year groups equal the re-derived
@@ -561,7 +558,7 @@ Rules:
 
 ## Rules the pipeline must keep
 
-- Amendments: use the current event version (`supersededAt` is null); keep `version` and `amended`.
+- Amendments: use the current event version (`supersededAt` is null); keep `version` and `amended`. A multi-version event is timed from and cites (`doc`) its earliest version's filing; later versions' filings go in `TradeFile.amendments` (status "Version"); if the transaction date differs between the earliest and the current version, or the lag would be negative, `lag_days` and `late` are null (`exclusions.lag_withheld_date_corrected`, delays bucket `date_corrected`). **House reprints** (`pipeline/trade_amendments.py`). The source's `political_trades.filingStatus` is, on e-filed House PTRs, the "Filing Status: New / Amended / Deleted" the Clerk prints under each row (Amended and Deleted rows also print a transaction ID, `sourceTransactionId`; originals print none); on scanned and some text filings it is the dataset's reading of a filing-level statement that the report amends an earlier one (no ID). A current House event whose row is so marked is folded into an earlier-public event of the same member in a different filing only when both carry the same transaction ID, or every key field is equal (transaction date, owner, action, amount low and high, ticker, asset text minus its bracketed type code) and exactly one earlier filing qualifies. The folded trade keeps the earliest printing's `id`, `doc` and `available`, takes its other fields from the latest printing, is `amended`, and lists the later printings in `TradeFile.amendments`. Never by similarity. Limit of the exact key: it cannot tell which of several identical earlier rows a reprint restates (it pairs them one to one within the single earlier filing), and it cannot link an amendment that changes a key field, so a marked row without a match stays its own trade timed from the amending filing (`exclusions.amended_rows_without_original`). Rows of multi-version events are not key-matched. Unmarked same-key trades in different filings are both kept and counted (`counts.trades_same_key_other_filing`). A row marked Deleted is folded the same way and the trade stays published. Senate rows are not folded. `pipeline/validate_trade_amendments.py` re-derives the same-key count per member, re-reads the source's filing status to prove no marked row with a single exact earlier match was left unfolded, and checks that `doc` is the filing public on `available`.
 - Owner and filer are separate. An unlabelled owner is `unspecified`.
 - Missing tickers, dates and amounts stay null. Missing is not zero.
 - FEC money is exact: for FEC edges and ledger rows `low = high = exact`.
@@ -570,7 +567,7 @@ Rules:
   entries follow the same rule and always sum to the edge totals.
 - `by_year`, `first` and `last` use the record date; a trade without a transaction date uses its availability date.
 - Joins must not multiply rows; the pipeline asserts row counts before and after each join and reports unmatched records.
-- Exclusions (non-members, failed extractions) are counted and listed in `meta.json`.
+- Exclusions (non-members, failed extractions, forwarded contributions) are counted and listed in `meta.json`. `pac_money` and `funds` are the giving committee's own money as it reported it (FEC bulk file pas2, types 24K, 24Z, 24P): rows of the three payment platforms, rows whose memo says EARMARK, and every 24K row, in the listed cycle files, of the PACs on the reviewed exact-id list in `pipeline/fec/conduits.py` (they forward contributions earmarked by individuals and report them like their own; their own direct gifts are left out with them) are not counted, the last under `exclusions.conduit_pass_through` with rows and dollars. A contribution the giver coded 24G (transfer to an affiliated committee) is not in pas2 and is not seen. Ids, evidence and limits: `docs/fec-conduits.md`.
 - Derived edges are drawn only when they clear a published threshold over a baseline, and always carry `stat`.
 - `sits_with` and `legislates_with` are context edges. They never count toward a `Case`.
 - `sits_with`: one edge per member pair sharing at least one current full committee (not subcommittee); `count` is the
@@ -707,12 +704,15 @@ two OpenFEC API listings (needs `FEC_API_KEY`; absent or failing, the block is b
 ```ts
 type CampaignFinance = {
   loans: LoanRow[];                 // one row per (cycle, candidate id), oldest cycle first; [] if none
+  receipts: ReceiptsRow[];          // same keys and order as loans, from the same weball row (see "Receipts" below); [] if none
   leadership_pac: LeadershipPacYear[]; // one row per (cycle, committee), oldest cycle first; [] if none
   coverage: {
-    loans_cycles: number[];         // cycles whose weball file was loaded (the same for every member)
+    loans_cycles: number[];         // cycles whose weball file was loaded (the same for every member); also the receipts cycles
     leadership_pac_cycles: number[];// cycles whose oppexp file was loaded (2004 on; 2000 and 2002 do not exist)
     purposes_cycles: number[];      // cycles whose OpenFEC purpose-group request completed (2004 on); [] = none
     purposes_source: string;        // endpoint, coverage, access date; or why unavailable
+    totals_cycles: number[];        // cycles with at least one committee-totals object (2004 on); [] = none
+    totals_source: string;          // endpoint, access date; or why unavailable
     leadership_pac_note: string | null; // set exactly when leadership_pac is []
   };
 };
@@ -728,6 +728,15 @@ type LoanRow = {                    // the FEC's all-candidates summary row for 
   through: string | null;           // CVG_END_DT: the summary covers the cycle up to this date (YYYY-MM-DD)
 };                                  // dollars, exact (not ranges); null = blank in the file or a negative figure (see below)
 
+type ReceiptsRow = {                // same weball row as LoanRow; exact dollars to the cent; null = blank, or not published (see Receipts)
+  cycle: number; candidate_id: string; office: "house" | "senate" | "president" | null;   // as in LoanRow
+  total_receipts: number | null; from_individuals: number | null;        // TTL_RECEIPTS; TTL_INDIV_CONTRIB (the file has no itemised/unitemised split)
+  from_other_committees: number | null; from_party_committees: number | null; // OTHER_POL_CMTE_CONTRIB (PACs and other committees); POL_PTY_CONTRIB
+  from_candidate: number | null; transfers_from_authorised: number | null;    // CAND_CONTRIB; TRANS_FROM_AUTH (other committees of the same candidate)
+  total_disbursements: number | null; cash_on_hand: number | null;       // TTL_DISB; COH_COP (cash at close; may be negative as filed)
+  through: string | null;           // CVG_END_DT (YYYY-MM-DD): the figures cover the cycle up to this date
+};
+
 type LeadershipPacYear = {
   committee_id: string;             // the leadership PAC, C + 8 digits
   committee_name: string;           // latest name in the FEC committee master
@@ -740,6 +749,14 @@ type LeadershipPacYear = {
   categories: { category: string | null; label: string; total: number; count: number; refunds: number; refund_count: number }[];
                                     // by code, no-code rows (null) last; their four figures sum to the four above; all >= 0
   purposes: { purpose: string; total: number | null; count: number }[] | null; // FEC groups of ALL disbursements; null = not fetched
+  totals: PacTotals | null;         // the FEC's committee summary for the cycle; null = unavailable (never zeros)
+};
+
+type PacTotals = {                  // exact dollars to the cent, each null if blank or negative; at least one is set; see docs/leadership-pac-totals.md
+  receipts: number | null; disbursements: number | null;               // money in; ALL money out (the published parts need not add up to it)
+  contributions_to_committees: number | null; operating_expenditures: number | null;  // contributions made to other federal committees and candidates; operating spending (one part of disbursements)
+  contribution_refunds: number | null; other_disbursements: number | null; cash_on_hand: number | null; // refunds paid out; other disbursements; cash at the end of coverage
+  coverage_end_date: string;        // YYYY-MM-DD: every figure above is cumulative for the cycle up to this date
 };
 ```
 
@@ -749,38 +766,21 @@ Rules
   authorised committees reported for the cycle; the five money fields are copied as summarised, to the cent.
   A blank field is `null`, never zero. A negative figure (80 figures in 44,913 rows, cycles 2000-2026) is not published (`null`) and is listed in `meta.reports.fec_spending.loans.negative_figures_not_published`.
   A zero is published as zero only when the FEC file says 0.
-- **Leadership PACs: exact sponsor linkage.** A committee is a member's leadership PAC only through the rules in `pipeline/fec/README.md`
-  ("Leadership-PAC sponsors"): OpenFEC's `sponsor_candidate_ids` for the committee contain one of the member's FEC ids (`fec_api_sponsor_id`), a filed
-  candidate id on the committee (`fec_candidate_id`), or the FEC sponsor list's name equal to the candidate-master name of that member's ids,
-  punctuation aside (`leadership_file_exact_name`). No similarity matching. If the API's ids name two members the API link is dropped; the API and a
-  name-file link that disagree: the API's exact id wins; the API and a candidate id that disagree: dropped. All reported.
-- **Spending: aggregates only.** The operating-expenditures file is streamed and summed by the FEC's `CATEGORY` code (001-012 for House, Senate and
-  party/PAC filers; 101-107 for presidential filers; labels are the FEC's wording). Memo items (`MEMO_CD` = X, itemisations of an amount already
-  counted) are dropped, a transaction re-reported in a later filing (same committee, transaction id, date and amount) counts once, rows of exactly
-  zero are skipped, and the file's own cycle decides the `cycle`. A blank or unrecognised code goes to `category: null`. Most Form 3X rows (PACs)
-  carry no category, so most of a leadership PAC's rows fall under `null` (2024 cycle: about 86% of rows and 78% of dollars). The FEC has no other
-  category field in the bulk file and free-text purposes are not read.
-- **Refunds are not netted.** A negative row is a refund or void reported by the committee (money returned to it, or a correction of an earlier row).
-  It is never subtracted from what was spent: `total` and `count` cover the positive rows only, `refunds` and `refund_count` the negative ones, per
-  category and per committee-cycle. A category can show more refunded than spent, for example when the original row is in an earlier cycle's file. The
-  two are not paired.
-- **Purpose groups (OpenFEC `/v1/schedules/schedule_b/by_purpose/`).** `purpose` is the FEC's label as given (upper case: ADMINISTRATIVE,
-  CONTRIBUTIONS, REFUNDS, OTHER ...); `total` and `count` as the FEC reports them for that committee and cycle, sorted by total descending then label.
-  They group ALL Schedule B disbursements (contributions to candidates, refunds, transfers, operating expenses), so their sum is not the
-  operating-expenditure `total`; REFUNDS is the FEC's own group and nothing is netted. A negative total is not published (`total: null`) and is listed
-  in `meta.reports.fec_spending.purposes`. `null` = not fetched (no key, API failure, cycle not covered); `[]` = the request completed and the FEC
-  returned no group for the committee, not a zero amount. PAC-years exist only where oppexp has rows; purposes alone never create one.
-- **Coverage.** `loans_cycles` and `leadership_pac_cycles` list the files actually loaded. A member with no candidacy row in a loaded weball file and
-  no leadership PAC row gets `campaign_finance: null` (not a block of zeros), as does a member with no FEC id. A member with a block but no leadership
-  PAC gets `leadership_pac: []` and the note. A committee-cycle with no rows in the file has no entry: absence is not a reported zero.
+- **Receipts: same row, same rule.** `receipts` comes from the loan row's weball row (exact id, first row per cycle and id, presidential `P` ids included) with
+  the column names above, blank = `null`, never 0. Negative `total_receipts`, `total_disbursements` or contribution figure: `null`, listed in `meta.reports.fec_spending.receipts`;
+  `cash_on_hand` is published as filed (negative in about 5% of rows). A row whose individual, committee, party, candidate or transfer figure exceeds `total_receipts`
+  by more than $1 has those five set to `null` and is listed there. Individual contributors are never read. Full rules, limits and the OpenFEC comparison: `docs/campaign-receipts.md`.
+- **Leadership PACs: exact sponsor linkage.** A committee is a member's leadership PAC only through the rules in `pipeline/fec/README.md` ("Leadership-PAC sponsors"): OpenFEC's `sponsor_candidate_ids` for the committee contain one of the member's FEC ids (`fec_api_sponsor_id`), a filed candidate id on the committee (`fec_candidate_id`), or the FEC sponsor list's name equal to the candidate-master name of that member's ids, punctuation aside (`leadership_file_exact_name`). No similarity matching. If the API's ids name two members the API link is dropped; the API and a name-file link that disagree: the API's exact id wins; the API and a candidate id that disagree: dropped. All reported.
+- **Spending: aggregates only.** The operating-expenditures file is streamed and summed by the FEC's `CATEGORY` code (001-012 for House, Senate and party/PAC filers; 101-107 for presidential filers; labels are the FEC's wording). Memo items (`MEMO_CD` = X, itemisations of an amount already counted) are dropped, a transaction re-reported in a later filing (same committee, transaction id, date and amount) counts once, rows of exactly zero are skipped, and the file's own cycle decides the `cycle`. A blank or unrecognised code goes to `category: null`. Most Form 3X rows (PACs) carry no category, so most of a leadership PAC's rows fall under `null` (2024 cycle: about 86% of rows and 78% of dollars). The FEC has no other category field in the bulk file and free-text purposes are not read.
+- **Refunds are not netted.** A negative row is a refund or void reported by the committee (money returned to it, or a correction of an earlier row). It is never subtracted from what was spent: `total` and `count` cover the positive rows only, `refunds` and `refund_count` the negative ones, per category and per committee-cycle. A category can show more refunded than spent, for example when the original row is in an earlier cycle's file. The two are not paired.
+- **Purpose groups (OpenFEC `/v1/schedules/schedule_b/by_purpose/`).** `purpose` is the FEC's label as given (upper case: ADMINISTRATIVE, CONTRIBUTIONS, REFUNDS, OTHER ...); `total` and `count` as the FEC reports them for that committee and cycle, sorted by total descending then label. They group ALL Schedule B disbursements (contributions to candidates, refunds, transfers, operating expenses), so their sum is not the operating-expenditure `total`; REFUNDS is the FEC's own group and nothing is netted. A negative total is not published (`total: null`) and is listed in `meta.reports.fec_spending.purposes`. `null` = not fetched (no key, API failure, cycle not covered); `[]` = the request completed and the FEC returned no group for the committee, not a zero amount. PAC-years exist only where oppexp has rows; purposes alone never create one.
+- **Committee totals (OpenFEC `/v1/totals/pac/`).** The FEC's summary of what the committee filed for the cycle up to `coverage_end_date`, fetched in batches of 100 committees per cycle; failures publish `totals: null`. They are not summed from the rows above and never create a PAC-year. Field meanings, the reconciliation with the spending figures and the request budget: `docs/leadership-pac-totals.md`.
+- **Coverage.** `loans_cycles` and `leadership_pac_cycles` list the files actually loaded. A member with no candidacy row in a loaded weball file and no leadership PAC row gets `campaign_finance: null` (not a block of zeros), as does a member with no FEC id. A member with a block but no leadership PAC gets `leadership_pac: []` and the note. A committee-cycle with no rows in the file has no entry: absence is not a reported zero.
 
 What it does not show
-- A loan figure is a cycle total as the FEC summarises it. It does not show when the loan was made, its terms, whether or when it was repaid beyond
-  the two reported repayment fields, or why. `debts_owed_by` is the FEC's field of that name.
-- Category labels are the FEC's, and the FEC assigns the code from the committee's own filing. The categories do not say what a payment was for beyond
-  that label, and they do not show who was paid.
-- `total` is what a committee reported in operating expenditures; it excludes contributions, transfers and other non-operating lines, so it is not
-  total disbursements (the purpose groups cover all of them).
+- A loan figure is a cycle total as the FEC summarises it. It does not show when the loan was made, its terms, whether or when it was repaid beyond the two reported repayment fields, or why. `debts_owed_by` is the FEC's field of that name.
+- Category labels are the FEC's, and the FEC assigns the code from the committee's own filing. The categories do not say what a payment was for beyond that label, and they do not show who was paid.
+- `total` is what a committee reported in operating expenditures; it excludes contributions, transfers and other non-operating lines, so it is not total disbursements (the purpose groups cover all of them).
 - Nothing here says a spending or loan figure is improper. The site reports what the filings say.
 
 Privacy
@@ -888,8 +888,8 @@ type Overlap = {              // a holding and a filed tie with the same org in 
   that id; the rest become `tk:<TICKER>`.
 - **Real property and residences.** Publish only what the filing prints, at city/state granularity at most: the
   dataset's Location is cut to "City, ST". Street addresses are replaced by `[street address redacted]` in asset,
-  creditor and liability-type text (number + street suffix everywhere; in real-property text also a house number
-  followed by a name, and a street name without a number), and counted. Nothing is geocoded. An asset whose text names
+  creditor and liability-type text by the rules listed in `docs/privacy-redaction.md` (suffix, cue-word, liability and
+  property-row rules; no business-name exemption), and counted; the validator's gate fails the build on any left. Nothing is geocoded. An asset whose text names
   a personal residence or non-rental second home is never published (counted as `personal_residence`).
   `residence_secured` marks a liability whose type or creditor names a residence, home mortgage or home equity
   (and not rental, investment, commercial, farm or business).

@@ -121,14 +121,14 @@ export function RecordsView({ id, hasTrades, hasHoldings, everHouse, names, sour
   const cite = useMemo(() => {
     const limitations = facts.map((f) => f.text);
     const view = (kind: "records", retrieved: string): Citation => buildViewCitation({
-      kind, member: { id, name: file?.member.name ?? id }, limitations, env: { ...env, retrieved },
+      kind, member: { id, name: file?.member.name ?? id }, limitations, env: { ...env, retrieved }, fec_candidate_ids: file?.member.fec_ids,
       counts: { ties: ties.length, trades: hasTrades && trades ? tradeTable.length : null, source_documents: docs.length },
       dates: { first: file?.trade_summary?.first ?? null, last: file?.trade_summary?.last ?? null },
     });
     const table = (idKeys: TableCite["idKeys"]): TableCite => ({
       idKeys,
       build: (t, retrieved) => buildViewCitation({
-        kind: "table", member: { id, name: file?.member.name ?? id }, limitations, env: { ...env, retrieved },
+        kind: "table", member: { id, name: file?.member.name ?? id }, limitations, env: { ...env, retrieved }, fec_candidate_ids: file?.member.fec_ids,
         table: { title: t.title, filters: t.filters, shown: t.shown, total: t.total, ids: t.ids },
       }),
     });

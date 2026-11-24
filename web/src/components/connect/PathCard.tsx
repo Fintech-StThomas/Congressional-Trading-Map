@@ -7,6 +7,8 @@ import { CONNECT } from "@/lib/copy";
 import { isMemberId } from "@/lib/data/ids";
 import { WEAK_WHY } from "@/lib/domain/edges";
 import { hopSentence, type Hop, type Path } from "@/lib/domain/paths";
+import { hopWords } from "@/lib/domain/hopwords";
+import { CONNECT_WORDS } from "@/lib/copy-precision";
 import { amountText, NOT_DISCLOSED, yearRanges, yearSpan } from "@/lib/format";
 import { memberHref, orgHref } from "@/lib/urls";
 import type { Named } from "./load";
@@ -39,10 +41,12 @@ function TemporalLabel({ path }: { path: Path }) {
 
 function HopRow({ h, from, names, onEvidence, active, a, b }: { h: Hop; from: string; names: Props["names"]; onEvidence: Props["onEvidence"]; active: boolean; a: string; b: string }) {
   const s = hopSentence(h, from);
+  // The record may name a household or a committee rather than the member: the sentence says which.
+  const w = hopWords(h, s.subject.kind === "member");
   return (
     <li className={`chop${h.basis === "derived" ? " chop--stat" : ""}${active ? " is-active" : ""}`}>
       <p className="chop__says">
-        <NodeName n={s.subject} names={names} /> {CONNECT.verbs[h.type]} <NodeName n={s.object} names={names} />
+        {w.before}<NodeName n={s.subject} names={names} />{w.after} {CONNECT.verbs[h.type]} <NodeName n={s.object} names={names} />
       </p>
       <p className="chop__meta mono">
         <span>{h.label}</span>
@@ -50,6 +54,7 @@ function HopRow({ h, from, names, onEvidence, active, a, b }: { h: Hop; from: st
         <span>{CONNECT.records(h.count)}</span>
         <span>{yearSpan(h.first, h.last)}</span>
         {!s.directed && <span>no direction published</span>}
+        {w.owners && <span>{CONNECT_WORDS.owners(w.owners)}</span>}
         {h.basis === "derived" && <span className="tag chop__tag">{CONNECT.statistical}</span>}
         {!h.full && <span className="chop__sum" title={CONNECT.summaryOnlyWhy}>{CONNECT.summaryOnly}</span>}
       </p>

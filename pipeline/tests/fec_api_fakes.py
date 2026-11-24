@@ -50,7 +50,8 @@ def paged(rows: list[dict], params: dict) -> Resp:
 def purposes_route(data: dict[int, dict[str, list[tuple[str, float, int]]]]) -> Callable[[str, dict], Resp]:
     """{cycle: {committee: [(purpose, total, count)]}} -> a by_purpose server honouring committee_id and cycle."""
     def route(path: str, params: dict) -> Resp:
-        assert path == "/schedules/schedule_b/by_purpose/", path
+        if path != "/schedules/schedule_b/by_purpose/":
+            return Resp(404)                      # e.g. the committee-totals call of an end-to-end build: unavailable, not a failure
         ids = params["committee_id"]
         rows = [{"committee_id": c, "cycle": params["cycle"], "purpose": p, "total": t, "count": n,
                  "memo_count": 0, "memo_total": "0.00"}

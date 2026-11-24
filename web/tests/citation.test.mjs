@@ -1,5 +1,6 @@
 // Unit tests for citation packets (src/lib/domain/citation.ts): amounts, ledger-only ties, release vs no release,
 // assumptions, unsafe URLs and the text rendering.
+import { officialFromIds } from "../src/lib/domain/citation-official.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildTieCitation, buildViewCitation, citationFilename, citationJson, citationText, CITATION_SCHEMA, MAX_IDS } from "../src/lib/domain/citation.ts";
@@ -165,11 +166,37 @@ test("the text names who, what, source, method and the site disclaimer, and avoi
   assert.match(text, /^Stock trades: Jane Doe to ACME Corp/);
   assert.match(text, /Subject: Jane Doe \(member M000001\); ACME Corp \(organisation co:123\)/);
   assert.match(text, /Dates as filed: first 14 Mar 2021, latest 2 Apr 2022/);
-  assert.match(text, /Source: House periodic transaction reports/);
+  // The link carries no DocID, so nothing official is claimed by id: the extraction dataset is named as such.
+  assert.match(text, /Extracted by: House periodic transaction reports/);
   assert.match(text, /Official records: https:\/\/disclosures-clerk\.house\.gov\/a\.pdf/);
   assert.match(text, /filed records rec-1, rec-2 \(2 of 3 listed\)/);
   assert.match(text, new RegExp(`Method version: ${METHOD_VERSION}`));
   assert.ok(text.endsWith(SITE.disclaimer));
   assert.doesNotMatch(text, /corrupt|insider/i);
   assert.equal(citationFilename(tie(edge())), "paper-trail-citation-tie-e1e1e1e1e1e1.json");
+});
+
+test("the official record leads: a Clerk DocID and an FEC committee id come before the extraction dataset", () => {
+  const e = edge({
+    via: { id: "pac:C00123456:support", name: "Example PAC" },
+    evidence: [
+      { label: "Buy ACME", date: "2021-03-14", url: "https://disclosures-clerk.house.gov/public_disc/ptr-pdfs/2021/20012345.pdf", source: "ptr", record: "rec-1" },
+      { label: "Receipt", date: "2021-04-01", url: "https://www.fec.gov/data/committee/C00987654/", source: "ptr", record: "rec-2" },
+    ],
+  });
+  const c = tie(e, { env: env(REL) });
+  assert.deepEqual(c.official.house_clerk_doc_ids, ["20012345"]);
+  assert.deepEqual(c.official.fec_committee_ids, ["C00123456", "C00987654"]);
+  const text = citationText(c);
+  assert.match(text, /Official record: House Clerk DocID 20012345, as extracted by House periodic transaction reports/);
+  assert.ok(text.indexOf("Official record:") < text.indexOf("Paper Trail, data release"), "the official record comes before the data release line");
+  assert.equal(Object.keys(c).indexOf("official"), Object.keys(c).indexOf("subject") + 1, "official sits right after subject in the packet");
+  // A PAC that is the giver has no via: its own id is the committee. A presidential candidate id is accepted.
+  const pac = tie(edge({ from: { kind: "org", id: "pac:C00111222" }, to: { kind: "member", id: "M000001" }, via: null, evidence: [] }));
+  assert.deepEqual(pac.official.fec_committee_ids, ["C00111222"]);
+  assert.deepEqual(officialFromIds([], ["P80001571"]).fec_candidate_ids, ["P80001571"]);
+  const m = buildViewCitation({ kind: "records", member: { id: "M", name: "N" }, env: env(), limitations: [], fec_candidate_ids: ["H0CA12345"], table: undefined });
+  assert.deepEqual(m.official.fec_candidate_ids, ["H0CA12345"]);
+  assert.equal(officialFromIds(["20012345", "7f3a-uuid"]).house_clerk_doc_ids.length, 1, "a Senate filing id is not called a House DocID");
+  assert.match(citationText(tie(edge({ evidence: [{ ...e.evidence[1], url: "javascript:alert(1)" }] }))), /Extracted by:/, "a non-http link names nothing official");
 });

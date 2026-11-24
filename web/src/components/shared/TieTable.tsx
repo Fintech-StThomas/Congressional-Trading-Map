@@ -8,6 +8,7 @@ import { memberHref, orgHref } from "@/lib/urls";
 import { nodeName, ORG_KIND_LABEL, type NameBook } from "@/lib/domain/names";
 import { LineSample } from "./LineSample";
 import { useAssumptionContext } from "./Assume";
+import { isAgainst } from "@/lib/domain/pick";
 
 type Props = {
   edges: Edge[];
@@ -82,7 +83,7 @@ export function TieTable({ edges, selfId, book, range, onOpen, activeId, caseEdg
               const n = filteredAmount(e, range).n;
               const folds = foldFrom(seen++);
               return (
-                <tr key={e.id} className={[activeId === e.id ? "is-active" : "", out?.has(e.id) ? "is-excluded" : "", folds ? "is-fold" : ""].join(" ").trim() || undefined} data-edge={e.id}>
+                <tr key={e.id} className={[activeId === e.id ? "is-active" : "", out?.has(e.id) ? "is-excluded" : "", folds ? "is-fold" : "", isAgainst(e) ? "is-against" : ""].join(" ").trim() || undefined} data-edge={e.id}>
                   <td data-label="Tie">
                     <span className="ties__type">
                       <LineSample style={stringStyle(e)} />

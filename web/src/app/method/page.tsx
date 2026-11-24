@@ -11,6 +11,9 @@ import { CORRECTIONS, CORRECTIONS_POLICY, EXPORT, FEED, SITE } from "@/lib/copy"
 import { CorrectionLink } from "@/components/shared/CorrectionLink";
 import type { EdgeType } from "@/lib/types";
 import { LineSample } from "@/components/shared/LineSample";
+import { Exclusions } from "@/components/method/Exclusions";
+import { METHOD_AMEND } from "@/lib/copy-amend";
+import { siteTerms, typesInBuild } from "@/lib/domain/method-build";
 
 export const metadata: Metadata = {
   title: "Method and sources",
@@ -61,6 +64,7 @@ export default async function MethodPage() {
   const sources = metaSources(meta);
   const exclusions = meta.exclusions;
   const coverage = (meta as Record<string, unknown>).coverage_notes ?? meta.coverage;
+  const inBuild = typesInBuild(meta.counts);
   const notes: string[] = Array.isArray(coverage) ? coverage.filter((x): x is string => typeof x === "string") : [];
 
   return (
@@ -113,21 +117,7 @@ export default async function MethodPage() {
         <p className="section__note">Matching is exact on a normalised name plus a hand-reviewed override list. Similar names are never matched automatically; what does not match stays its own node and is counted here.</p>
         {meta.unmatched ? <FlatCounts obj={meta.unmatched as Record<string, unknown>} /> : <p className="nd">None reported.</p>}
         <h3 className="method__h3">Excluded records</h3>
-        {Array.isArray(exclusions) ? (
-          <dl className="kv">
-            {(exclusions as { reason?: string; count?: number }[]).map((x, i) => (
-              <div key={i}><dt>{x.reason}</dt><dd className="mono">{count(x.count ?? 0)}</dd></div>
-            ))}
-          </dl>
-        ) : exclusions && typeof exclusions === "object" ? (
-          <dl className="kv">
-            {Object.entries(exclusions as Record<string, { reason?: string; rows?: number }>).map(([k, v]) => (
-              <div key={k}><dt>{v?.reason ?? label(k)}</dt><dd className="mono">{count(v?.rows ?? 0)}</dd></div>
-            ))}
-          </dl>
-        ) : (
-          <p className="nd">None reported.</p>
-        )}
+        <Exclusions exclusions={exclusions} />
       </section>
 
       <section className="section" aria-labelledby="rules-h">
@@ -141,6 +131,7 @@ export default async function MethodPage() {
                 <div key={t}>
                   <dt>
                     <LineSample style={fam === "context" ? "context" : t === "shared_donors" || t === "traded_together" ? "derived" : "filed"} /> {TYPE_LABEL[t]}
+                    {inBuild && !inBuild.has(t) && <span className="tag method__nobuild" title={METHOD_AMEND.notInBuildTitle} data-testid="method-not-in-build">{METHOD_AMEND.notInBuild}</span>}
                   </dt>
                   <dd>{meta.rules?.[t] ?? TYPE_RULE[t]}</dd>
                 </div>
@@ -179,10 +170,10 @@ export default async function MethodPage() {
         <h2 id="limits-h">Known limits</h2>
         <ul className="limits">
           {notes.map((n) => (
-            <li key={n}>{n}</li>
+            <li key={n}>{siteTerms(n)}</li>
           ))}
           <li>Periodic transaction reports exist only from July 2012, when the STOCK Act created them. Earlier years show &ldquo;no reports existed&rdquo;.</li>
-          <li>Disclosures can be filed late, amended or filed on paper; the site shows the current version of each trade and marks amendments.</li>
+          <li>{typeof (meta.counts as Record<string, unknown> | undefined)?.trades_amended_reprints_folded === "number" ? METHOD_AMEND.limit : METHOD_AMEND.limitOld}</li>
           <li>Names are matched exactly. A company that files under several names may appear as more than one organisation.</li>
           <li>A tie shows that a record exists. It does not show intent, influence, a conflict of interest or any wrongdoing.</li>
         </ul>

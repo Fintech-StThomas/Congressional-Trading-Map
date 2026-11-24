@@ -1,10 +1,14 @@
 """Trades from the Hugging Face dataset austin-starks/congressional-stock-trades (data dictionary: "Trade").
 
 Steps: pin the dataset revision (HF_REVISION or its current commit) -> download parquet files (content-addressed,
-verified against snapshot.json) -> keep the current version of every event (`supersededAt` null; `amended` when
-there were several) -> map raw values to contract enums with explicit tables (never guessing an owner) -> write
-pipeline/build/trades.parquet (one row per current event, org not yet resolved) and sources/hf_trades.json.
-Dates: availableAt is a UTC instant, converted to the Eastern calendar date; `late` = lag > config.LATE_DAYS.
+verified against snapshot.json) -> keep the current version of every event (`supersededAt` null) -> fold House rows
+the filing marks Amended or Deleted into the trade they restate (trade_amendments.py; exact signals only) -> map raw
+values to contract enums with explicit tables (never guessing an owner) -> write pipeline/build/trades.parquet (one
+row per trade, org not yet resolved) and sources/hf_trades.json.
+Dates: availableAt is a UTC instant, converted to the Eastern calendar date. `available` is the EARLIEST public
+date of the trade (earliest version, earliest folded printing) and `doc_id` is that filing; later filings are in
+`amendments`. `late` = lag > config.LATE_DAYS; the lag is null when a later version changed the transaction date.
+`amended`: several versions, a folded later printing, or a House row marked so.
 """
 from __future__ import annotations
 
@@ -20,6 +24,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import requests
 
+from . import trade_amendments as amendments
 from .config import LATE_DAYS
 from .util import BUILD, CACHE, fetch, print_table, read_json, sha256_file, write_source_meta
 
@@ -93,11 +98,13 @@ def available_date(ts: datetime | None) -> date | None:
 
 def map_row(r: dict[str, Any]) -> dict[str, Any]:
     action = ACTION.get(r["action"], "other")
-    avail = available_date(r["availableAt"])
+    avail = available_date(r["first_available_at"])
     lag = (avail - r["transactionDate"]).days if avail and r["transactionDate"] else None
+    withheld = lag is not None and (r["date_corrected"] or (lag < 0 and r["n_versions"] > 1))
+    lag = None if withheld else lag
     return {
         "id": r["eventId"], "member": r["memberId"], "chamber": "sen" if r["chamber"] == "senate" else "rep",
-        "version": r["version"], "amended": r["n_versions"] > 1,
+        "version": r["version"], "amended": r["n_versions"] > 1 or r["marked"],
         "date": r["transactionDate"], "available": avail, "lag_days": lag,
         "late": None if lag is None else lag > LATE_DAYS,
         "owner": OWNER.get(r["owner"], "unspecified"), "owner_raw": r["owner"],
@@ -108,6 +115,9 @@ def map_row(r: dict[str, Any]) -> dict[str, Any]:
         "asset_class": asset_class(r["chamber"], r["assetTypeCode"], r["assetTypeLabel"]),
         "asset_type_raw": r["assetTypeCode"] or r["assetTypeLabel"],
         "low": r["amountLow"], "high": r["amountHigh"], "url": r["sourceUrl"], "doc_id": r["sourceDocId"],
+        "lag_withheld": withheld,
+        "amendments": [{"id": a["id"], "doc_id": a["doc_id"], "url": a["url"], "status": a["status"],
+                        "available": available_date(a["available_at"])} for a in r["amendments"]],
     }
 
 
@@ -117,26 +127,43 @@ def load(con: duckdb.DuckDBPyConnection, root: Path, spine_ids: set[str]) -> tup
     one = lambda sql: con.execute(sql).fetchone()[0]  # noqa: E731
     counts = {t: one(f"select count(*) from {t}") for t in TABLES}
     con.execute("""create or replace temp table cur as
-        select e.*, count(*) over (partition by e.eventId) as n_versions
+        select e.*, count(*) over (partition by e.eventId) as n_versions,
+               min(e.availableAt) over (partition by e.eventId) as first_available_at
         from political_trade_events e qualify e.supersededAt is null""")
     n_cur = one("select count(*) from cur")
     n_events = one("select count(distinct eventId) from political_trade_events")
     if n_cur != n_events:
         raise AssertionError(f"{n_events} events but {n_cur} current versions")
-    # Bring the dataset's ticker provenance from the printed trade row; must be 1:1.
-    con.execute("""create or replace temp table cur2 as
-        select c.*, case t.resolutionStatus when 'printed' then 'printed' when 'resolved' then 'resolved' end as ticker_source
+    # Bring the ticker provenance and the filed row status from the printed trade row; must be 1:1.
+    have = {r[0] for r in con.execute("describe political_trades").fetchall()}
+    marks = ", ".join(f"{'t.' + c if c in have else 'null'} as {name}" for c, name in (
+        ("filingStatus", "filing_status"), ("sourceTransactionId", "transaction_id")))
+    con.execute(f"""create or replace temp table cur2 as
+        select c.*, {marks},
+               case t.resolutionStatus when 'printed' then 'printed' when 'resolved' then 'resolved' end as ticker_source
         from cur c left join political_trades t on t.docId = c.sourceDocId and t.rowIndex = c.sourceRowIndex""")
     if one("select count(*) from cur2") != n_cur:
         raise AssertionError("join to political_trades multiplied rows")
     rows = [dict(zip([d[0] for d in con.description], r)) for r in con.execute("select * from cur2 order by eventId").fetchall()]
+    versions = dict(con.execute("""select eventId, list({'doc': sourceDocId, 'row': sourceRowIndex, 'url': sourceUrl,
+        'at': availableAt, 'date': transactionDate} order by availableAt, version)
+        from political_trade_events group by 1 having count(*) > 1""").fetchall())
+    rows, folded = amendments.fold(amendments.apply_versions(r, versions.get(r["eventId"])) for r in rows)
     kept = [r for r in rows if r["memberId"] in spine_ids]
     not_in_spine = Counter(r["memberId"] for r in rows if r["memberId"] not in spine_ids)
+    trades = [map_row(r) for r in kept]
+    same_key = amendments.same_key_other_filing(trades)
+    unmatched = folded["amended_without_original"] + folded["deleted_without_original"]
+    withheld = sum(t.pop("lag_withheld") for t in trades)
 
     exclusions = {
         "superseded_event_versions": {
             "rows": one("select count(*) from political_trade_events where supersededAt is not null"),
             "reason": "older versions of amended events; the current version is kept and flagged amended"},
+        "amended_reprints_folded": {"rows": n_cur - len(rows), "reason": amendments.REASONS["amended_reprints_folded"]},
+        "amended_rows_without_original": {"rows": unmatched, "reason": amendments.REASONS["amended_rows_without_original"]},
+        "same_key_other_filing": {"rows": same_key["trades"], "reason": amendments.REASONS["same_key_other_filing"]},
+        "lag_withheld_date_corrected": {"rows": withheld, "reason": amendments.REASONS["lag_withheld_date_corrected"]},
         "trade_rows_folded_into_events": {
             "rows": counts["political_trades"] - one("select count(*) from political_trades where identitySource in ('non_member','unresolved')") - n_cur,
             "reason": "repeat printings of the same economic trade (duplicate filings, amendments) folded by the dataset into one event"},
@@ -162,8 +189,12 @@ def load(con: duckdb.DuckDBPyConnection, root: Path, spine_ids: set[str]) -> tup
                                                   where extractionStatus = 'ok' group by 1""").fetchall()}
     failed = [{"member": m, "year": d.year, "doc": doc} for m, d, doc in con.execute(
         "select memberId, filingDate, docId from political_filings where extractionStatus = 'failed' order by docId").fetchall()]
-    return [map_row(r) for r in kept], {"table_rows": counts, "current_events": n_cur, "exclusions": exclusions,
-                                        "coverage": coverage, "failed_filings": failed}
+    return trades, {"table_rows": counts, "current_events": n_cur, "exclusions": exclusions, "coverage": coverage,
+                    "failed_filings": failed, "filing_status_in_source": "filingStatus" in have,
+                    "amendments": {**folded, "same_key_other_filing": same_key},
+                    "amendment_counts": {"trades_same_key_other_filing": same_key["trades"],
+                                         "trades_amended_reprints_folded": n_cur - len(rows),
+                                         "trades_lag_withheld_date_corrected": withheld}}
 
 
 SCHEMA = pa.schema([
@@ -173,6 +204,8 @@ SCHEMA = pa.schema([
     ("action_raw", pa.string()), ("partial", pa.bool_()), ("ticker", pa.string()), ("ticker_source", pa.string()),
     ("asset", pa.string()), ("asset_class", pa.string()), ("asset_type_raw", pa.string()),
     ("low", pa.float64()), ("high", pa.float64()), ("url", pa.string()), ("doc_id", pa.string()),
+    ("amendments", pa.list_(pa.struct([("id", pa.string()), ("doc_id", pa.string()), ("url", pa.string()),
+                                       ("status", pa.string()), ("available", pa.date32())]))),
 ])
 
 
@@ -213,6 +246,7 @@ def run() -> None:
     pq.write_table(pa.Table.from_pylist(trades, schema=SCHEMA), BUILD / "trades.parquet")
     rep = {**info, **report(trades), "trades_written": len(trades)}
     print(f"\nrows per table: {info['table_rows']}; current events kept: {len(trades)}")
+    print(f"  amended House reprints: { {k: v for k, v in info['amendments'].items() if k != 'same_key_other_filing'} }")
     for k in ("null_ticker", "ticker_source", "null_owner_label", "null_date", "null_amount", "open_ended_amount",
               "late", "negative_lag", "before_2012_07", "amended"):
         print(f"  {k}: {rep[k]}")

@@ -20,6 +20,12 @@ export const REVALIDATE_SECONDS = ((): number => {
 export const POINTER_REVALIDATE_SECONDS = Math.min(300, REVALIDATE_SECONDS);
 
 /**
+ * How long the release list (releases/index.json) and a permalink page built from it stay fresh: five minutes, so a
+ * withdrawn release stops rendering at /r/<id>/... within that time once the list no longer names it.
+ */
+export const LISTING_REVALIDATE_SECONDS = POINTER_REVALIDATE_SECONDS;
+
+/**
  * The normalised base URL (no trailing slash), or null when remote mode is off. Throws on a malformed value.
  * `name` is the environment variable the value came from, for the error message (release.ts reuses the rule).
  */

@@ -66,7 +66,7 @@ Times and peak memory (resident set of the whole process, which only grows) from
 | Stage | Code | Reads | Writes (under `pipeline/build/` unless noted) | Time | Peak RSS |
 |---|---|---|---|---:|---:|
 | `spine` | `spine.py` | congress-legislators (daily) | `spine.json`, `committees.json`, `sources/legislators.json` | 1 s | 0.1 GB |
-| `trades` | `trades.py` | HF `austin-starks/congressional-stock-trades` (by commit) | `trades.parquet`, `sources/hf_trades.json` | 5 s | 1.2 GB |
+| `trades` | `trades.py`, `trade_amendments.py` | HF `austin-starks/congressional-stock-trades` (by commit) | `trades.parquet`, `sources/hf_trades.json` | 5 s | 1.2 GB |
 | `companies` | `companies.py`, `sic.py` | SEC tickers (daily), FSDS `sub.txt`, `trades.parquet`, overrides | `ticker_orgs.json`, `companies.json`, `company_names.json`, `sources/sec.json` | 1 s | 1.2 GB |
 | `fec` | `fec/` | FEC bulk files (see its README), `spine.json`, `company_names.json`, overrides | `edges/fec_*.jsonl`, `orgs/fec.jsonl`, `sources/fec.json`, `campaign_finance.json`, `sources/fec_spending.json` | 162 s (+ about 5 s per cycle for spending, not yet measured in a full run) | 1.9 GB |
 | `edges_trades` | `edges_trades.py` | `trades.parquet`, `ticker_orgs.json`, `companies.json` | `trades_resolved.parquet`, `edges/trades.jsonl`, `orgs/trades.jsonl` | 23 s | 1.5 GB |
@@ -80,7 +80,7 @@ Times and peak memory (resident set of the whole process, which only grows) from
 
 `delays.json` (disclosure timing) is written by the `assemble` stage from `assemble/delays.py`, from the same current-version
 trade rows as `trades/<id>.json`; `validate.py` calls `validate_delays.py`, which re-derives it from the published trade
-files. Contract: data dictionary, "Disclosure timing"; audit: `docs/validation/disclosure-timing-audit.md`.
+files. Contract: data dictionary, "Disclosure timing"; audit: `docs/validation/disclosure-timing-audit.md`. House reprints marked Amended or Deleted are folded into the trade they restate by `trade_amendments.py` (exact signals only; counts in `meta.json`), checked by `validate_trade_amendments.py`.
 
 Whole run: 322-332 s, peak 4.3 GB (before this review: 294 s, 5.9 GB).
 
@@ -93,17 +93,17 @@ pipeline/
   contract.py         contract shapes: TypedDicts (Edge, Evidence, Case, Trade, ...), column lists, edge families
   util.py             paths, cached HTTP with retry, deterministic JSON, override file, name/ticker normalisation
   edges.py            range arithmetic (sum_amounts), by_year, evidence ranking, edge ids
-  spine.py trades.py companies.py sic.py edges_trades.py edges_committees.py    core sources and edges
-  fec/                download -> load (parse) -> refs (identities) -> build (rules, edges, orgs) -> run (write, checks);
-                      spending + spending_oppexp (loans and leadership PAC spending by category -> campaign_finance.json)
-  holdings/           source (download) -> run (parse, resolve, emit) -> rules (redaction) -> validate
+  spine.py trades.py trade_amendments.py companies.py sic.py edges_trades.py edges_committees.py    core sources and edges
+  fec/                download -> load (parse) -> refs (identities) -> build (rules, edges, orgs; conduits = the reviewed conduit lists) -> run (write, checks; crosscheck = weball);
+                      spending + spending_oppexp + receipts + purposes_api + sponsors_api + totals_api (-> campaign_finance.json)
+  holdings/           source (download) -> run (parse, resolve, emit) -> rules + address_rules (redaction) -> validate (+ address_check gate)
   lda/                download -> build (parse) -> match (identities) -> edges -> run (write, checks); off by default
   congress/           download -> facts (parse, exact ids) -> run (fact table, review sample); off by default, unpublished
   assemble/           plugins (load, merge) cases budget orgs wall members publish, run (the orchestrator)
-  validate.py         output checks; holdings/validate.py for holdings
+  validate.py         output checks (+ validate_delays, validate_trade_amendments, validate_fec_spending/_receipts/_totals/_conduits)
   publish_r2.py       upload web/public/data to Cloudflare R2 (changed files only); run by the daily workflow
   publish_release.py  opt-in content-addressed archive (release_blobs, release_refs, release_history, release_store,
-                      release_manifest, release_provider_check, withdraw_release); served by worker/
+                      release_manifest, release_provider_check, release_repair, withdraw_release); served by worker/
   crosswalk/org_overrides.csv   hand-reviewed org matches
   tests/              one test file per module: test_edges, test_trades, test_fec, test_assemble, test_holdings, ...
 ```
@@ -151,7 +151,8 @@ person checked. `util.read_overrides` is the only reader: rows without `reviewed
 endpoints, by_year sums, ledger completeness and caps, the Case rule re-derived from published edges, cross-file
 counts, no minor's name in trade text). `python -m pipeline.holdings.validate` checks the holdings files. Both
 exit 1 on any failure. The hand-check samples are written to `pipeline/build/`; the copies in `docs/validation/` are
-filled in by people and are never overwritten (see `docs/validation/README.md`).
+filled in by people and are never overwritten (see `docs/validation/README.md`). Validation re-reads the trades source
+from the download cache, so `--stage validate` alone needs the cache the build used (the daily job runs both in one step).
 
 ## Daily workflow
 
@@ -226,7 +227,7 @@ archives or overwrites a conflicting immutable object. Interrupted uploads can b
 read and reused without retransmitting their bodies. The descriptor is the final immutable object written.
 
 Successful activation also maintains the mutable history list `releases/index.json` (newest first, one entry per
-release, at most 400, written with the same conditional discipline as the pointer; shape in the data dictionary).
+release, at most 10,000 as a safety bound (the site only serves permalinks for listed releases), written with the same conditional discipline as the pointer; shape in the data dictionary).
 The pointer stays the only authority. If the index update fails after the pointer moved, the command exits 1 and
 says that the pointer WAS activated; re-running the same command repairs the index and is idempotent.
 
@@ -310,7 +311,7 @@ they did not choose public life.
   `UTMA`/`UGMA`/`UTA`, are redacted. When the filing gives no way to tell and the owner is not a dependent child, the
   text is published as filed. Counts per rule: `meta.json.reports.holdings` (`asset_minor_name_redacted_<rule>`).
 - **Never published:** street addresses (locations are cut to "City, ST"; street addresses in asset, creditor and
-  liability-type text become `[street address redacted]`) and personal residences (rows that name a personal
+  liability-type text become `[street address redacted]`, rules and build gate in `docs/privacy-redaction.md`) and personal residences (rows that name a personal
   residence or non-rental second home are dropped). The pipeline never reads the FEC individual-contributions file,
   so no individual contributor is published.
 
@@ -364,16 +365,16 @@ contributions file (`indiv`), and publishes no individual contributor; the notic
 - **Committees are current only.** `sits_with` reflects the current Congress. Historical assignments are not loaded.
 - **Publication budget.** Not every money tie is published with its evidence (see the data dictionary). Every tie
   stays in `pipeline/build/`, and totals cover all of them.
-- **Late flag.** `late` compares public availability with the transaction date (more than 45 days). The legal
-  deadline runs from the notification date, so a few flagged trades may have been filed on time.
+- **Late flag.** `late` compares the trade's first public availability with the transaction date (more than 45 days). The legal
+  deadline runs from the notification date, so a few flagged trades may have been filed on time. A House row marked Amended that changes a key field (date, owner, action, amount, asset) cannot be tied to its original exactly: both stay, and the amended one is timed from the amending filing (`meta.exclusions.amended_rows_without_original`).
 - **Memory.** Assembly holds every edge (without evidence) in memory: about 4.2 GB peak with the full FEC plug-in.
 - **Campaign finance block.** `MemberFile.campaign_finance` (loans as the FEC summarises them, leadership PAC spending
   by FEC category and by the FEC's purpose groups) comes from `pipeline/fec/spending.py` in the `fec` stage and writes
   `build/campaign_finance.json`; the assembler copies each member's block (null when absent) and `pipeline/validate_fec_spending.py`
   checks it (no payee or address text; only aggregates are read). The OpenFEC parts need `FEC_API_KEY` (see `pipeline/fec/README.md`).
-- **FEC totals are what givers reported.** They can differ from the recipient's own summary (weball) when the
-  recipient amended its reports or never itemised a receipt; see `pipeline/fec/README.md` (Jordan 2020, Cruz 2018 and
-  2022 are worked through there).
+- **FEC totals are what givers reported.** They can differ from the recipient's own summary (weball line 11c): amended recipient reports, a December check received in January, refunds the giver nets. `docs/fec-conduits.md` works through Jordan 2020 and Cruz 2018 and 2022 and replaces the older paragraphs in `pipeline/fec/README.md`.
+- **Conduit PACs.** The 24K rows of the PACs listed by exact id and cycle in `fec/conduits.py` (they forward contributions earmarked by individuals) are not counted, their own direct gifts included; a conduit not yet on the list still counts as PAC money (`build/fec_conduit_review.json` lists candidates; counts in `meta.json.reports.fec.conduit_review`).
+- **24G rows.** A contribution the giver coded 24G (transfer to an affiliated committee) is not in pas2, so it is never seen (AFSCME to Pelosi, 2005-10-27, $5,000).
 - **Party at the time.** `OrgSummary.split` and `org-index.json` count each tie year under the party of the member's
   term in that year; years outside every term go to the nearest term (counted in `meta.json.assembly.party_split`).
   `MemberSummary.party` and the wall stay the latest term's.

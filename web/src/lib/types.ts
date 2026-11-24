@@ -92,13 +92,13 @@ type Evidence = {
 };
 
 type Trade = {
-  id: string;                 // eventId
+  id: string;                 // eventId; for a folded House amendment, the eventId of the earliest printing
   version: number;
-  amended: boolean;           // more than one version exists
-  date: string | null;        // transaction date as filed
-  available: string | null;   // date (US Eastern) the public could first see it (availableAt)
-  lag_days: number | null;    // available - date
-  late: boolean | null;       // lag_days > 45; null when a date is missing
+  amended: boolean;           // more than one version exists, OR a later House printing marked Amended/Deleted was folded in, OR its own House row is marked Amended/Deleted with no matching earlier trade. Later filings: TradeFile.amendments[id]
+  date: string | null;        // transaction date as filed (the latest printing's)
+  available: string | null;   // date (US Eastern) the public could FIRST see the trade (earliest version / earliest filing); `doc` is that filing
+  lag_days: number | null;    // available - date; null when a date is missing, AND when a later version changed the transaction date or the difference would be negative ("date corrected": both dates present, amended true)
+  late: boolean | null;       // lag_days > 45; null when lag_days is null
   owner: "self" | "spouse" | "joint" | "dependent" | "unspecified"; // never defaulted to self
   action: "buy" | "sell" | "exchange" | "other";
   partial: boolean | null;    // partial sale; null for anything but a sale
@@ -110,7 +110,7 @@ type Trade = {
                               // asset type only; "unknown" when the filing gives none (most House rows)
   low: number | null; high: number | null; // disclosed range; no midpoint stored; high null = open-ended ("over $X")
   org: string | null;         // org id when the ticker resolves (co: or tk:)
-  doc: string;                // source filing id; its URL is MemberFile.filings[doc]
+  doc: string;                // source filing id (the earliest filing of the trade); its URL is TradeFile.filings[doc]
 };
 
 // Columnar table: each row holds the values of one record in `cols` order.
@@ -168,8 +168,9 @@ type MemberFile = {
 type TradeFile = {           // trades/<memberId>.json
   cols: (keyof Trade)[];      // id, version, amended, date, available, lag_days, late, owner, action, partial,
                               // ticker, ticker_source, asset, asset_class, low, high, org, doc
-  rows: unknown[][];          // newest first, current versions only
-  filings: { [doc: string]: string }; // filing id -> official filing URL
+  rows: unknown[][];          // newest first, one row per trade (House reprints folded)
+  filings: { [doc: string]: string }; // filing id -> official filing URL; covers every row's doc and every amendments[].doc
+  amendments?: { [tradeId: string]: { id: string; doc: string; status: "Amended" | "Deleted" | "Version"; available: string | null }[] }; // later filings of that row's trade, oldest first; {} when none; ABSENT in files built before this field existed. A "Deleted" printing does not remove the row
 };
 
 type OrgFile = {
@@ -205,7 +206,7 @@ type Board = {
   states: { [state: string]: string[] };        // current member ids, senators first
 };
 // END CONTRACT
-export type { CampaignFinance, LoanRow, LeadershipPacYear, LeadershipPacCategory, LeadershipPacPurpose } from "./types-finance.ts";
+export type { CampaignFinance, LoanRow, ReceiptsRow, LeadershipPacYear, LeadershipPacCategory, LeadershipPacPurpose } from "./types-finance.ts";
 
 export type {
   NodeRef, MemberSummary, Term, Committee, OrgSummary, EdgeType, Amount, Edge, Evidence, Trade,
@@ -268,10 +269,11 @@ export type DelayBands = { "0-30": number; "31-45": number; "46-90": number; "91
 
 export type DelayGroup = {
   count: number;              // trades in the group
-  dated: number;              // count - undated (includes negative lags)
+  dated: number;              // count - undated - date_corrected (includes negative lags)
   bands: DelayBands;          // trades by lag_days; the band keys are fixed text; 31-45 ends at the threshold (45)
   negative: number;           // lag_days < 0: in no band, no statistic
-  undated: number;            // lag_days is null: never counted as 0 days
+  undated: number;            // lag_days is null because a date is missing: never counted as 0 days
+  date_corrected?: number;    // lag_days is null though both dates are present (a later version changed the transaction date); absent in files built before this field existed (then inside `undated`)
   amended: number;            // current version of an event with more than one version; also inside the buckets above
   median: number | null;      // nearest-rank percentiles over dated, non-negative trades; all null when that set is empty
   p90: number | null;
@@ -280,7 +282,7 @@ export type DelayGroup = {
 
 export type DelayMemberCol =
   | "id" | "count" | "dated" | "b0_30" | "b31_45" | "b46_90" | "b91_365" | "b366_plus" | "negative"
-  | "undated" | "amended" | "median" | "p90" | "max" | "first_year" | "last_year";
+  | "undated" | "amended" | "median" | "p90" | "max" | "first_year" | "last_year" | "date_corrected";
 
 export type Delays = {
   definition: {

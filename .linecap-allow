@@ -9,11 +9,11 @@
 852 web/src/styles/globals.css
 662 web/scripts/make-fixtures.mjs
 643 pipeline/holdings/run.py
-552 pipeline/fec/build.py
+551 pipeline/fec/build.py
 548 web/tests/pinned/pinned.test.mjs
 508 web/src/styles/saved.css
 472 pipeline/validate.py
-430 pipeline/fec/run.py
+396 pipeline/fec/run.py
 413 web/src/components/board/BoardApp.tsx
 399 pipeline/README.md
 390 web/src/components/board/BoardCanvas.tsx

@@ -213,10 +213,10 @@ test("release index: everything else is rejected", () => {
     { schema_version: 1, releases: [entry(A, { activated_at: "2026-03-09" })] }, { schema_version: 1, releases: [entry(A, { activated_at: "2026-02-31T00:00:00Z" })] },
     { schema_version: 1, releases: [entry(A, { activated_at: "2026-03-09T07:00:00+00:00" })] },
     { schema_version: 1, releases: [entry(A), entry(A)] },
-    { schema_version: 1, releases: Array.from({ length: 401 }, (_, i) => entry(i.toString(16).padStart(64, "0"))) },
+    { schema_version: 1, releases: Array.from({ length: 10_001 }, (_, i) => entry(i.toString(16).padStart(64, "0"))) },
   ];
   for (const j of bad) assert.throws(() => validateReleaseIndex(j), undefined, JSON.stringify(j)?.slice(0, 80));
-  assert.equal(validateReleaseIndex({ schema_version: 1, releases: Array.from({ length: 400 }, (_, i) => entry(i.toString(16).padStart(64, "0"))) }).length, 400);
+  assert.equal(validateReleaseIndex({ schema_version: 1, releases: Array.from({ length: 10_000 }, (_, i) => entry(i.toString(16).padStart(64, "0"))) }).length, 10_000);
   void C;
 });
 

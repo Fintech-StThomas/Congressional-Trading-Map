@@ -11,6 +11,17 @@ import { metaBuilt } from "@/lib/data/meta";
 import { dataUrl } from "@/lib/urls";
 import type { SourceRef } from "@/lib/domain/citation";
 
+// Also here: what the build behind the page did that changes how a sentence reads (so far whether it left conduit-forwarded
+// earmarked money out of PAC money). Pages pass it from their own meta.json, so a page read from an older release never
+// claims a rule that build lacked; without a provider it is false.
+const FlagsCtx = createContext({ conduitsExcluded: false });
+export function BuildFlagsProvider({ conduitsExcluded, children }: { conduitsExcluded: boolean; children: ReactNode }) {
+  return <FlagsCtx.Provider value={{ conduitsExcluded }}>{children}</FlagsCtx.Provider>;
+}
+export function useBuildFlags(): { conduitsExcluded: boolean } {
+  return useContext(FlagsCtx);
+}
+
 export type CiteEnvValue = { release: string | null; built: string | null; sources: SourceRef[] };
 const Ctx = createContext<CiteEnvValue | null>(null);
 

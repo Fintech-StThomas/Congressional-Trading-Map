@@ -16,6 +16,8 @@ export type MemberCiteProps = {
   limitations: string[];
   /** The assumption switches apply (the member has trades). */
   hasTrades: boolean;
+  /** The member's FEC candidate ids, cited as official ids. */
+  fecIds?: string[];
 };
 
 function useBuild(p: MemberCiteProps, active: boolean) {
@@ -23,12 +25,12 @@ function useBuild(p: MemberCiteProps, active: boolean) {
   const env = useCiteEnv(active);
   const assume = p.hasTrades ? as?.assume ?? null : null;
   const kept = p.hasTrades ? as?.effect?.kept : undefined;
-  const { member, counts, dates, limitations } = p;
+  const { member, counts, dates, limitations, fecIds } = p;
   return useCallback((retrieved: string): Citation => buildViewCitation({
-    kind: "member", member, limitations, assumptions: assume, dates,
+    kind: "member", member, limitations, assumptions: assume, dates, fec_candidate_ids: fecIds,
     counts: kept === undefined ? counts : { ...counts, trades_counted_under_assumptions: kept },
     env: { ...env, retrieved },
-  }), [member, counts, dates, limitations, assume, kept, env]);
+  }), [member, counts, dates, limitations, assume, kept, env, fecIds]);
 }
 
 export function MemberCite(p: MemberCiteProps) {

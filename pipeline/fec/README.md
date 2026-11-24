@@ -45,7 +45,7 @@ by recipient member id and then by edge key (`fundraises_with` and orgs are full
 | Committee master `cm` | `.../cm{YY}.zip` | 2000-2026 |
 | Candidate-committee linkage `ccl` | `.../ccl{YY}.zip` | 2000-2026 |
 | Contributions from committees to candidates and independent expenditures `pas2` | `.../pas2{YY}.zip` (member `itpas2.txt`) | 2000-2026 |
-| All-candidates summary `weball` (sanity check, and the loans in `spending.py`) | `.../weball{YY}.zip` | 2000-2026 |
+| All-candidates summary `weball` (sanity check, the loans in `spending.py` and the per-cycle receipts in `receipts.py`: `docs/campaign-receipts.md`) | `.../weball{YY}.zip` | 2000-2026 |
 | Operating expenditures `oppexp` (streamed, leadership PACs only) | `.../oppexp{YY}.zip` (member `oppexp.txt`, 25 columns) | 2004-2026 (2000 and 2002 answer 404); 50-65 MB each, 430 MB unpacked for 2024 |
 | Leadership PACs and sponsors | `https://www.fec.gov/files/bulk-downloads/data.fec.gov/leadership{YYYY}.csv` | 2010-2026 only (404 before 2010) |
 | Members (fallback) | congress-legislators `legislators-current.json`, `legislators-historical.json` | |
@@ -89,10 +89,11 @@ Every pas2 row gets exactly one label in `p_rules`. The audit below is a group-b
    (`AMNDT_IND` A rows replace the originals), so no other amendment logic is needed.
 5. **Amount equals the recipient's committee id** (≥ $10,000): a data-entry error, for example Coats's committee
    "gave" Todd Young $459,255 to committee C00459255 (memo: 2000.00). Dropped.
-6. **Earmarked or conduit money.** Rows from WinRed, ActBlue or Democracy Engine, and any row whose memo
-   contains "EARMARK", are individuals' money passed through, not the committee's own (JStreetPAC, Zinc Collective,
-   RJC, Swing Left, and AMERIPAC's earmarks among them). Recipients report these as individual contributions, so
-   excluding them also matches weball.
+6. **Earmarked or conduit money.** Rows from WinRed, ActBlue or Democracy Engine, and any row whose memo contains
+   "EARMARK", are individuals' money passed through (`drop:earmarked_via_conduit`). Separately, every 24K row of the
+   PACs listed by exact id in `conduits.py`, in the cycle files listed for each, is `drop:conduit_pass_through`: they
+   forward contributions earmarked by individuals as plain 24K rows. Their own direct gifts in those cycles are
+   dropped with them. Ids, evidence and counts: `docs/fec-conduits.md`.
 7. **Recipient.** A contribution counts only if `OTHER_ID` is an authorised campaign committee of a member: designation
    P or A in the linkage file, or in the committee master with a candidate id. If `OTHER_ID` is blank, the row's
    `CAND_ID` is used. Contributions to JFCs, leadership PACs, parties and unknown committees are dropped, each
@@ -166,6 +167,7 @@ per-cycle counts and the rule table for each cycle are in `sources/fec.json` (`f
 | drop:duplicate_rereport | 70,134 | 32,796,161 |
 | drop:amount_equals_recipient_committee_id | 2 | 835,342 |
 | drop:earmarked_via_conduit | 1,319,594 | 48,592,098 (net; WinRed rows include refunds) |
+| drop:conduit_pass_through | counted from the next `main` run | (bulk files of 2026-11-24, no OpenFEC sponsors: 5,061 rows, 9,698,173) |
 | drop:recipient_campaign_not_member | 274,861 | 593,264,809 |
 | drop:recipient_not_a_campaign_committee | 435 | 1,155,846 |
 | drop:recipient_committee_unknown | 716 | 1,038,103 |
@@ -198,15 +200,10 @@ against the OpenFEC reports and Schedule A endpoints for the recipient committee
   is within 5.5% of the recipient's original reports. Nothing in the pipeline double counts: each row is one giver's
   report of one contribution, re-reports are removed, and no second committee is involved (Jordan has one
   authorised committee; his JFC C00484360 is excluded as a giver and is not a recipient).
-- **Ted Cruz, 2022 (ours $90,080 vs $68,080, +32%).** The committee's itemised receipts from committees (Schedule A
-  line 11C, non-memo) total exactly $68,080.45 = weball. The difference is giver-reported rows that the recipient
-  never itemised: LANK PAC $10,000 and Kansas Leadership PAC $10,000 (both leadership PACs, counted as `funds`),
-  Apache PAC $2,500, Professional Insurance Agents PAC $2,500, net of small timing differences. In the other
-  direction the recipient itemises earmarked money from conduits (Senate Conservatives Fund, Club for Growth) that we
-  exclude by rule.
-- **Ted Cruz, 2018 (ours $1,522,837 vs $1,281,824, +19%).** The recipient's own itemised line 11C receipts
-  (non-memo) for the cycle total $1,463,824, within 0.5% of our pac_money ($1,471,837); weball's summary is $182,000
-  lower than the committee's own itemisation. We cannot see from the bulk files which summary line absorbed it.
+- **Ted Cruz, 2018 and 2022; Jim Jordan, 2020 after the conduit list.** See `docs/fec-conduits.md` ("The cross-check").
+  Earlier explanations here were wrong on three points: the 2018 "$182,000" was an OpenFEC double-load plus a keying
+  error, and about $113,000 of the 2018 excess was forwarded money; the 2022 difference is mostly December 2022
+  cheques received in January 2023; Senate Conservatives Fund and RJC earmarks were not excluded before the list.
 
 What the site shows is therefore "what committees reported giving", which can exceed what the recipient reports
 receiving. Recipient-side refunds (22Z) and reclassifications are invisible in pas2 (see below).
@@ -225,9 +222,9 @@ alike) are published as filed in the "(paid to ...)" evidence labels and in `rev
   recipient's own reports) are not netted, and redesignations or reattributions on the recipient side are invisible.
   This, together with timing (date contributed versus date received) and recipients treating some receipts as
   transfers, is why totals differ from weball by a few percent.
-- **Conduits and earmarks** are identified by a three-committee list and by memo text. A conduit that does not write
-  "earmark" in its memo would be counted as PAC money (candidates to check: IT STARTS TODAY,
-  California Peace Action PAC, Chamber of Digital Commerce PAC, which have many sub-$100 24K rows).
+- **Conduits and earmarks** are identified by two exact-id lists (`conduits.py`) and by memo text. A conduit not on the
+  list that writes no "earmark" memo is still counted as PAC money; `build/fec_conduit_review.json` lists
+  candidates. A contribution the giver coded 24G is not in pas2 and is never seen (`docs/fec-conduits.md`).
 - **Amendments.** We rely on the FEC having replaced amended reports; residual double reports are caught only when the
   transaction id and every money field match.
 - Party 24K amounts above the $5,000 limit (for example NRSC to Senate candidates at about $50,000) are taken as filed;
@@ -286,7 +283,7 @@ about 115 MB). `weball` was read for all 14 cycles (44,913 rows).
 Key: environment variable `FEC_API_KEY` (repository secret, given to the "Run pipeline" step only); never printed, cached or put
 in an error. Missing key, HTTP error, bad JSON or `PT_CACHE_ONLY=1`: a warning, the cache is used if there is one (reported as
 `stale_cache` / `stale_cycles`), otherwise the build goes on without (sponsors from the bulk files, `purposes: null`). Never fails the run.
-Cache: `pipeline/.cache/fec/api/` (gitignored, kept by the daily job's cache). One shared request counter, hard stop at 400 per run.
+Cache: `pipeline/.cache/fec/api/` (gitignored, kept by the daily job's cache). One shared request counter, hard stop at 500 per run.
 - `/v1/committees/?designation=D&per_page=100&sort=committee_id`: 16 pages, 1,507 leadership PACs, 1,373 with `sponsor_candidate_ids`.
   Refetched after 7 days. Only id, name, sponsor ids and cycles are kept. Live 2026-11-24: 1,013 PACs link to a member by exact id
   (596 not linked before; 486 -> 1,082 linked in all).
@@ -294,7 +291,6 @@ Cache: `pipeline/.cache/fec/api/` (gitignored, kept by the daily job's cache). O
   only for committee-cycles with oppexp rows. Two latest cycles refetched after 12 h, older after 7 days; a new committee at once.
   Requests, live: 253 for all 12 cycles (about 5 min); 29 per recent cycle. The API lists some identical group rows twice (36 of
   21,656): counted once. 86 groups had a negative total: published as `total: null` and listed in the report.
-Tests: `test_fec_api.py`, `test_fec_purposes.py` (recorded pages in `pipeline/tests/fixtures/fec_api/`).
-
-Tests: `pipeline/tests/test_fec_spending.py` with recorded rows in `pipeline/tests/fixtures/fec_spending/` (payee name,
-city, state, ZIP, purpose and memo text blanked).
+- `/v1/totals/pac/?committee_id=...&cycle=...` (`totals_api.py`): the FEC committee summary per PAC cycle, up to 100 committees per request, same cache and refresh rules as the purpose groups; at most 22 requests a normal day and 132 for all cycles (11 batches a cycle for at most 1,082 linked PACs; about 18 and 69 expected). Rules, requests and the real-data check: `docs/leadership-pac-totals.md`.
+Tests: `test_fec_api.py`, `test_fec_purposes.py`, `test_fec_totals.py` (recorded pages in `pipeline/tests/fixtures/fec_api/`); `test_fec_spending.py` with recorded
+rows in `pipeline/tests/fixtures/fec_spending/` (payee name, city, state, ZIP, purpose and memo text blanked).

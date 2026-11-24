@@ -1,9 +1,12 @@
 // Release descriptors (releases/<id>/release.json) are immutable, so they are cached by release id in a small
 // in-memory LRU and in the Workers Cache API. A tombstone check always runs before a cached descriptor is used.
+// A release id with no descriptor is remembered as missing for MISSING_TTL_MS (memory and Cache API), so a made-up id
+// costs the bucket one read per window instead of one per request.
 
 import { isHex64, isSafePath } from "./paths.js";
 
 const MAX_DESCRIPTOR_BYTES = 8 * 1024 * 1024;
+export const MISSING_TTL_MS = 5 * 60 * 1000;
 
 /** Parse and sanity-check a descriptor. Returns {path: {sha256, bytes}} or null when it is not usable. */
 export function parseDescriptor(text, releaseId) {
@@ -52,10 +55,40 @@ export class Lru {
  * Create a loader: (releaseId, env, origin) -> Map | null (no descriptor) and throws "corrupt" for an unusable one.
  * `caches` is the Workers CacheStorage (or a fake); its `default` is used when present.
  */
-export function createDescriptorLoader({ caches, lruSize = 16 } = {}) {
+export function createDescriptorLoader({ caches, lruSize = 16, now = () => Date.now() } = {}) {
   const memory = new Lru(lruSize);
+  const missing = new Lru(256); // release id -> time until which "no descriptor" is trusted
   const store = caches && caches.default;
-  return async function load(releaseId, env, origin) {
+  const missingKey = (releaseId, origin) => new Request(`${origin}/__missing/${releaseId}`);
+
+  /** True when this id was recently found to have no descriptor (memory first, then the Cache API). */
+  async function isMissing(releaseId, origin) {
+    if ((missing.get(releaseId) || 0) > now()) return true;
+    if (!store) return false;
+    try {
+      if (await store.match(missingKey(releaseId, origin))) {
+        missing.set(releaseId, now() + MISSING_TTL_MS);
+        return true;
+      }
+    } catch {
+      // The Cache API is an optimisation only.
+    }
+    return false;
+  }
+
+  async function remember(releaseId, origin) {
+    missing.set(releaseId, now() + MISSING_TTL_MS);
+    if (!store) return;
+    try {
+      await store.put(missingKey(releaseId, origin), new Response("", {
+        headers: { "Cache-Control": `public, max-age=${MISSING_TTL_MS / 1000}` },
+      }));
+    } catch {
+      // The Cache API is an optimisation only.
+    }
+  }
+
+  async function load(releaseId, env, origin) {
     const cached = memory.get(releaseId);
     if (cached) return cached;
     const cacheKey = new Request(`${origin}/__descriptor/${releaseId}`);
@@ -70,7 +103,10 @@ export function createDescriptorLoader({ caches, lruSize = 16 } = {}) {
       }
     }
     const object = await env.BUCKET.get(`releases/${releaseId}/release.json`);
-    if (!object) return null;
+    if (!object) {
+      await remember(releaseId, origin);
+      return null;
+    }
     if (object.size > MAX_DESCRIPTOR_BYTES) throw new Error("corrupt");
     const text = await new Response(object.body).text();
     const parsed = parseDescriptor(text, releaseId);
@@ -86,5 +122,8 @@ export function createDescriptorLoader({ caches, lruSize = 16 } = {}) {
       }
     }
     return parsed;
-  };
+  }
+
+  load.isMissing = isMissing;
+  return load;
 }

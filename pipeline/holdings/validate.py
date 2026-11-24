@@ -21,6 +21,7 @@ import duckdb
 
 from ..util import BUILD, CACHE, ROOT, SOURCES_DIR, fetch, read_json, read_jsonl, write_json
 from . import rules, validate_positions
+from .address_check import problems
 from .run import ASSET_COLS, EDGE_FILE, HOLD_DIR, INDEX, LIAB_COLS, band_sum, net_worth
 
 SEED = 20261113
@@ -58,7 +59,8 @@ def check_member(c: Checks, mid: str, m: dict[str, Any]) -> None:
             c.check((d["ticker"] is None) == (d["ticker_source"] is None), "ticker_source iff ticker", f"{mid} {y}")
             c.check(d["org"] is None or d["ticker"] is not None, "org only from ticker", f"{mid} {y}")
             c.check(not rules.is_personal_residence(d["asset"], d["income_type"]), "no residence published", f"{mid} {y} {d['row']}")
-            c.check(not rules.A1.search(d["asset"] or ""), "no street address (A1) in asset", f"{mid} {y} {d['row']}")
+            c.check(not problems(d["asset"], False, bool(d["location"])), "no street address in asset (A1, cue rule, independent gate)",
+                    f"{mid} {y} {d['row']}")
             c.check(not rules.redact_beneficiary(d["asset"], d["owner"])[1], "no minor's name in asset", f"{mid} {y} {d['row']}")
             c.check(d["location"] is None or d["location"].count(",") <= 1, "location at most city, state", f"{mid} {y}")
         for r in l_rows:
@@ -66,6 +68,8 @@ def check_member(c: Checks, mid: str, m: dict[str, Any]) -> None:
             c.check(d["owner"] in OWNERS, "liability owner in enum", f"{mid} {y}")
             c.check(d["doc"] == yr["doc"], "liability cites used doc", f"{mid} {y}")
             c.check(d["low"] is not None, "liability has a band", f"{mid} {y}")
+            c.check(not any(problems(d[k], True) for k in ("creditor", "type")), "no street address in liability text (A1, cue rule, "
+                    "independent gate)", f"{mid} {y}")
         t = yr["totals"]
         a = band_sum([(r[7], r[8]) for r in a_rows])
         lc = band_sum([(r[4], r[5]) for r in l_rows if not r[7]])

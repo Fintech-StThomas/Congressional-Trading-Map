@@ -15,7 +15,7 @@ import { amountText, count, date, days, NOT_DISCLOSED, releaseShort } from "../f
 
 export type ReleaseIndexEntry = { release_id: string; build_time: string; activated_at: string };
 /** Same bounds as pipeline/release_history.py. */
-export const MAX_RELEASES = 400;
+export const MAX_RELEASES = 10_000;
 export const MAX_BUILD_TIME = 100;
 
 function validTimestamp(v: unknown): boolean {
@@ -27,7 +27,7 @@ function validTimestamp(v: unknown): boolean {
 /**
  * Validate releases/index.json strictly (docs/data-dictionary.md, "Release history index"): exactly
  * {schema_version: 1, releases: [...]}, each entry exactly {release_id, build_time, activated_at}, no duplicates, at
- * most 400 entries. Throws on anything else; returns the entries in file order (newest first).
+ * most MAX_RELEASES entries. Throws on anything else; returns the entries in file order (newest first).
  */
 export function validateReleaseIndex(json: unknown): ReleaseIndexEntry[] {
   if (!json || typeof json !== "object" || Array.isArray(json)) throw new Error("release index is not an object");

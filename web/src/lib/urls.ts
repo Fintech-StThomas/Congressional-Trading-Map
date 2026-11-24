@@ -105,6 +105,16 @@ export function releaseRecordsHref(release: string, id: string): string {
   return `/r/${release}/m/${id}/records`;
 }
 
+/** The permalink of an organisation page in one data release: "/r/<release>/o/co%3A320193". */
+export function releaseOrgHref(release: string, id: string): string {
+  return `/r/${release}/o/${encodeURIComponent(id)}`;
+}
+
+/** The permalink of the disclosure-timing page in one data release. */
+export function releaseDelaysHref(release: string): string {
+  return `/r/${release}/delays`;
+}
+
 /** The release comparison for one member: "/changes?m=K000389&from=<release>&to=<release>" (the releases are optional). */
 export function changesHref(member: string, from?: string | null, to?: string | null): string {
   const q = new URLSearchParams({ m: member });

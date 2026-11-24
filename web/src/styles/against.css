@@ -1,0 +1,27 @@
+/* Spending against a member is not a tie, so nothing about it is drawn in the tie red: the mark is a neutral line in the
+   text colour and the name link's underline is neutral too. Loaded with LineSample (the mark) so every table, drawer and
+   chip that shows such an entry gets it. Red means a tie and nothing else. */
+.linesample--against path,
+.marks .linesample--against path,
+.drawer__tab .linesample--against path {
+  stroke: currentColor;
+  opacity: 0.55;
+}
+.linesample--against .linesample__core,
+.marks .linesample--against .linesample__core,
+.drawer__tab .linesample--against .linesample__core {
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-dasharray: 1 3.2;
+}
+.linesample--against .linesample__shadow,
+.marks .linesample--against .linesample__shadow,
+.drawer__tab .linesample--against .linesample__shadow {
+  stroke: none;
+}
+.ties tr.is-against a {
+  text-decoration-color: color-mix(in oklch, currentColor 45%, transparent);
+}
+.ties tr.is-against a:hover {
+  text-decoration-color: currentColor;
+}

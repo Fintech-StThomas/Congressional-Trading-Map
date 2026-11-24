@@ -4,8 +4,11 @@
 import type { CampaignFinance } from "@/lib/types";
 import { categoryRows, committeeUrl, coverageLine, cycleOf, defaultCycle, loanLine, loansNewestFirst, pacGroups, shareText } from "@/lib/domain/finance";
 import { purposeRows, purposeText } from "@/lib/domain/finance-purposes";
+import { totalsCaseLine } from "@/lib/domain/finance-totals";
 import { plural, reportedMoney } from "@/lib/format";
+import { candidateUrl, latestReceiptsLine, receiptsLine, receiptsOf } from "@/lib/domain/finance-receipts";
 import { FINANCE } from "@/lib/copy-finance";
+import { RECEIPTS } from "@/lib/copy-finance-receipts";
 
 const TOP_CATEGORIES = 8;
 const TOP_PURPOSES = 6;
@@ -14,10 +17,21 @@ export function CaseFileMoney({ cf }: { cf: CampaignFinance | null | undefined }
   if (!cf) return null;
   const loans = loansNewestFirst(cf.loans).slice(0, 6);
   const groups = pacGroups(cf.leadership_pac);
+  const latest = latestReceiptsLine(receiptsOf(cf) ?? []);
   return (
     <section className="cf__sec" data-testid="cf-money">
       <h3>{FINANCE.title}</h3>
       <p className="cf__note">{coverageLine(cf)} {FINANCE.notShown}</p>
+      {latest && latest.rows.map((r) => {
+        const l = receiptsLine(r);
+        const url = candidateUrl(r.candidate_id);
+        return (
+          <p className="cf__note" key={r.candidate_id} data-testid="cf-receipts">
+            <strong>{RECEIPTS.caseFile(latest.cycle)}</strong> ({r.candidate_id}): total receipts {l.total}; from individuals {l.individuals}; from PACs and other committees {l.committees}; from party committees {l.party}; from the candidate {l.candidate}; cash on hand {l.cash}; {l.through}.
+            {url ? ` ${url}` : ""} Summary totals of the campaign committee, not ties; individual contributors are not published.
+          </p>
+        );
+      })}
       {loans.length > 0 ? (
         <table className="cf__table">
           <caption className="cf__cap">{FINANCE.loansTitle}. {FINANCE.loansNote}</caption>
@@ -45,8 +59,10 @@ export function CaseFileMoney({ cf }: { cf: CampaignFinance | null | undefined }
           const rows = categoryRows(y);
           const url = committeeUrl(g.id);
           const purposes = purposeRows(y);
+          const totalsLine = totalsCaseLine(y);
           return (
             <div key={g.id}>
+            {totalsLine && <p className="cf__note" data-testid="cf-totals">{totalsLine}{url ? ` ${url}` : ""}</p>}
             {purposes.length > 0 && (
               <table className="cf__table" data-testid="cf-purposes">
                 <caption className="cf__cap">{FINANCE.purposesTitle}: {g.name} ({g.id}), {y.cycle} cycle. {FINANCE.purposesNote} {FINANCE.purposesRefundsNote}</caption>

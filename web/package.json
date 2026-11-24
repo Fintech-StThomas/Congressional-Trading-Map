@@ -16,7 +16,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test tests/*.test.mjs",
     "test:unit": "node scripts/test-unit.mjs",
-    "test:pinned": "node --test tests/pinned/pinned.test.mjs"
+    "test:pinned": "node --test --test-concurrency=1 tests/pinned/*.test.mjs"
   },
   "dependencies": {
     "@vercel/analytics": "^2.0.1",

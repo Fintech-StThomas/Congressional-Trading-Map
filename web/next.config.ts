@@ -70,9 +70,6 @@ async function dataYearMax(phase: string): Promise<number> {
   return new Date().getFullYear();
 }
 
-// A day in the browser, a year at the edge: a transient error answered under a release URL cannot stick in a browser for long.
-const IMMUTABLE = "public, max-age=86400, s-maxage=31536000, immutable";
-
 export default async function config(phase: string): Promise<NextConfig> {
   // A hosted build (Vercel, CI) never falls back to the sample data unless PT_DATA=fixtures says so.
   const guard = phase === PHASE_PRODUCTION_BUILD ? sampleFallbackError(process.env, hasRealData) : null;
@@ -156,12 +153,13 @@ export default async function config(phase: string): Promise<NextConfig> {
         // Pinned mode: a release is immutable, so its files and the JSON generated from it never change under their URL.
         ...(pinned
           ? [
-              // Only <release id>/... is immutable. /releases/index.json (the release list) is mutable and advisory: always revalidated.
-              { source: `/releases/:release(${RELEASE_ID_PATTERN})/:path*`, headers: [{ key: "Cache-Control", value: IMMUTABLE }] },
+              // /releases/<release id>/... carries no rule here: the Worker sets the immutable policy on a 200 and no-store on
+              // every error, and a header rule would override both (it cannot see the status). /releases/index.json (the
+              // release list) is mutable and advisory: always revalidated.
               { source: "/releases/index.json", headers: [{ key: "Cache-Control", value: "no-cache" }] },
               // The pointer is read by open tabs ("newer data" note, permalink comparison): never served from a cache without revalidating.
               { source: "/releases/current.json", headers: [{ key: "Cache-Control", value: "no-cache" }] },
-              { source: `/r/:release(${RELEASE_ID_PATTERN})/:kind(board-data|board-member|search-index)/:path*`, headers: [{ key: "Cache-Control", value: IMMUTABLE }] },
+              // /r/<id>/board-data|board-member|search-index: immutable on a 200 only, set by the route (lib/data/permalink.ts).
             ]
           : []),
         // Content-stable static files: a week in the browser, then served stale for up to 30 days while it

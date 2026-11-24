@@ -118,8 +118,7 @@ def test_refunds_can_exceed_spending_in_a_category_and_stay_non_negative():
     assert (pac["total"], pac["count"], pac["refunds"], pac["refund_count"]) == (10, 1, 76.5, 2)
     assert [(c["total"], c["refunds"]) for c in pac["categories"]] == [(10, 75.5), (0, 1)]
     c = Checker()
-    check_campaign_finance(c, {"loans": [], "leadership_pac": [pac], "coverage": GOOD["coverage"]},
-        "m", "M1", ["S8FL00273"], {"C00000001": {"member": "M1", "method": "fec_candidate_id"}})
+    check_campaign_finance(c, {"loans": [], "receipts": [], "leadership_pac": [pac], "coverage": GOOD["coverage"]}, "m", "M1", ["S8FL00273"], {"C00000001": {"member": "M1", "method": "fec_candidate_id"}})
     assert c.errors == {}
 
 
@@ -221,8 +220,8 @@ def test_run_writes_blocks_links_coverage_and_audit(built):
         [None] if any(c["category"] is None for c in pac["categories"]) else [])
     assert doc["members"]["T000483"]["leadership_pac"] == []
     cov = doc["members"]["T000483"]["coverage"]
-    assert cov.pop("purposes_source").startswith("OpenFEC")
-    assert cov == {"loans_cycles": [2000, 2024], "leadership_pac_cycles": [2024], "purposes_cycles": [], "leadership_pac_note": spending.NOTE_NO_PAC}
+    assert cov.pop("purposes_source").startswith("OpenFEC") and cov.pop("totals_source").startswith("OpenFEC")
+    assert cov == {"loans_cycles": [2000, 2024], "leadership_pac_cycles": [2024], "purposes_cycles": [], "totals_cycles": [], "leadership_pac_note": spending.NOTE_NO_PAC}
     assert s["coverage"]["leadership_pac_note"] is None
     assert doc["links"]["C00409276"] == {"member": "S001217", "method": "fec_candidate_id"}
     assert sec["oppexp_coverage"]["2000"].startswith("not published") and sec["oppexp_coverage"]["2024"] == "loaded"
@@ -264,14 +263,15 @@ def test_assembler_gives_null_when_there_is_no_entry_or_no_file(tmp_path, monkey
 GOOD = {
     "loans": [{"cycle": 2024, "candidate_id": "S8FL00273", "office": "senate", "candidate_loans": 100, "other_loans": None,
                "candidate_loan_repayments": 0, "other_loan_repayments": 0, "debts_owed_by": 5.5, "through": "2024-12-31"}],
+    "receipts": [{"cycle": 2024, "candidate_id": "S8FL00273", "office": "senate", "total_receipts": 1000, "from_individuals": 600, "from_other_committees": 200, "from_party_committees": None, "from_candidate": 0, "transfers_from_authorised": 50.25, "total_disbursements": 900, "cash_on_hand": -12.5, "through": "2024-12-31"}],
     "leadership_pac": [{"committee_id": "C00409276", "committee_name": "TEST PAC", "cycle": 2024,
                         "sponsor_link": "fec_candidate_id", "total": 30.5, "count": 3, "refunds": 4, "refund_count": 2,
                         "categories": [{"category": "001", "label": "Administrative/salary/overhead expenses", "total": 20.5,
                                         "count": 2, "refunds": 4, "refund_count": 2},
                                        {"category": None, "label": spending.NO_CATEGORY, "total": 10, "count": 1,
-                                        "refunds": 0, "refund_count": 0}], "purposes": None}],
+                                        "refunds": 0, "refund_count": 0}], "purposes": None, "totals": None}],
     "coverage": {"loans_cycles": [2024], "leadership_pac_cycles": [2024], "purposes_cycles": [],
-                 "purposes_source": "OpenFEC (not available in this build)", "leadership_pac_note": None},
+                 "purposes_source": "OpenFEC (not available in this build)", "totals_cycles": [], "totals_source": "OpenFEC (n/a)", "leadership_pac_note": None},
 }
 LINKS = {"C00409276": {"member": "M1", "method": "fec_candidate_id"}}
 
@@ -330,7 +330,7 @@ def test_validator_accepts_a_good_block_and_null():
     (lambda b: b["leadership_pac"][0].update(committee_name="PAC, P.O. BOX 12"), "no street address text"),
     (lambda b: b.update(leadership_pac=[]), "note when and only when"),
     (lambda b: b["coverage"].update(leadership_pac_note="x"), "note when and only when"),
-    (lambda b: b.update(loans=[], leadership_pac=[]), "empty block"),
+    (lambda b: b.update(loans=[], receipts=[], leadership_pac=[]), "empty block"),
     (lambda b: b["loans"].append(copy.deepcopy(b["loans"][0])), "unique and ordered"),
     (lambda b: b["leadership_pac"][0]["categories"].append(copy.deepcopy(b["leadership_pac"][0]["categories"][0])), "one row per category"),
 ])

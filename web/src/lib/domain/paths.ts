@@ -32,9 +32,9 @@ export type Hop = {
   /** Calendar years with records (by year), or every year from the first to the last record when only that is published. */
   years: number[] | null;
   yearsBasis: "yearly" | "span" | null;
-  /** Outside spending only: which side the money was spent on, when the data says. */
-  side: "support" | "oppose" | null;
+  side: "support" | "oppose" | null; // outside spending only: which side the money was spent on, when the data says
   via: string | null;
+  note?: string | null; // the tie's note ("owners: spouse 3, self 2" on a traded tie): says whose trades they are
 };
 
 export const MAX_HOPS = 3;

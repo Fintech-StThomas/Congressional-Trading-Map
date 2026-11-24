@@ -69,9 +69,13 @@ jobs:
       - name: Run pipeline (all stages, then validation)
         timeout-minutes: 120
         env:
-          LDA_API_KEY: ${{ secrets.LDA_API_KEY }}       # used only when PT_ENABLE_LDA=1 (off)
-          FEC_API_KEY: ${{ secrets.FEC_API_KEY }}       # OpenFEC: leadership-PAC sponsors and purpose groups; optional
-          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+          # The three API settings reach the pipeline on the default branch of the main repository only. A branch dispatch
+          # (build and validate, nothing published) gets empty values, so a branch's code cannot read or spend them. Without
+          # them the run still builds and validates: no FEC leadership-PAC sponsors or purpose groups (published as null with a
+          # warning), LDA is off anyway, and SEC requests use the default User-Agent.
+          LDA_API_KEY: ${{ (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && !github.event.repository.fork) && secrets.LDA_API_KEY || '' }}       # used only when PT_ENABLE_LDA=1 (off)
+          FEC_API_KEY: ${{ (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && !github.event.repository.fork) && secrets.FEC_API_KEY || '' }}       # OpenFEC: leadership-PAC sponsors and purpose groups; optional
+          SEC_USER_AGENT: ${{ (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && !github.event.repository.fork) && secrets.SEC_USER_AGENT || '' }}
           PT_CACHE_ONLY: ${{ inputs.cache_only && '1' || '' }}
         run: python -m pipeline.run
 

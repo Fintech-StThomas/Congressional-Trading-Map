@@ -23,6 +23,11 @@ export function releasePointerUrl(base: string): string {
   return `${base}/current.json`;
 }
 
+/** The mutable release list (data dictionary, "Release history index"), as the server reads it. */
+export function releaseIndexUrl(base: string): string {
+  return `${base}/index.json`;
+}
+
 /** A data path made only of safe segments: no empty, `.` or `..` segment, no backslash, colon, query, fragment or escape. */
 const SAFE_REL = /^[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*$/;
 export function isSafeRel(rel: string): boolean {
@@ -49,6 +54,25 @@ export function parsePointer(json: unknown): ReleasePointer {
   if (!isReleaseId(o.release_id)) throw new Error("release pointer has a malformed release_id");
   if (!isReleaseId(o.manifest_sha256)) throw new Error("release pointer has a malformed manifest_sha256");
   return { release_id: o.release_id, manifest_sha256: o.manifest_sha256 };
+}
+
+/**
+ * The ids a release list (releases/index.json) names, as a set. Strict like the pointer: schema_version 1 and every
+ * entry an object with a 64-hex release_id, else it throws (a permalink then fails closed instead of guessing).
+ * A withdrawn release is removed from the list by `pipeline.withdraw_release`, so an id missing here is "not available".
+ */
+export function listedReleaseIds(json: unknown): Set<string> {
+  if (!json || typeof json !== "object" || Array.isArray(json)) throw new Error("release index is not an object");
+  const o = json as Record<string, unknown>;
+  if (o.schema_version !== 1) throw new Error(`release index has unsupported schema_version ${JSON.stringify(o.schema_version)}`);
+  if (!Array.isArray(o.releases)) throw new Error("release index has no releases list");
+  const ids = new Set<string>();
+  for (const entry of o.releases) {
+    const id = entry && typeof entry === "object" ? (entry as Record<string, unknown>).release_id : undefined;
+    if (!isReleaseId(id)) throw new Error("release index has an entry without a valid release_id");
+    ids.add(id);
+  }
+  return ids;
 }
 
 /** The next.config rewrite for pinned mode: same-origin /releases/<id>/... proxied to the bucket, ahead of public/ files. */

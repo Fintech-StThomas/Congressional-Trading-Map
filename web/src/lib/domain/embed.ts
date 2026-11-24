@@ -3,6 +3,8 @@
 // no query parameter can remove it. Pure; tests/embed.test.mjs loads it directly. Every data string is escaped.
 import type { Edge, MemberFile, MemberSummary } from "../types.ts";
 import { EMBED, SITE } from "../copy.ts";
+import { PRECISE } from "../copy-precision.ts";
+import { splitText, tradeSplit } from "./tradesplit.ts";
 import { amountText, count, date, NOT_DISCLOSED, PARTY_NAMES, rankAmount, releaseShort, seat } from "../format.ts";
 import { isReleaseId } from "../data/release.ts";
 import { memberHref, releaseMemberHref, siteUrl } from "../urls.ts";
@@ -18,10 +20,10 @@ export function embedTheme(raw: string | null | undefined): EmbedTheme {
   return raw === "dark" ? "dark" : "light";
 }
 
-export type EmbedTie = { label: string; other: string; amount: string };
+export type EmbedTie = { label: string; other: string; amount: string; /** buys and sells apart, for a trade tie */ detail?: string | null };
 
 /** The largest filed ties, by disclosed amount (exact, else high, else low), then record count. Opposing spending and context ties are not shown. */
-export function topTies(file: Pick<MemberFile, "edges" | "nodes">, memberId: string, n = EMBED_TIES): EmbedTie[] {
+export function topTies(file: Pick<MemberFile, "edges" | "nodes">, memberId: string, n = EMBED_TIES, trades: readonly { action: string; org: string | null; low: number | null; high: number | null }[] = []): EmbedTie[] {
   const rank = (e: Edge) => rankAmount(e.amount) ?? -1;
   return file.edges
     .filter((e) => e.basis === "filed" && e.family !== "context" && !isAgainst(e))
@@ -29,7 +31,13 @@ export function topTies(file: Pick<MemberFile, "edges" | "nodes">, memberId: str
     .slice(0, n)
     .map((e) => {
       const end = e.from.id === memberId ? e.to : e.from;
-      return { label: typeLabel(e), other: oneLine(file.nodes?.[end.id]?.name) || end.id, amount: amountText(e.amount) ?? NOT_DISCLOSED };
+      // A trade total adds every buy and every sell by the household: say so, and show the two sides apart when the rows are known.
+      const traded = e.type === "traded";
+      return {
+        label: traded ? `Household ${typeLabel(e).toLowerCase()}, ${PRECISE.combined}` : typeLabel(e),
+        other: oneLine(file.nodes?.[end.id]?.name) || end.id, amount: amountText(e.amount) ?? NOT_DISCLOSED,
+        detail: traded && trades.length ? splitText(tradeSplit(trades, end.id)) : null,
+      };
     });
 }
 
@@ -68,7 +76,7 @@ export function buildEmbedHtml(i: EmbedInput): string {
   const built = i.built ? date(i.built) : NOT_DISCLOSED;
   const n = (v: number | undefined) => (typeof v === "number" ? count(v) : NOT_DISCLOSED);
   const ties = i.ties.length
-    ? `<ol>${i.ties.map((t) => `<li><span class="lab">${escapeXml(t.label)}: ${escapeXml(t.other)}</span><span class="amt">${escapeXml(t.amount)}</span></li>`).join("")}</ol>`
+    ? `<ol>${i.ties.map((t) => `<li><span class="lab">${escapeXml(t.label)}: ${escapeXml(t.other)}</span><span class="amt">${escapeXml(t.amount)}</span>${t.detail ? `<span class="amt">${escapeXml(t.detail)}</span>` : ""}</li>`).join("")}</ol>`
     : `<p>${escapeXml(EMBED.noTies)}</p>`;
   return [
     "<!doctype html>",

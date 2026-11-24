@@ -24,7 +24,7 @@ from ..util import dumps, read_json, user_agent
 from . import download
 
 BASE = "https://api.open.fec.gov/v1"
-MAX_REQUESTS = 400        # hard stop per run (the daily budget is well under this; see pipeline/fec/README.md)
+MAX_REQUESTS = 500        # hard stop per run (a cold run is about 340; the daily budget is well under this; see pipeline/fec/README.md)
 MAX_PAGES = 200
 
 

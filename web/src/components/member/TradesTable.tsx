@@ -10,6 +10,9 @@ import { decodeTradeFile, type TradeRow } from "@/lib/data/decode";
 import Link from "next/link";
 import { amountText, count, date, days, NOT_DISCLOSED } from "@/lib/format";
 import { DELAYS, VIEW } from "@/lib/copy";
+import { AMEND, DELAYS_AMEND } from "@/lib/copy-amend";
+import { LaterCell, type Later } from "./LaterCell";
+import { readAmendments } from "@/lib/domain/amendments";
 import { isDefault, tradeCounts } from "@/lib/domain/assume";
 import { basisYear, splitByYears } from "@/lib/domain/datebasis";
 import { useView } from "@/components/shared/useViewState";
@@ -18,7 +21,7 @@ import { getJSON } from "@/lib/data/fetch";
 import { delaysHref, safeHttpUrl } from "@/lib/urls";
 import { ExternalIcon } from "@/components/shared/ExternalIcon";
 
-type Props = { initial: TradeRow[]; total: number; fullUrl: string };
+type Props = { initial: TradeRow[]; total: number; fullUrl: string; later?: Later };
 type Key = "date" | "available" | "lag_days" | "owner" | "action" | "asset" | "ticker" | "low";
 
 const ROW = 44; // px, fixed so the list can be windowed
@@ -69,8 +72,9 @@ const COLS: { k: Key; label: string; cls?: string }[] = [
  * Every periodic transaction report row, sortable and filterable. The list is
  * windowed: only the rows in view are in the DOM, so tens of thousands stay fast.
  */
-export function TradesTable({ initial, total, fullUrl }: Props) {
+export function TradesTable({ initial, total, fullUrl, later: laterProp }: Props) {
   const [trades, setTrades] = useState(initial);
+  const [later, setLater] = useState<Later>(laterProp ?? { map: {}, filings: {} });
   const [status, setStatus] = useState<"ok" | "loading" | "error">(total > initial.length ? "loading" : "ok");
   const [sort, setSort] = useState<{ k: Key; dir: 1 | -1 }>({ k: "date", dir: -1 });
   const [year, setYear] = useState("all");
@@ -92,6 +96,7 @@ export function TradesTable({ initial, total, fullUrl }: Props) {
       .then((file) => {
         if (!live) return;
         setTrades(decodeTradeFile(file));
+        setLater({ map: readAmendments(file), filings: file.filings ?? {} });
         setStatus("ok");
       })
       .catch(() => live && setStatus("error"));
@@ -126,6 +131,8 @@ export function TradesTable({ initial, total, fullUrl }: Props) {
 
   const lateCount = useMemo(() => rows.reduce((n, t) => n + (t.late ? 1 : 0), 0), [rows]);
   // Observed days from the transaction date to public availability, over every loaded trade (not the filtered rows).
+  // The column appears only when this member has amended trades with later filings (older builds and most members have none).
+  const showLater = useMemo(() => trades.some((t) => t.amended && later.map[t.id]), [trades, later]);
   const timing = useMemo(() => delayGroupFromTrades(trades), [trades]);
 
   useEffect(() => {
@@ -144,7 +151,8 @@ export function TradesTable({ initial, total, fullUrl }: Props) {
         <p className="trades__timing" data-testid="trades-timing">
           {DELAYS.memberLine}: median {days(timing.median)}, 90th percentile {days(timing.p90)}.{" "}
           {count(overCount(timing.bands))} of {count(timing.dated)} trades with both dates were public over 45 days after the transaction
-          {timing.undated > 0 ? `; ${count(timing.undated)} with no date` : ""}.{" "}
+          {timing.undated > 0 ? `; ${count(timing.undated)} with no date` : ""}
+          {(timing.date_corrected ?? 0) > 0 ? `; ${DELAYS_AMEND.memberCorrected(timing.date_corrected ?? 0)}` : ""}.{" "}
           <Link href={delaysHref()}>{DELAYS.memberLink}</Link>
         </p>
       )}
@@ -206,7 +214,7 @@ export function TradesTable({ initial, total, fullUrl }: Props) {
         tabIndex={0}
         aria-label="Trades. Scroll to see more rows."
       >
-        <table className="tradetable" aria-rowcount={rows.length + 1}>
+        <table className={showLater ? "tradetable has-later" : "tradetable"} aria-rowcount={rows.length + 1}>
           <caption className="visually-hidden">Periodic transaction reports. Column buttons sort the table.</caption>
           <thead>
             <tr aria-rowindex={1}>
@@ -227,16 +235,17 @@ export function TradesTable({ initial, total, fullUrl }: Props) {
                   </th>
                 );
               })}
+              {showLater && <th scope="col" className="trades__laterh">{AMEND.column}</th>}
             </tr>
           </thead>
           <tbody>
-            {first > 0 && <tr className="vspacer" style={{ height: first * ROW }} aria-hidden="true"><td colSpan={8} /></tr>}
+            {first > 0 && <tr className="vspacer" style={{ height: first * ROW }} aria-hidden="true"><td colSpan={showLater ? 9 : 8} /></tr>}
             {slice.map((t, i) => (
               <tr key={t.id} aria-rowindex={first + i + 2}>
                 <td className="mono">{t.date ? date(t.date) : <Nd />}</td>
                 <td className="mono">{t.available ? date(t.available) : <Nd />}</td>
                 <td className="num mono">
-                  {t.lag_days == null ? <Nd /> : <>{count(t.lag_days)} d</>}
+                  {t.lag_days != null ? <>{count(t.lag_days)} d</> : t.date && t.available && t.amended ? <span className="nd" title={AMEND.dateCorrectedTitle}>{AMEND.dateCorrectedShort}</span> : <Nd />}
                   {t.late && <span className="late" title={DELAYS.overTitle}>{DELAYS.overChip}</span>}
                 </td>
                 <td className={`owner owner--${t.owner}`}>{t.owner === "unspecified" ? <Nd text="not stated" /> : OWNER_LABEL[t.owner]}</td>
@@ -254,16 +263,17 @@ export function TradesTable({ initial, total, fullUrl }: Props) {
                   )}
                   <span className="sub">
                     {CLASS_LABEL[t.asset_class] ?? t.asset_class}
-                    {t.amended ? ` · amended v${t.version}` : ""}
+                    {t.amended ? ` · ${AMEND.amended}${t.version > 1 ? ` v${t.version}` : ""}` : ""}
                   </span>
                 </td>
                 <td className="mono">{t.ticker ?? <Nd />}</td>
                 <td className="num mono">
                   {amountText({ low: t.low, high: t.high, exact: null }) ?? <Nd />}
                 </td>
+                {showLater && <td className="trades__later">{t.amended && <LaterCell t={t} later={later} />}</td>}
               </tr>
             ))}
-            {last < rows.length && <tr className="vspacer" style={{ height: (rows.length - last) * ROW }} aria-hidden="true"><td colSpan={8} /></tr>}
+            {last < rows.length && <tr className="vspacer" style={{ height: (rows.length - last) * ROW }} aria-hidden="true"><td colSpan={showLater ? 9 : 8} /></tr>}
           </tbody>
         </table>
         {rows.length === 0 && status !== "loading" && <p className="empty">No trades match these filters.</p>}

@@ -48,7 +48,7 @@ test("a trade with a date but no availability date is undated, not 0 days", () =
 
 test("empty group: zero counts and null statistics", () => {
   const g = delayGroupFromTrades([]);
-  assert.deepEqual(g, { count: 0, dated: 0, bands: { "0-30": 0, "31-45": 0, "46-90": 0, "91-365": 0, "over-365": 0 }, negative: 0, undated: 0, amended: 0, median: null, p90: null, max: null });
+  assert.deepEqual(g, { count: 0, dated: 0, bands: { "0-30": 0, "31-45": 0, "46-90": 0, "91-365": 0, "over-365": 0 }, negative: 0, undated: 0, date_corrected: 0, amended: 0, median: null, p90: null, max: null });
   const onlyBad = delayGroupFromTrades([T(-5), T(null)]);
   assert.equal(onlyBad.median, null);
   assert.equal(onlyBad.p90, null);
@@ -168,4 +168,63 @@ test("fixtures/data/delays.json equals the rules applied to the fixture trade fi
   assert.ok(readDelays(file));
   // Over 45 days equals the trade files' own `late` flag.
   assert.equal(overCount(file.totals.bands), all.filter((t) => t.late === true).length);
+});
+
+// ---- date corrected (packet P2): both dates present, no lag because a later filing corrected the transaction date.
+test("a null lag with both dates present is date corrected, not undated; no band, no statistic", () => {
+  const corrected = { date: "2020-03-01", available: "2020-03-20", lag_days: null, amended: true };
+  const g = delayGroupFromTrades([T(10, { available: "2020-03-11" }), corrected, T(null), { date: "2020-03-01", available: null, lag_days: null, amended: false }]);
+  assert.equal(g.count, 4);
+  assert.equal(g.date_corrected, 1);
+  assert.equal(g.undated, 2, "no transaction date, and no availability date: still undated");
+  assert.equal(g.dated, 1, "dated = count - undated - date_corrected");
+  assert.equal(g.bands["0-30"], 1);
+  assert.equal(g.amended, 1);
+  assert.equal(g.median, 10, "the corrected trade adds no days to any statistic");
+  const banded = Object.values(g.bands).reduce((a, b) => a + b, 0);
+  assert.equal(banded + g.negative + g.undated + g.date_corrected, g.count);
+  assert.equal(delayRowFromTrades("A", [corrected]).date_corrected, 1);
+});
+
+test("a decoded trade row (date, available, lag null) lands in date_corrected through the same rules", () => {
+  const rows = decodeTradeFile({
+    cols: ["id", "version", "amended", "date", "available", "lag_days", "late", "owner", "action", "doc"],
+    rows: [["a", 2, true, "2020-03-01", "2020-03-20", null, null, "self", "buy", "D1"], ["b", 1, false, null, "2020-03-20", null, null, "self", "buy", "D1"]],
+    filings: { D1: "https://example.org/d1.pdf" },
+  });
+  const g = delayGroupFromTrades(rows);
+  assert.equal(g.date_corrected, 1);
+  assert.equal(g.undated, 1);
+});
+
+const OLD_COLS = ["id", "count", "dated", "b0_30", "b31_45", "b46_90", "b91_365", "b366_plus", "negative", "undated", "amended", "median", "p90", "max", "first_year", "last_year"];
+test("decode: a delays.json built before date_corrected still reads (null, never 0); a new one reads the last column", () => {
+  const old = decodeDelayMembers({ cols: OLD_COLS, rows: [["A", 3, 2, 1, 0, 1, 0, 0, 0, 1, 1, 10, 60, 60, 2015, 2019]] });
+  assert.equal(old.length, 1);
+  assert.equal(old[0].date_corrected, null);
+  assert.equal(old[0].undated, 1);
+  const cur = decodeDelayMembers({ cols: [...OLD_COLS, "date_corrected"], rows: [["A", 3, 1, 1, 0, 0, 0, 0, 0, 1, 1, 10, 10, 10, 2015, 2019, 1]] });
+  assert.equal(cur[0].date_corrected, 1);
+  assert.equal(cur[0].dated, 1);
+  const who = () => ({ name: "Ann", party: "D", state: "CA", chamber: "sen", current: true });
+  assert.equal(viewRows(old, who)[0].dateCorrected, null);
+  assert.equal(viewRows(cur, who)[0].dateCorrected, 1);
+  const csv = delaysCsv(viewRows(old.concat(cur), who), "n").trim().split("\r\n");
+  const head = csv[0].split(",");
+  const at = head.indexOf("date_corrected");
+  assert.ok(at > 0);
+  assert.equal(csv[1].split(",")[at], "", "an old file's missing count is an empty cell");
+  assert.equal(csv[2].split(",")[at], "1");
+  // sorting keeps the missing value last either way
+  const v = viewRows(cur.concat(old), who);
+  assert.equal(sortViewRows(v, "dateCorrected", true)[1].dateCorrected, null);
+  assert.equal(sortViewRows(v, "dateCorrected", false)[1].dateCorrected, null);
+});
+
+test("readDelays accepts a whole file without date_corrected (archived release) and one with it", () => {
+  const g = { count: 2, dated: 2, bands: { "0-30": 2, "31-45": 0, "46-90": 0, "91-365": 0, "over-365": 0 }, negative: 0, undated: 0, amended: 0, median: 5, p90: 9, max: 9 };
+  const file = (extra) => ({ definition: { measured: "m", threshold_days: 45, bands: [], percentile: "p", caveats: ["a"] }, totals: { ...g, ...extra }, by_chamber: { rep: { ...g, ...extra }, sen: { ...g, ...extra } }, by_year: {}, members: { cols: OLD_COLS, rows: [] } });
+  assert.ok(readDelays(file({})));
+  assert.equal(readDelays(file({})).totals.date_corrected, undefined, "left absent: the page leaves the row out rather than showing 0");
+  assert.equal(readDelays(file({ date_corrected: 3 })).totals.date_corrected, 3);
 });

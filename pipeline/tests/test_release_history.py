@@ -93,13 +93,35 @@ def test_reactivation_keeps_one_entry_with_latest_time_and_repeat_is_noop(s3):
     assert record(client, 1, now=clock) is False and client.puts == []
 
 
-def test_cap_drops_oldest(s3):
+def test_index_keeps_more_than_400_and_only_the_safety_cap_drops_oldest(s3):
     clock = Clock()
-    body = [{"release_id": rid(n), "build_time": "t", "activated_at": "2026-01-01T00:00:00Z"} for n in range(400, 0, -1)]
+    body = [{"release_id": rid(n), "build_time": "t", "activated_at": "2026-01-01T00:00:00Z"} for n in range(rh.MAX_ENTRIES, 0, -1)]
     s3.put_object(Bucket=BUCKET, Key=IDX, Body=canonical_json({"schema_version": 1, "releases": body}))
-    record(s3, 999, now=clock)
+    record(s3, 99999, now=clock)
     entries = index(s3)["releases"]
-    assert len(entries) == 400 and entries[0]["release_id"] == rid(999) and entries[-1]["release_id"] == rid(2)
+    assert rh.MAX_ENTRIES >= 10_000 and len(entries) == rh.MAX_ENTRIES
+    assert entries[0]["release_id"] == rid(99999) and entries[-1]["release_id"] == rid(2)
+
+
+def test_401st_activation_keeps_the_oldest_listed(s3):
+    for n in range(1, 402):
+        record(s3, n, now=lambda: datetime(2026, 1, 1, tzinfo=timezone.utc))
+    entries = index(s3)["releases"]
+    assert len(entries) == 401 and entries[0]["release_id"] == rid(401) and entries[-1]["release_id"] == rid(1)
+
+
+def test_next_activation_lists_a_previous_release_whose_index_write_failed(s3, tree):
+    def fail(kwargs):
+        if kwargs["Key"] == IDX:
+            raise ClientError({"Error": {"Code": "AccessDenied"}, "ResponseMetadata": {"HTTPStatusCode": 403}}, "PutObject")
+    with pytest.raises(pr.PublishError, match="pointer WAS activated"):
+        pr.publish(Client(s3, fail), BUCKET, tree, activate=True, sleep=lambda _: None)
+    first = json.loads(s3.get_object(Bucket=BUCKET, Key=pr.CURRENT)["Body"].read())["release_id"]
+    # The next day the data changed: the new release is indexed and so is the orphaned one.
+    (tree / "members" / "A1.json").write_text('{"a":2}')
+    (tree / "meta.json").write_text(json.dumps({"build": {"time": "t2"}}))
+    second = pr.publish(s3, BUCKET, tree, activate=True, sleep=lambda _: None, now=Clock())
+    assert [(e["release_id"], e["build_time"]) for e in index(s3)["releases"]] == [(second["release_id"], "t2"), (first, "t1")]
 
 
 def test_concurrent_change_is_merged_on_retry(s3):
@@ -150,7 +172,7 @@ def test_malformed_index_fails_closed_and_is_untouched(s3, bad):
 def test_validator_rejects_oversize_and_bad_build_time():
     entry = {"release_id": rid(1), "build_time": "t", "activated_at": "2026-01-01T00:00:00Z"}
     with pytest.raises(ReleaseManifestError):
-        rh.validate_index({"schema_version": 1, "releases": [dict(entry, release_id=rid(n)) for n in range(401)]})
+        rh.validate_index({"schema_version": 1, "releases": [dict(entry, release_id=rid(n)) for n in range(rh.MAX_ENTRIES + 1)]})
     with pytest.raises(ReleaseManifestError):
         rh.validate_index({"schema_version": 1, "releases": [dict(entry, build_time=" ")]})
 

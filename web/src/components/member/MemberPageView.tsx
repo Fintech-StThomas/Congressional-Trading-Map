@@ -12,13 +12,17 @@ import { sortEdges, TYPE_LABEL } from "@/lib/domain/edges";
 import { count, date, money, plural, seat, stateName, yearRange } from "@/lib/format";
 import { boardHref, memberHref, recordsHref, releaseRecordsHref } from "@/lib/urls";
 import { toBoardMember, type NameBook } from "@/lib/domain/names";
-import { caseMinTypes, metaSources, sourceNames } from "@/lib/data/meta";
+import { caseMinTypes, conduitsExcluded, metaSources, sourceNames } from "@/lib/data/meta";
 import { CASE_NOT_SHOWN, CORRECTIONS, caseRuleText, RELEASE, SITE, TIMING } from "@/lib/copy";
 import { CASES_UI } from "@/lib/copy-ui";
 import type { Edge, OrgSummary } from "@/lib/types";
 import { TieSection } from "@/components/member/TieSection";
 import { TradesTable } from "@/components/member/TradesTable";
+import { amendmentsFor } from "@/lib/domain/amendments";
 import { LedgerTable } from "@/components/member/LedgerTable";
+import { moneyTotals } from "@/lib/domain/money-totals";
+import { moneyYearSeries } from "@/lib/domain/money-years";
+import { YEAR_CHART } from "@/lib/copy-member-totals";
 import { Timeline } from "@/components/member/Timeline";
 import { CaseFile, caseNumber } from "@/components/member/CaseFile";
 import { pickAgainst, pickBoard } from "@/lib/domain/pick";
@@ -33,7 +37,7 @@ import { CorrectionLink, CorrectionProvider } from "@/components/shared/Correcti
 import { ReleasePin } from "@/components/shared/ReleasePin";
 import { ReleaseBanner } from "@/components/shared/ReleaseBanner";
 import { AssumeCase, AssumptionProvider } from "@/components/shared/Assume";
-import { CiteEnvProvider } from "@/components/shared/CiteEnv";
+import { BuildFlagsProvider, CiteEnvProvider } from "@/components/shared/CiteEnv";
 import { CoverageNote } from "@/components/shared/CoverageNote";
 import { MemberCitePrint, type MemberCiteProps } from "@/components/member/MemberCite";
 import { MemberHeader } from "@/components/member/MemberHeader";
@@ -115,8 +119,6 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
   // Trades per year under each date basis, from the trade rows themselves (never mixed; undated counted apart).
   const none = countByBasis([], "event");
   const tradeCounts = countWire(tradeFile) ?? { event: none, public: none };
-  const moneyByYear: Record<number, number> = {};
-  for (const e of file.edges) if (e.family === "money") for (const b of e.by_year) moneyByYear[b.y] = (moneyByYear[b.y] ?? 0) + b.n;
 
   const orgName = (oid: string) => orgIndex.get(oid)?.name ?? oid;
   const built = metaBuilt(meta);
@@ -138,7 +140,7 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
     holdings, meta: coverageMeta(meta), tradeValues: tradeValueStats(tradeFile),
   });
   const cite: MemberCiteProps = {
-    member: { id: m.id, name: m.name }, hasTrades: nTrades > 0, limitations: facts.map((f) => f.text),
+    member: { id: m.id, name: m.name }, fecIds: m.fec_ids, hasTrades: nTrades > 0, limitations: facts.map((f) => f.text),
     counts: { trades: m.counts.trades, organisations: m.counts.orgs, members: m.counts.members, cases: m.counts.cases },
     dates: { first: ts?.first ?? null, last: ts?.last ?? null },
   };
@@ -151,7 +153,7 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
 
   const page = (
     <AssumptionProvider member={m.id} hasTrades={nTrades > 0} edges={tradedEdges} caseOrgs={caseOrgs}>
-    <CiteEnvProvider release={data.release} built={built} sources={citeSources}>
+    <CiteEnvProvider release={data.release} built={built} sources={citeSources}><BuildFlagsProvider conduitsExcluded={conduitsExcluded(meta)}>
     <article className="page dossier" data-testid="member-page">
       <ReleasePin release={data.release} />
       {release && <ReleaseBanner release={release} built={built} latestHref={memberHref(m.id)} />}
@@ -220,15 +222,15 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
             {ledgerPartial ? ` This list holds the ${count(ledger.length)} largest of ${count(ledgerTotalRows)}; the totals cover all of them.` : ""}
           </p>
           <ErrorBoundary label="ledger">
-            <LedgerTable rows={ledger} names={ledgerNames} totals={totals} />
+            <LedgerTable rows={ledger} names={ledgerNames} money={moneyTotals({ member: id, edges: file.edges, ledger, totals })} seats={totals.sits_with?.edges ?? 0} />
           </ErrorBoundary>
         </section>
       )}
 
       <section className="section" id="activity" aria-labelledby="time-h">
         <h2 id="time-h">Activity by year</h2>
-        <p className="section__note">Bars show trades reported and itemised money records per year. Shading shows how complete the underlying data is for that year.</p>
-        <Timeline trades={tradeCounts} moneyByYear={moneyByYear} coverage={file.coverage} served={m.served} />
+        <p className="section__note">{YEAR_CHART.note}</p>
+        <Timeline trades={tradeCounts} money={moneyYearSeries(file.edges, ledger)} coverage={file.coverage} served={m.served} />
       </section>
 
       <CampaignMoney cf={file.campaign_finance} />
@@ -249,13 +251,13 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
         </p>
         <CoverageNote facts={facts} scopes={["trades", "owner", "values"]} label="Coverage for trades" testId="coverage-trades" />
         <ErrorBoundary label="trades table">
-          <TradesTable initial={initialTrades} total={nTrades} fullUrl={data.fileUrl(`trades/${m.id}.json`)} />
+          <TradesTable initial={initialTrades} total={nTrades} fullUrl={data.fileUrl(`trades/${m.id}.json`)} later={amendmentsFor(tradeFile, initialTrades.map((t) => t.id))} />
         </ErrorBoundary>
         {nTrades > initialTrades.length && <p className="print-only">The full list of {count(nTrades)} trades is on the website; this dossier prints the {initialTrades.length} most recent.</p>}
       </section>
 
       <style>{`@media print { @page { @top-left { content: "${SITE.name} · ${caseNo}"; } } }`}</style>
-      <CaseFile file={file} board={pickBoard(m.id, file.edges)} against={pickAgainst(file.edges)} names={nameOf} ledger={ledger} trades={initialTrades} sources={metaSources(meta)} built={built} orgName={orgName} caseMinTypes={minTypes} />
+      <CaseFile file={file} board={pickBoard(m.id, file.edges)} against={pickAgainst(file.edges)} names={nameOf} ledger={ledger} trades={initialTrades} sources={metaSources(meta)} built={built} orgName={orgName} caseMinTypes={minTypes} foldedAmendments={tradeFile?.amendments !== undefined} conduitsExcluded={conduitsExcluded(meta)} />
       <MemberCitePrint {...cite} />
 
       <footer className="provenance">
@@ -282,7 +284,7 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
         </p>
       </footer>
     </article>
-    </CiteEnvProvider>
+    </BuildFlagsProvider></CiteEnvProvider>
     </AssumptionProvider>
   );
   // The layout's correction links name the latest build; on a permalink they name this release's.

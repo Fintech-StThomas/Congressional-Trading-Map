@@ -3,6 +3,7 @@
 // here; tests/feed.test.mjs loads this directly. Filings are untrusted text, so every data string is escaped.
 import type { MemberSummary, Meta } from "../types.ts";
 import { FEED, SITE } from "../copy.ts";
+import { PRECISE } from "../copy-precision.ts";
 import { amountText, date, NOT_DISCLOSED, releaseShort } from "../format.ts";
 import { metaSources } from "../data/meta.ts";
 import type { TradeRow } from "../data/decode.ts";
@@ -83,12 +84,12 @@ export function attribution(c: FeedContext): string {
 
 const ACTION: Record<string, string> = { buy: "buy", sell: "sell", exchange: "exchange", other: "other transaction" };
 
-/** "<Member> (<party>-<state>): <action> <asset or ticker>, <amount range as displayed>". */
+/** "<Member> (<party>-<state>), owner <owner as filed>: <action> <asset or ticker>, <amount range as displayed>". */
 export function itemTitle(m: FeedMember, t: TradeRow): string {
   const action = (ACTION[t.action] ?? "other transaction") + (t.action === "sell" && t.partial ? " (partial)" : "");
   const asset = oneLine(t.asset) || oneLine(t.ticker) || FEED.noAsset;
   const amount = amountText({ low: t.low ?? null, high: t.high ?? null, exact: null }) ?? NOT_DISCLOSED;
-  return `${oneLine(m.name)} (${m.party}-${oneLine(m.state)}): ${action} ${asset}, ${amount}`;
+  return `${oneLine(m.name)} (${m.party}-${oneLine(m.state)}), ${PRECISE.feedOwner(t.owner)}: ${action} ${asset}, ${amount}`;
 }
 
 /** Plain-text description: dates as filed, owner as filed, the filing link (http or https only) and the attribution. */

@@ -7,6 +7,8 @@ import { RecordsPageView, recordsMetadata } from "@/components/records/RecordsPa
 type Props = { params: Promise<{ release: string; id: string }> };
 
 export const dynamicParams = true;
+// Re-run the availability check (the release list) at most every five minutes, so a withdrawn release stops being served.
+export const revalidate = 300;
 
 export async function generateStaticParams() {
   return [];
