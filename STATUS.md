@@ -3,7 +3,7 @@
 **Read this first.** It is the single shared picture of the project for every teammate and every AI assistant (Claude, ChatGPT or any other), in any session.
 **Rule:** whoever changes what is live, what is in progress, or what is planned updates this file in the same pull request. If this file and the code disagree, the code is right and this file must be fixed.
 
-Last updated: 2026-11-23 (America/Chicago)
+Last updated: 2026-11-24 (America/Chicago)
 
 ## What this is
 
@@ -178,7 +178,7 @@ report, not measurements repeated in this session.
 - A custom domain on the R2 bucket (the current r2.dev address is rate-limited by Cloudflare and meant for development; on 2026-11-16 it answered 429 to a local build, which passed on retry, and Vercel builds read the same address).
 - Dated snapshots of the data, so any past figure can be cited and reproduced.
 - Split the largest files (the 7.5 MB trades file by year; the organisations index).
-- Automatic dependency updates and security alerts.
+- [agent] Automatic dependency updates and security alerts.
 - An uptime check on the site and on the daily job.
 
 ## Working rules
@@ -188,3 +188,4 @@ report, not measurements repeated in this session.
 - Keep the layout described in `web/README.md` and `pipeline/README.md`. New code goes in the folder for its concern; every file starts with a short comment saying what it is for; shared helpers are reused, not copied.
 - Change `docs/data-dictionary.md` first when the data shape changes.
 - Update this file in the same pull request.
+- `[agent]` on an item under "Next, in order" marks work the owner's scheduled assistant may pick up, one item per run. It pushes a `claude/agent-` branch and stops; a person opens and merges the pull request.
