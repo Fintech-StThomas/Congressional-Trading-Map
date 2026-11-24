@@ -3,7 +3,7 @@
 **Read this first.** It is the single shared picture of the project for every teammate and every AI assistant (Claude, ChatGPT or any other), in any session.
 **Rule:** whoever changes what is live, what is in progress, or what is planned updates this file in the same pull request. If this file and the code disagree, the code is right and this file must be fixed.
 
-Last updated: 2026-11-23 (America/Chicago)
+Last updated: 2026-11-24 (America/Chicago)
 
 ## What this is
 
@@ -92,6 +92,7 @@ web/ (Next.js on Vercel) reads the bucket: pages are built on first visit and re
 
 ## Known gaps and issues
 
+- Being fixed (see `docs/REVIEW-2026-11.md`): one House liability row published a street address; amended House trade reports appear as separate trades.
 - No holdings data for senators.
 - About 21% of PAC dollars attach to a named public company; delisted tickers do not resolve.
 - Index funds appear on boards as if they were companies unless the "exclude funds" switch is on.
@@ -148,6 +149,12 @@ report, not measurements repeated in this session.
 - Load test scripts teammates can re-run: `scripts/loadtest/` (test only your own deployment).
 
 ## Next, in order
+
+**Review pass, November 2026** (plan and reasons in [`docs/REVIEW-2026-11.md`](docs/REVIEW-2026-11.md); this comes first)
+- P1 privacy: a street address in House liability text was published (Pelosi, FD 10075701); fix the redaction rule and add a validator check. Owner decides whether to withdraw archived releases that hold it.
+- P2 correctness: amended House trade reports are counted as new trades, inflating trade counts, summed ranges and "public over 45 days".
+- P3–P5: missing shown as zero on member pages; money totals that leave out the largest ties; wording and citation precision.
+- P6: release, cache and feed hardening. P7–P8: campaign receipts per cycle; leadership PAC receipts and totals.
 
 **Housekeeping**
 1. Coordinate the approved git-history cleanup after this PR merges (see the release checklist below; teammates must re-clone).
