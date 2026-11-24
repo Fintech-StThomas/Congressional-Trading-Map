@@ -22,7 +22,7 @@ export function loansNewestFirst(rows: LoanRow[]): LoanRow[] {
   return [...rows].sort((a, b) => b.cycle - a.cycle || a.candidate_id.localeCompare(b.candidate_id));
 }
 
-/** One loan row as the strings the page prints: exact dollars, or "not reported" for a blank figure. */
+/** One loan row as the strings the page prints: whole dollars, or "not reported" for a blank figure. */
 export function loanLine(r: LoanRow) {
   return {
     cycle: String(r.cycle),

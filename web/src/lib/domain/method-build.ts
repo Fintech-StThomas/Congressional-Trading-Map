@@ -45,3 +45,8 @@ export function siteTerms(note: string): string {
     .replace(/late-filed/gi, "made public after a long delay")
     .replace(/\bfiled late\b/gi, "made public over 45 days after the trade");
 }
+
+/** True when meta.exclusions names `key` (object or list form carries it only as an object key); a build before the rule shows false, never a guess. */
+export function hasExclusion(ex: unknown, key: string): boolean {
+  return !!ex && typeof ex === "object" && !Array.isArray(ex) && Object.prototype.hasOwnProperty.call(ex, key);
+}

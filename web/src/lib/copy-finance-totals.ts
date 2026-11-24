@@ -18,8 +18,7 @@ export const TOTALS = {
   },
   records: {
     title: "Leadership PAC money in and out, per cycle",
-    intro: "One row per committee and cycle, from the FEC's committee summary: receipts, total disbursements, contributions to other committees and candidates, operating expenditures, refunds, other disbursements and cash on hand, added up to the coverage end date. Exact dollars. A blank cell is not reported (or unavailable), never zero. Totals only; no donors or payees.",
-    none: "No FEC committee summary for this member's committees in the cycles loaded.",
+    intro: "One row per committee and cycle, from the FEC's committee summary: receipts, total disbursements, contributions to other committees and candidates, operating expenditures, refunds, other disbursements and cash on hand, added up to the coverage end date. Shown rounded to whole dollars; the CSV keeps the cents as filed. A blank cell is not reported (or unavailable), never zero. Totals only; no donors or payees.",
   },
   caseFile: (name: string, id: string, cycle: number, through: string) => `${name} (${id}), ${cycle} cycle, FEC committee summary ${through}`,
 } as const;

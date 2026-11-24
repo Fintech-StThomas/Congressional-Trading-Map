@@ -35,10 +35,11 @@ test("receipts: the FEC candidate page is built from an exact id only", () => {
   assert.deepEqual(links.map((l) => l.id), ["H8CA05035", "P60003225"]);
 });
 
-test("receipts: an absent or empty field is none, never zeros", () => {
-  assert.deepEqual(receiptsOf(null), []);
-  assert.deepEqual(receiptsOf(undefined), []);
-  assert.deepEqual(receiptsOf({ loans: [], leadership_pac: [], coverage: {} }), []);
+test("receipts: an absent field is null (say nothing), only a real empty list is [], never zeros", () => {
+  assert.equal(receiptsOf(null), null);
+  assert.equal(receiptsOf(undefined), null);
+  assert.equal(receiptsOf({ loans: [], leadership_pac: [], coverage: {} }), null, "an old file: no receipts field");
+  assert.deepEqual(receiptsOf({ loans: [], leadership_pac: [], coverage: {}, receipts: [] }), []);
   assert.deepEqual(receiptsRows(null), []);
   assert.equal(latestReceiptsLine([]), null);
 });

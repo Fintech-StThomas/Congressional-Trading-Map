@@ -17,7 +17,7 @@ export function CaseFileMoney({ cf }: { cf: CampaignFinance | null | undefined }
   if (!cf) return null;
   const loans = loansNewestFirst(cf.loans).slice(0, 6);
   const groups = pacGroups(cf.leadership_pac);
-  const latest = latestReceiptsLine(receiptsOf(cf));
+  const latest = latestReceiptsLine(receiptsOf(cf) ?? []);
   return (
     <section className="cf__sec" data-testid="cf-money">
       <h3>{FINANCE.title}</h3>

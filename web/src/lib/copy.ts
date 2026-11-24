@@ -96,7 +96,7 @@ export const NOT_SHOWN: Record<EdgeType, string> = {
   traded: "Does not show who made the trade decision, whether the member knew of it, or why; amounts are ranges, not values.",
   owns: "Does not show when the holding was bought, what it is worth now, or any decision the member took about it.",
   position: "Does not show what the role involved, whether it was paid, or any influence on the member’s work.",
-  pac_money: "Does not show what, if anything, the PAC expected; PAC giving is legal, public and routine. Contributions that individuals earmarked and a listed conduit PAC forwarded are not counted as PAC money, and those PACs’ own gifts in those cycles with them (the list is on the Method page, under Excluded records).",
+  pac_money: "Does not show what, if anything, the PAC expected; PAC giving is legal, public and routine.",
   employee_money: "Does not show that the employer directed the gifts; employees give in their own names.",
   lobbyist_money: "Does not show what the lobbyist asked for, or that any request was made.",
   outside_spending: "Spent independently; by law not coordinated with the member.",
@@ -112,9 +112,12 @@ export const NOT_SHOWN: Record<EdgeType, string> = {
   sits_with: "Committee seats are assigned by party leaders; not a tie either member chose.",
 };
 
-export function notShown(type: EdgeType | "case"): string {
-  return type === "case" ? CASE_NOT_SHOWN : NOT_SHOWN[type] ?? "";
-}
+/** Added to the PAC-money line only for a build whose meta.exclusions lists conduit_pass_through; older builds still count that money. */
+export const CONDUIT_CLAUSE =
+  " Contributions that individuals earmarked and a listed conduit PAC forwarded are not counted as PAC money, and those PACs’ own gifts in those cycles with them (the list is on the Method page, under Excluded records).";
+
+export const notShown = (type: EdgeType | "case", conduitsExcluded = false): string =>
+  type === "case" ? CASE_NOT_SHOWN : (NOT_SHOWN[type] ?? "") + (type === "pac_money" && conduitsExcluded ? CONDUIT_CLAUSE : "");
 
 // ---------------------------------------------------------------- Cases
 // The Case rule (docs/data-dictionary.md, Case): at least two distinct filed tie types between one

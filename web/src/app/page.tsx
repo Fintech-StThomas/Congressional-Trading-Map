@@ -2,7 +2,8 @@
 // its strings, cases) and hands it to BoardApp.
 import { latestData, mapLimit, metaBuilt } from "@/lib/data/server";
 import { getMapGeometry } from "@/lib/board/geo";
-import { caseMinTypes, sourceNames } from "@/lib/data/meta";
+import { BuildFlagsProvider } from "@/components/shared/CiteEnv";
+import { caseMinTypes, conduitsExcluded, sourceNames } from "@/lib/data/meta";
 import { toBoardMember, type BoardMember } from "@/lib/domain/names";
 import { BoardApp, type CaseLite, type Featured, type StateChunk } from "@/components/board/BoardApp";
 import { ReleasePin } from "@/components/shared/ReleasePin";
@@ -51,6 +52,7 @@ export default async function BoardPage() {
       <ReleasePin release={data.release} />
       <h1 className="visually-hidden">The board: members of Congress and the organisations tied to them</h1>
       <ErrorBoundary label="board">
+        <BuildFlagsProvider conduitsExcluded={conduitsExcluded(meta)}>
         <BoardApp
           geo={getMapGeometry()}
           states={board.states}
@@ -64,6 +66,7 @@ export default async function BoardPage() {
           caseMinTypes={caseMinTypes(meta)}
           asOf={metaBuilt(meta)}
         />
+        </BuildFlagsProvider>
       </ErrorBoundary>
     </div>
   );

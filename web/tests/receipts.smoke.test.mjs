@@ -14,7 +14,7 @@ let base = process.env.BASE_URL;
 let server;
 let browser;
 let realData = false;
-const SAMPLE_ONLY = "needs the sample fixtures (members X000001, X000003, X000008, X000012)";
+const SAMPLE_ONLY = "needs the sample fixtures (members X000001, X000003, X000004, X000008, X000012)";
 
 before(async () => {
   if (!base) {
@@ -108,5 +108,26 @@ test("receipts: the printed case file carries a compact line for the latest cycl
     await p.getByTestId("campaign-money").waitFor();
     assert.ok((await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)) <= 0, `${id} scrolls sideways`);
   }
+  await p.close();
+});
+
+test("old-shape file (X000004: no receipts, no totals): no receipts or totals section, no false 'No FEC' line, no conduit sentence", async (t) => {
+  if (realData) return t.skip(SAMPLE_ONLY);
+  const p = await page(1200, 900);
+  await p.goto(base + "/m/X000004");
+  assert.equal(await p.getByTestId("fin-receipts").count(), 0);
+  assert.equal(await p.getByTestId("fin-receipts-none").count(), 0);
+  assert.doesNotMatch(await p.getByTestId("campaign-money").innerText(), /receipts summary|Campaign receipts/i);
+  const tables = (await p.locator(".cf__table").allTextContents()).join(" ");
+  assert.match(tables, /Does not show what, if anything, the PAC expected/);
+  assert.doesNotMatch(tables, /conduit|earmarked/i, "the sample build has no conduit_pass_through exclusion");
+  await p.goto(base + "/m/X000004/records");
+  await p.getByTestId("records-ready").waitFor({ timeout: 60000 });
+  assert.ok(await p.getByTestId("rec-money").count());
+  for (const id of ["receipts", "totals"]) {
+    assert.equal(await p.getByTestId(`rec-${id}-count`).count(), 0, `no ${id} table`);
+    assert.equal(await p.getByTestId(`rec-${id}-csv`).count(), 0, `no ${id} CSV`);
+  }
+  assert.doesNotMatch(await p.getByTestId("rec-money").innerText(), /receipts|FEC committee summary/i);
   await p.close();
 });

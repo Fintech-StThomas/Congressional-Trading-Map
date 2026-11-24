@@ -5,7 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { hopWords, ownersOf } from "../src/lib/domain/hopwords.ts";
 import { splitText, tradeSplit } from "../src/lib/domain/tradesplit.ts";
-import { exclusionRows, siteTerms, splitExclusions, typesInBuild } from "../src/lib/domain/method-build.ts";
+import { hasExclusion, exclusionRows, siteTerms, splitExclusions, typesInBuild } from "../src/lib/domain/method-build.ts";
 import { PRECISE, CONNECT_WORDS } from "../src/lib/copy-precision.ts";
 import { buildEmbedHtml, topTies } from "../src/lib/domain/embed.ts";
 import { stringStyle } from "../src/lib/domain/edges.ts";
@@ -127,4 +127,16 @@ test("spending against a member is drawn with no tie mark (neutral), support and
   assert.equal(stringStyle(e({})), "against");
   assert.equal(stringStyle(e({ note: "support", via: { id: "pac:C1:support", name: "X" } })), "filed");
   assert.equal(stringStyle({ ...e({}), type: "traded", note: null, via: null }), "filed");
+});
+
+test("conduit wording: the PAC-money line names the conduit rule only for a build whose exclusions have it", async () => {
+  const { notShown, CONDUIT_CLAUSE } = await import("../src/lib/copy.ts");
+  assert.equal(hasExclusion({ conduit_pass_through: { reason: "x", rows: 3 } }, "conduit_pass_through"), true);
+  assert.equal(hasExclusion({ same_key_other_filing: { rows: 1 } }, "conduit_pass_through"), false);
+  assert.equal(hasExclusion(undefined, "conduit_pass_through"), false);
+  assert.equal(hasExclusion([{ reason: "conduit_pass_through", count: 1 }], "conduit_pass_through"), false, "the older list form never says it");
+  assert.ok(!/conduit|earmark/i.test(notShown("pac_money")), "an old build keeps the previous sentence");
+  assert.ok(!/conduit|earmark/i.test(notShown("pac_money", false)));
+  assert.ok(notShown("pac_money", true).endsWith(CONDUIT_CLAUSE));
+  assert.equal(notShown("traded", true), notShown("traded"), "no other tie type changes");
 });

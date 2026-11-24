@@ -18,7 +18,7 @@ export function totalsState(y: LeadershipPacYear): TotalsState {
 
 export type TotalsLine = { key: string; label: string; value: string };
 
-/** The five headline figures in reading order, each as exact dollars or "not reported"; [] when there are no totals. */
+/** The five headline figures in reading order, each in whole dollars or "not reported"; [] when there are no totals. */
 export function totalsLines(y: LeadershipPacYear): TotalsLine[] {
   const t = y.totals;
   if (!t) return [];

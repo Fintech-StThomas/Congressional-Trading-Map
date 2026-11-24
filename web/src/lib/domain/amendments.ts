@@ -3,6 +3,7 @@
 // Pure; tests/amendments.test.mjs loads it directly. A later filing that marks a transaction Deleted does not remove
 // the trade (owner decision pending); it is only said.
 import type { TradeFile } from "../types.ts";
+import { safeHttpUrl } from "../urls.ts";
 
 export type LaterFiling = { id: string; doc: string; status: "Amended" | "Deleted" | "Version"; available: string | null };
 export type AmendmentMap = { [tradeId: string]: LaterFiling[] };
@@ -41,10 +42,6 @@ export type AmendmentView = {
 
 type TradeLike = { id: string; amended: boolean; date: string | null; available: string | null; lag_days: number | null };
 
-function httpUrl(u: string | undefined): string | null {
-  return typeof u === "string" && /^https?:\/\//i.test(u) ? u : null;
-}
-
 /** What a row's later filings say. `filings` is the file's filing id to URL map. */
 export function amendmentView(t: TradeLike, map: AmendmentMap, filings: { [doc: string]: string } | undefined): AmendmentView {
   const seen = new Set<string>();
@@ -52,7 +49,7 @@ export function amendmentView(t: TradeLike, map: AmendmentMap, filings: { [doc: 
   for (const a of map[t.id] ?? []) {
     if (seen.has(a.doc)) continue;
     seen.add(a.doc);
-    later.push({ doc: a.doc, status: a.status, available: a.available, url: httpUrl(filings?.[a.doc]) });
+    later.push({ doc: a.doc, status: a.status, available: a.available, url: safeHttpUrl(filings?.[a.doc]) });
   }
   const deleted = (map[t.id] ?? []).some((a) => a.status === "Deleted");
   return { later, deleted, dateCorrected: t.lag_days === null && Boolean(t.date) && Boolean(t.available) && t.amended, amended: t.amended };
@@ -66,7 +63,7 @@ export function laterFilingsText(list: readonly LaterFiling[] | undefined): stri
 
 /** Space-separated official addresses of the later filings (http or https only); null when there are none. */
 export function laterFilingUrls(list: readonly LaterFiling[] | undefined, filings: TradeFile["filings"] | undefined): string | null {
-  const urls = [...new Set((list ?? []).map((a) => httpUrl(filings?.[a.doc])).filter((u): u is string => Boolean(u)))];
+  const urls = [...new Set((list ?? []).map((a) => safeHttpUrl(filings?.[a.doc])).filter((u): u is string => Boolean(u)))];
   return urls.length ? urls.join(" ") : null;
 }
 

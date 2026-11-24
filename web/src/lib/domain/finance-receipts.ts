@@ -5,15 +5,15 @@ import type { CampaignFinance, ReceiptsRow } from "../types.ts";
 import { NOT_REPORTED, reportedMoney } from "../format.ts";
 import { RECEIPTS } from "../copy-finance-receipts.ts";
 import { safeHttpUrl } from "../urls.ts";
+import { OFFICE_LABEL } from "./finance.ts";
 import type { Cell, Col } from "./records.ts";
 
-const OFFICE_LABEL: Record<string, string> = { house: "House", senate: "Senate", president: "President" };
 // FEC candidate ids are H/S + 8 characters or P + 8 digits; the sample site's invented ids are a little longer, so the shape is checked loosely (URL-safe, exact id, no search).
 const CANDIDATE_ID = /^[HSP][0-9A-Z]{8,10}$/;
 
-/** A block's receipts rows; an absent field (a file built before receipts existed) is none. */
-export function receiptsOf(cf: CampaignFinance | null | undefined): ReceiptsRow[] {
-  return cf?.receipts ?? [];
+/** A block's receipts rows; null when the field is absent (a file built before receipts existed: say nothing), [] only for a real empty list. */
+export function receiptsOf(cf: CampaignFinance | null | undefined): ReceiptsRow[] | null {
+  return cf?.receipts ?? null;
 }
 
 /** Newest cycle first, then candidate id (a member can have a House and a presidential row in one cycle). */
@@ -38,7 +38,7 @@ export function candidateLinks(rows: ReceiptsRow[]): { id: string; url: string |
   return out;
 }
 
-/** One row as the strings the page prints: exact dollars, or "not reported" for a blank figure. */
+/** One row as the strings the page prints: whole dollars, or "not reported" for a blank figure. */
 export function receiptsLine(r: ReceiptsRow) {
   return {
     cycle: String(r.cycle),
@@ -79,7 +79,7 @@ export const RECEIPT_COLS: Col[] = [
 
 /** Rows for the full file's table and its CSV, newest cycle first; a blank figure is an empty cell, not 0. */
 export function receiptsRows(cf: CampaignFinance | null | undefined): Cell[][] {
-  return receiptsNewestFirst(receiptsOf(cf)).map((r) => [
+  return receiptsNewestFirst(receiptsOf(cf) ?? []).map((r) => [
     r.cycle, r.candidate_id, r.office ? OFFICE_LABEL[r.office] ?? r.office : null, r.total_receipts, r.from_individuals,
     r.from_other_committees, r.from_party_committees, r.from_candidate, r.transfers_from_authorised, r.total_disbursements,
     r.cash_on_hand, r.through, candidateUrl(r.candidate_id),

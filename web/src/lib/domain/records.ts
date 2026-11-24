@@ -3,6 +3,7 @@
 import type { Edge, MemberFileWire } from "../types.ts";
 import { recordUrlFor as idUrl } from "../urls.ts";
 import { AMEND } from "../copy-amend.ts";
+import { candidateUrl } from "./finance-receipts.ts";
 import { laterFilingUrls, laterFilingsText, readAmendments } from "./amendments.ts";
 
 export type Cell = string | number | boolean | null;
@@ -132,11 +133,11 @@ export function documentRows(file: Wire, trades: TradeWire, sourceName: (id: str
 /** Official pages for the member, built from ids. */
 export function identifierLinks(m: Wire["member"]): { label: string; value: string; url: string | null }[] {
   const slug = `${m.first} ${m.last}`.toLowerCase().normalize("NFD").replace(/[^a-z0-9 ]/g, "").trim().replace(/\s+/g, "-") || "member";
-  const out = [
+  const out: { label: string; value: string; url: string | null }[] = [
     { label: "Bioguide id", value: m.id, url: `https://bioguide.congress.gov/search/bio/${m.id}` },
     { label: "Congress.gov member page", value: m.id, url: `https://www.congress.gov/member/${slug}/${m.id}` },
   ];
-  for (const f of m.fec_ids) out.push({ label: "FEC candidate", value: f, url: `https://www.fec.gov/data/candidate/${f}/` });
+  for (const f of m.fec_ids) out.push({ label: "FEC candidate", value: f, url: candidateUrl(f) });
   const chambers = new Set(m.terms.map((t) => t.chamber));
   if (chambers.has("rep")) out.push({ label: "House Clerk financial disclosure search", value: "disclosures-clerk.house.gov", url: "https://disclosures-clerk.house.gov/FinancialDisclosure" });
   if (chambers.has("sen")) out.push({ label: "Senate eFD search", value: "efdsearch.senate.gov", url: "https://efdsearch.senate.gov/search/" });

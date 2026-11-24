@@ -29,12 +29,16 @@ export function CampaignMoney({ cf }: { cf: CampaignFinance | null | undefined }
       <p className="section__note">{FINANCE.intro}</p>
       <p className="fin__coverage sub" data-testid="fin-coverage">{coverageLine(cf)}</p>
 
-      <h3 className="fin__h3">{RECEIPTS.title}</h3>
-      <p className="section__note">{RECEIPTS.note}</p>
-      {receipts.length === 0 ? (
-        <p className="fin__empty" data-testid="fin-receipts-none">{RECEIPTS.none}</p>
-      ) : (
-        <ErrorBoundary label="receipts table"><ReceiptsTable rows={receipts} /></ErrorBoundary>
+      {receipts && (
+        <>
+          <h3 className="fin__h3">{RECEIPTS.title}</h3>
+          <p className="section__note">{RECEIPTS.note}</p>
+          {receipts.length === 0 ? (
+            <p className="fin__empty" data-testid="fin-receipts-none">{RECEIPTS.none}</p>
+          ) : (
+            <ErrorBoundary label="receipts table"><ReceiptsTable rows={receipts} /></ErrorBoundary>
+          )}
+        </>
       )}
 
       <h3 className="fin__h3">{FINANCE.loansTitle}</h3>

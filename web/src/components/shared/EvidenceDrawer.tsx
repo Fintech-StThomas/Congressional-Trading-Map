@@ -7,6 +7,7 @@ import type { Edge, NodeRef } from "@/lib/types";
 import { CORRECTIONS, notShown, SITE } from "@/lib/copy";
 import { BOARD_UI } from "@/lib/copy-ui";
 import { CorrectionLink } from "./CorrectionLink";
+import { useBuildFlags } from "./CiteEnv";
 import { PRECISE } from "@/lib/copy-precision";
 import { weakTag, WEAK_WHY, typeLabel, TYPE_RULE, FAMILY_LABEL, filteredAmount, plainStat, stringStyle } from "@/lib/domain/edges";
 import { amountText, count, date, NOT_DISCLOSED, plural } from "@/lib/format";
@@ -61,6 +62,7 @@ function LedgerOnly({ edge }: { edge: Edge }) {
 }
 
 export function EvidenceDrawer({ edge, book, sources, range, onClose, loading, siblings, onPick }: Props) {
+  const { conduitsExcluded } = useBuildFlags();
   const ref = useRef<HTMLElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
   const open = Boolean(edge);
@@ -235,7 +237,7 @@ export function EvidenceDrawer({ edge, book, sources, range, onClose, loading, s
         {weak && (
           <p className="drawer__weak" data-testid="weak-why"><span className="tag tag--weak">{weak}</span> {WEAK_WHY[weak]}</p>
         )}
-        <p className="notshown" data-testid="not-shown"><span className="notshown__k">What this does not show:</span> {notShown(edge.type)}</p>
+        <p className="notshown" data-testid="not-shown"><span className="notshown__k">What this does not show:</span> {notShown(edge.type, conduitsExcluded)}</p>
 
         <h3>
           Records <span className="h-count mono">{shown < edge.evidence_total ? `${shown} of ${count(edge.evidence_total)}` : count(shown)}</span>

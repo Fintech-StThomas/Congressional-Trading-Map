@@ -60,3 +60,9 @@ test("full file rows: cents kept, empty cells for gaps, an old file's year adds 
   assert.match(String(rows[0][11]), /^https:\/\/www\.fec\.gov\//);
   assert.deepEqual(totalsTableRows(null), []);
 });
+
+test("totals: an old file (no PAC-year has a totals field) gives no rows, so the full file shows no totals section", () => {
+  const old = { loans: [], coverage: {}, leadership_pac: [year(undefined), year(undefined, { cycle: 2024 })] };
+  assert.equal(totalsTableRows(old).length, 0);
+  assert.equal(totalsTableRows({ ...old, leadership_pac: [year(null)] }).length, 1, "null is 'unavailable': a real state, still listed");
+});

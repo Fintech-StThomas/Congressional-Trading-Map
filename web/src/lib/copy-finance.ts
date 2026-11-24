@@ -4,7 +4,7 @@
 
 export const FINANCE = {
   title: "Campaign money",
-  intro: "Figures from the FEC's candidate summary and operating-expenditure files, as filed. Whole dollars (cents are not kept), not ranges. A blank figure is shown as not reported, never as zero.",
+  intro: "Figures from the FEC's candidate summary and operating-expenditure files, as filed. Shown rounded to whole dollars; the full file and its CSV keep the cents as filed. Not ranges. A blank figure is shown as not reported, never as zero.",
   loansTitle: "Loans to own campaign",
   loansNote: "Loans the candidate reported making to their own campaign, as summarised by the FEC. A loan figure does not show why it was made or whether it was repaid beyond the repayment columns.",
   loansNone: "No loans reported in the cycles loaded.",

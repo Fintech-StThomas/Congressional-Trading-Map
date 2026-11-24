@@ -16,7 +16,7 @@ export function money(n: number | null | undefined): string {
   return n == null ? NOT_DISCLOSED : usd.format(n);
 }
 
-/** Exact dollars from an FEC summary ("$12,500"); null (blank or not published) is "not reported", never "$0". */
+/** An FEC summary figure in whole dollars (rounded for display; the data keeps cents) ("$12,500"); null (blank or not published) is "not reported", never "$0". */
 export function reportedMoney(n: number | null | undefined): string {
   return n == null ? NOT_REPORTED : usd.format(n);
 }

@@ -2,10 +2,11 @@
 // The release is checked against the release list on the server (same allow-list as the member permalink); the ties
 // themselves are read in the browser from that release's organisation shard (the page pins the browser to it). An
 // unavailable release or an organisation the release does not hold is a 404, never the latest data. Not indexed.
+import { BuildFlagsProvider } from "@/components/shared/CiteEnv";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { permalinkOrgData } from "@/lib/data/permalink";
-import { sourceNames, metaBuilt } from "@/lib/data/meta";
+import { conduitsExcluded, sourceNames, metaBuilt } from "@/lib/data/meta";
 import { PERMALINK } from "@/lib/copy-permalink";
 import { orgHref } from "@/lib/urls";
 import { OrgView } from "@/components/org/OrgView";
@@ -53,7 +54,7 @@ export default async function ReleaseOrgPage({ params }: Props) {
         <ReleaseBanner release={release} built={metaBuilt(meta)} latestHref={orgHref(id)} body={PERMALINK.orgBannerBody} />
       </div>
       <ErrorBoundary label="organisation page">
-        <OrgView sources={sourceNames(meta)} id={id} release={release} />
+        <BuildFlagsProvider conduitsExcluded={conduitsExcluded(meta)}><OrgView sources={sourceNames(meta)} id={id} release={release} /></BuildFlagsProvider>
       </ErrorBoundary>
     </>
   );

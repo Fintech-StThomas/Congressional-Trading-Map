@@ -5,6 +5,7 @@
 import { useState } from "react";
 import type { ReceiptsRow } from "@/lib/types";
 import { candidateLinks, receiptsLine, receiptsNewestFirst } from "@/lib/domain/finance-receipts";
+import { NOT_REPORTED } from "@/lib/format";
 import { FOLD_UI } from "@/lib/copy-ui";
 import { RECEIPTS } from "@/lib/copy-finance-receipts";
 
@@ -16,7 +17,7 @@ export function ReceiptsTable({ rows }: { rows: ReceiptsRow[] }) {
   const list = receiptsNewestFirst(rows);
   const shown = all ? list : list.slice(0, FIRST);
   const links = candidateLinks(rows);
-  const cell = (v: string) => (v === "not reported" ? <span className="nd">{v}</span> : v);
+  const cell = (v: string) => (v === NOT_REPORTED ? <span className="nd">{v}</span> : v);
   const C = RECEIPTS.cols;
   return (
     <div data-testid="fin-receipts">

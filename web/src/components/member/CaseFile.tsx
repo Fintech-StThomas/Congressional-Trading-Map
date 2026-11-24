@@ -24,9 +24,11 @@ function rowAmount(r: { exact: number | null; low: number | null; high: number |
   return "not disclosed";
 }
 
-export function CaseFile({ file, board, against, names, ledger, trades, sources, built, orgName, caseMinTypes, foldedAmendments = false }: {
+export function CaseFile({ file, board, against, names, ledger, trades, sources, built, orgName, caseMinTypes, foldedAmendments = false, conduitsExcluded = false }: {
   /** The trade file carries `amendments` (a build that folds amended reprints): say so; older builds keep the older wording. */
   foldedAmendments?: boolean;
+  /** This build left conduit-forwarded money out of PAC money (meta.exclusions.conduit_pass_through): the PAC line says so. */
+  conduitsExcluded?: boolean;
   file: MemberFileWire; board: Edge[]; against: { shown: Edge[]; more: number }; names: (id: string) => string; ledger: LedgerRow[]; trades: TradeRow[];
   sources: MetaSource[]; built: string | null; orgName: (id: string) => string; caseMinTypes: number;
 }) {
@@ -110,7 +112,7 @@ export function CaseFile({ file, board, against, names, ledger, trades, sources,
                 <td className="num mono">{amountLabel(e) ?? "—"}</td>
                 <td className="num mono">{count(e.count)}</td>
                 <td className="mono">{yearSpan(e.first, e.last)}</td>
-                <td className="cf__small">{notShown(e.type)}</td>
+                <td className="cf__small">{notShown(e.type, conduitsExcluded)}</td>
               </tr>
             ))}
           </tbody>

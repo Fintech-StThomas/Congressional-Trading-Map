@@ -12,7 +12,7 @@ import { sortEdges, TYPE_LABEL } from "@/lib/domain/edges";
 import { count, date, money, plural, seat, stateName, yearRange } from "@/lib/format";
 import { boardHref, memberHref, recordsHref, releaseRecordsHref } from "@/lib/urls";
 import { toBoardMember, type NameBook } from "@/lib/domain/names";
-import { caseMinTypes, metaSources, sourceNames } from "@/lib/data/meta";
+import { caseMinTypes, conduitsExcluded, metaSources, sourceNames } from "@/lib/data/meta";
 import { CASE_NOT_SHOWN, CORRECTIONS, caseRuleText, RELEASE, SITE, TIMING } from "@/lib/copy";
 import { CASES_UI } from "@/lib/copy-ui";
 import type { Edge, OrgSummary } from "@/lib/types";
@@ -37,7 +37,7 @@ import { CorrectionLink, CorrectionProvider } from "@/components/shared/Correcti
 import { ReleasePin } from "@/components/shared/ReleasePin";
 import { ReleaseBanner } from "@/components/shared/ReleaseBanner";
 import { AssumeCase, AssumptionProvider } from "@/components/shared/Assume";
-import { CiteEnvProvider } from "@/components/shared/CiteEnv";
+import { BuildFlagsProvider, CiteEnvProvider } from "@/components/shared/CiteEnv";
 import { CoverageNote } from "@/components/shared/CoverageNote";
 import { MemberCitePrint, type MemberCiteProps } from "@/components/member/MemberCite";
 import { MemberHeader } from "@/components/member/MemberHeader";
@@ -153,7 +153,7 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
 
   const page = (
     <AssumptionProvider member={m.id} hasTrades={nTrades > 0} edges={tradedEdges} caseOrgs={caseOrgs}>
-    <CiteEnvProvider release={data.release} built={built} sources={citeSources}>
+    <CiteEnvProvider release={data.release} built={built} sources={citeSources}><BuildFlagsProvider conduitsExcluded={conduitsExcluded(meta)}>
     <article className="page dossier" data-testid="member-page">
       <ReleasePin release={data.release} />
       {release && <ReleaseBanner release={release} built={built} latestHref={memberHref(m.id)} />}
@@ -257,7 +257,7 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
       </section>
 
       <style>{`@media print { @page { @top-left { content: "${SITE.name} · ${caseNo}"; } } }`}</style>
-      <CaseFile file={file} board={pickBoard(m.id, file.edges)} against={pickAgainst(file.edges)} names={nameOf} ledger={ledger} trades={initialTrades} sources={metaSources(meta)} built={built} orgName={orgName} caseMinTypes={minTypes} foldedAmendments={tradeFile?.amendments !== undefined} />
+      <CaseFile file={file} board={pickBoard(m.id, file.edges)} against={pickAgainst(file.edges)} names={nameOf} ledger={ledger} trades={initialTrades} sources={metaSources(meta)} built={built} orgName={orgName} caseMinTypes={minTypes} foldedAmendments={tradeFile?.amendments !== undefined} conduitsExcluded={conduitsExcluded(meta)} />
       <MemberCitePrint {...cite} />
 
       <footer className="provenance">
@@ -284,7 +284,7 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
         </p>
       </footer>
     </article>
-    </CiteEnvProvider>
+    </BuildFlagsProvider></CiteEnvProvider>
     </AssumptionProvider>
   );
   // The layout's correction links name the latest build; on a permalink they name this release's.

@@ -1,5 +1,6 @@
 // Reads meta.json (build time, sources, publication budget), whose shape the contract leaves loose.
 import type { Meta, MetaSource } from "../types.ts";
+import { hasExclusion } from "../domain/method-build.ts";
 
 /** meta.json's sources as a list, whether the pipeline wrote an array or a map. */
 export function metaSources(meta: Meta): MetaSource[] {
@@ -42,4 +43,9 @@ export function metaCoverageNotes(meta: Meta): string[] {
   const m = meta as Record<string, unknown>;
   const v = m.coverage_notes ?? m.coverage;
   return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x !== "") : [];
+}
+
+/** Whether this build left conduit-forwarded earmarked money out of PAC money (meta.exclusions.conduit_pass_through); false for older builds. */
+export function conduitsExcluded(meta: Meta): boolean {
+  return hasExclusion(meta.exclusions, "conduit_pass_through");
 }

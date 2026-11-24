@@ -23,7 +23,7 @@ export const RECEIPTS = {
   cashNote: "Cash on hand is the balance at the close of the coverage period shown. Each figure is the FEC's summary of what the candidate's authorised committees reported; a blank figure is not reported (or the filed parts were inconsistent with the total and are not published), never zero; the parts do not add up to the total (loans and other lines are in the total only), and two rows in one cycle (a member who ran for two offices) should not be added, since one committee's total can include transfers from the other.",
   records: {
     title: "Campaign receipts per cycle",
-    intro: "One row per cycle and candidate id, from the FEC's candidate summary: the campaign committee's own totals, not individual contributors and not ties. Exact dollars as filed. Blank figures are empty cells, never zero.",
+    intro: "One row per cycle and candidate id, from the FEC's candidate summary: the campaign committee's own totals, not individual contributors and not ties. Shown rounded to whole dollars; the CSV keeps the cents as filed. Blank figures are empty cells, never zero.",
   },
   caseFile: (cycle: number) => `Campaign receipts, ${cycle} cycle, as summarised by the FEC`,
 } as const;

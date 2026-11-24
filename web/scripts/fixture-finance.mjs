@@ -5,6 +5,7 @@
 //            unpublished negative total; the second PAC has [] in 2022, 95% uncategorised, and null in 2024), a second PAC, combined sponsor links,
 //            FEC committee totals (one figure not reported; the second PAC has null totals in 2022 and no `totals` field at all in 2024, like a file built before totals)
 //   X000003  loans and receipts, no leadership PAC (note set)
+//   X000004  an old-shape file: no receipts field, no totals field (nothing about either may be said)
 //   X000012  campaign_finance null
 // Every other member has no field at all, which the site reads the same as null.
 
@@ -100,6 +101,14 @@ const BLOCKS = {
     ],
     leadership_pac: [],
     coverage: { ...COVERAGE, leadership_pac_note: NOTE },
+  }),
+  // X000004: a file built before receipts and totals existed: no `receipts` field, a PAC-year with no `totals` field
+  X000004: () => ({
+    loans: [loan(2022, "H0SAMPLE004", "house", { candidate_loans: 5000, other_loans: 0, candidate_loan_repayments: 0, other_loan_repayments: 0, debts_owed_by: 5000 })],
+    leadership_pac: [
+      pac("C00900004", "SAMPLE OLD-SHAPE FUND", 2022, [cat("006", "Fundraising Expenses", 4000, 3), cat(null, "No FEC category on the filing", 6000, 5)], null, "leadership_file_exact_name"),
+    ],
+    coverage: { ...COVERAGE, leadership_pac_note: null },
   }),
   X000012: () => null,
 };

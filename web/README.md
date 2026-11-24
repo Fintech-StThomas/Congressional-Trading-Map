@@ -20,15 +20,16 @@ web/
     ├── components/
     │   ├── board/        the home board: BoardApp (state), BoardCanvas (yarn), Toolbar, Slip, SidePanel, ...
     │   ├── wall/         /wall
-    │   ├── org/          /o/<id> and /orgs
-    │   ├── member/       /m/<id> sections: ties, ledger, trades, holdings, timeline, printable case file; MemberPageView (the page body, shared by latest and permalink)
+    │   ├── org/          /o/<id> and /orgs; OrgActions (cite and CSV of the ties table)
+    │   ├── member/       /m/<id> sections: ties, ledger, trades, holdings, timeline, printable case file; MemberPageView (the page body, shared by latest and permalink); PacTotals, MoneyTotals, ReceiptsTable, LaterCell (FEC committee totals, all-in money totals, campaign receipts, later filings of a trade)
     │   ├── records/      /m/<id>/records (the full file); RecordsPageView (the page body)
     │   ├── cases/        /cases list, filters and pager
     │   ├── saved/        /saved and the Save control: boards kept only in the browser (store.ts), item cards, compare, export, shared boards
-    │   ├── changes/      /changes: comparing one member's records between two archived data releases (ChangesView: state and loading, ChangesResult, ChangeTable)
+    │   ├── changes/      /changes: comparing one member's records between two archived data releases (ChangesView: state and loading, ChangesResult, ChangeTable); ReleaseIdInput (paste an older release id)
     │   ├── new/          /new: NewPageBody (server: build date, bounded reads, rows) and NewView (filters, table)
     │   ├── watch/        /watch: WatchView, store.ts (the watchlist kept in this browser, key `pt.watch.v1`); FollowButton lives in shared/, BoardFollow in saved/
-    │   ├── delays/       /delays: disclosure timing (DelaysView, BandSummary, GroupsTable, MembersTable)
+    │   ├── delays/       /delays: disclosure timing (DelaysView, BandSummary, GroupsTable, MembersTable); DelaysCite ("Cite this" for the page)
+    │   ├── method/       /method: Exclusions (rows left out apart from rows kept and counted)
     │   ├── connect/      /connect: documented connections (ConnectView, NodePicker, PathCard, ConnectNotes; load.ts reads the files and runs the search, useConnect.ts, ConnectLink for the entry links)
     │   └── shared/       used by several pages: EvidenceDrawer, TieTable, Print, SearchBox, controls, Assume, ReleasePin (pins browser fetches to the page's release), ReleaseBanner, FooterAsOf; Notice (the one notice pattern: tones info / warning / snapshot, used by the sample band, stale banner, newer-data note, release banner, snapshot note and coverage notes), ActionMenu (the "More ▾" disclosure menu), SiteHeader + NavLinks (one-row phone header, nav menu); CiteButton / CiteEnv / TieCite / CitePrint ("Cite this"), CoverageNote (coverage beside a measure), download
     ├── lib/
@@ -37,12 +38,13 @@ web/
     │   ├── copy.ts       fixed wording: site name, tagline, disclaimer, notices, "what this does not show", Case wording
     │   ├── copy-ui.ts    wording for the interface chrome: header menus, member action row, section index, "Show all", assumptions chip (import from here)
     │   ├── copy-discovery.ts  wording for /new (`NEW`), organisation feeds (`ORG_FEED`) and watchlists (`WATCH`); import from here, not copy.ts
+    │   ├── copy-amend.ts, copy-precision.ts, copy-member-totals.ts, copy-finance-receipts.ts, copy-finance-totals.ts, copy-permalink.ts  wording for amended trades and /method exclusions, exact owners and totals, member money totals, campaign receipts, PAC committee totals, and org/delays permalinks; import from the file, not copy.ts
     │   ├── urls.ts       every link: routes, data files, official record pages, safeHttpUrl for links from data
     │   ├── years.ts      YEAR_MIN / YEAR_MAX (the data's current year) and holdings years
     │   ├── hash.ts       FNV hash (tilts, seeds) and the org shard name
     │   ├── data/         loading: server.ts (latestData / releaseData), reader.ts (a `Data` reader bound to one release), mode.ts (which mode), remote.ts (DATA_BASE_URL rule), release.ts (pure pinned-mode rules), pin.ts (the browser's release), recent.ts (bounded per-release memory), endpoints.ts + permalink.ts (JSON routes and /r guards), fetch.ts (browser), decode.ts (columnar → objects), meta.ts, source.ts
     │   ├── method.ts     METHOD_VERSION, recorded in every citation (bump when a calculation, tie rule or displayed-range rule changes)
-    │   ├── domain/       rules: saved (+ saved-share, saved-storage: private boards, fragment links, storage adapter), edges (tie vocabulary, amounts), paths + pathhops (connection finder), pick (board strings), featured, assume, wallyears, party, newweek (/new window, rows, filters), orgfeed (organisation feed items, dating, file bound), watchlist (+ watch-storage: ids followed, feed address, limits, merge), holdings, records, names, delays, citation (citation packets and their text), coverage (which coverage facts apply)
+    │   ├── domain/       rules: saved (+ saved-share, saved-storage: private boards, fragment links, storage adapter), edges (tie vocabulary, amounts), paths + pathhops (connection finder), pick (board strings), featured, assume, wallyears, party, newweek (/new window, rows, filters), orgfeed (organisation feed items, dating, file bound), watchlist (+ watch-storage: ids followed, feed address, limits, merge), holdings, records, names, delays, citation (citation packets and their text), coverage (which coverage facts apply), money-totals + money-years (member money totals and the activity-by-year series), amendments (later filings of a trade), finance-totals + finance-receipts (FEC committee totals, candidate receipts), citation-official + citation-page (official record in a citation; organisation and delays citations), method-build (what meta.json says about the build; `hasExclusion`), holdings-missing (missing never zero on holdings), tradesplit (buys and sells apart), hopwords (how a /connect step names its actor), orgcsv (organisation ties CSV), releaseOptions (the /changes picker list)
     │   └── board/        board geometry: layout (card placement, yarn curves), fray (worn yarn), geo (map projection)
     └── styles/           tokens.css (colours, type, spacing) → globals → board → pages; reach, records, casefile, delays, cite (cite panel, coverage note, printed citation) per page
 ```
