@@ -15,6 +15,7 @@ import { CoverageNote } from "@/components/shared/CoverageNote";
 import "@/styles/cite.css";
 import { PositionsRecords } from "./PositionsRecords";
 import { DataTable, download, type TableCite } from "./DataTable";
+import { FinanceRecords } from "./FinanceRecords";
 import { UndatedBucket } from "./UndatedBucket";
 import { COV_COLS, useRecordsView } from "./useRecordsView";
 import { ViewBar, ViewPrintLine } from "@/components/shared/ViewBar";
@@ -131,7 +132,7 @@ export function RecordsView({ id, hasTrades, hasHoldings, everHouse, names, sour
         table: { title: t.title, filters: t.filters, shown: t.shown, total: t.total, ids: t.ids },
       }),
     });
-    return { view, ties: table({ edge_ids: "edge_id" }), trades: table({ trade_ids: "id", filing_docs: "doc" }), docs: table({ filing_docs: "id" }) };
+    return { view, ties: table({ edge_ids: "edge_id" }), trades: table({ trade_ids: "id", filing_docs: "doc" }), docs: table({ filing_docs: "id" }), finance: table({}) };
   }, [facts, env, id, file, ties.length, tradeTable.length, docs.length, hasTrades, trades]);
 
   if (state.member === "error") return <p className="rec__state" role="alert">The member file failed to load. Reload the page to try again.</p>;
@@ -184,6 +185,7 @@ export function RecordsView({ id, hasTrades, hasHoldings, everHouse, names, sour
       <nav className="rec__toc" aria-label="On this page">
         <a href="#rec-ties">Ties ({ties.length.toLocaleString("en-US")})</a>
         {hasTrades && <a href="#rec-trades">Trades ({tradesReady ? tradeTable.length.toLocaleString("en-US") : "…"})</a>}
+        <a href="#rec-money">Campaign money</a>
         <a href="#rec-docs">Source documents</a>
         <a href="#rec-ids">Identifiers</a>
         <a href="#rec-cov">Coverage and caveats</a>
@@ -218,6 +220,8 @@ export function RecordsView({ id, hasTrades, hasHoldings, everHouse, names, sour
           )}
         </section>
       )}
+
+      <FinanceRecords id={m.id} cf={file.campaign_finance} cite={cite.finance} />
 
       <section id="rec-docs" className="rec__sec" aria-labelledby="rec-docs-h">
         <h2 id="rec-docs-h">Source documents</h2>

@@ -1,6 +1,7 @@
 // Data contract types, copied verbatim from docs/data-dictionary.md (the binding contract).
 // Do not edit this block by hand: change the data dictionary first, then re-copy.
 // BEGIN CONTRACT
+import type { CampaignFinance } from "./types-finance.ts";
 type NodeRef = { kind: "member" | "org"; id: string };
 
 type MemberSummary = {
@@ -161,6 +162,7 @@ type MemberFile = {
   };
   cases: Case[];
   coverage: { year: number; trades: "full" | "partial" | "none" | "n/a"; money: "full" | "partial" | "none" }[];
+  campaign_finance: CampaignFinance | null; // FEC loans and leadership PAC spending; null = no FEC summary for this member (not zeros)
 };
 
 type TradeFile = {           // trades/<memberId>.json
@@ -203,6 +205,7 @@ type Board = {
   states: { [state: string]: string[] };        // current member ids, senators first
 };
 // END CONTRACT
+export type { CampaignFinance, LoanRow, LeadershipPacYear, LeadershipPacCategory } from "./types-finance.ts";
 
 export type {
   NodeRef, MemberSummary, Term, Committee, OrgSummary, EdgeType, Amount, Edge, Evidence, Trade,

@@ -500,9 +500,7 @@ test("a page left open says newer data exists: after 30 visible minutes, never w
   const open = async (path) => {
     const p = await browser.newPage();
     const asked = [];
-    p.on("request", (r) => {
-      if (new URL(r.url()).pathname === "/releases/current.json") asked.push(Date.now());
-    });
+    p.on("request", (r) => new URL(r.url()).pathname === "/releases/current.json" && asked.push(Date.now()));
     // The tab's visibility is scriptable so the hidden case can be exercised.
     await p.addInitScript(() => {
       window.__visible = true;
@@ -511,10 +509,12 @@ test("a page left open says newer data exists: after 30 visible minutes, never w
     await p.clock.install();
     await p.goto(`${site}${path}`);
     await p.getByTestId("footer-age").waitFor();
-    return { p, asked };
+    // Pointer reads during load (stale-banner check, snapshot comparison) are counted apart from later polling.
+    await p.waitForLoadState("networkidle");
+    return { p, asked, atLoad: asked.length };
   };
 
-  const { p, asked } = await open(`/m/${MEMBER}`);
+  const { p, asked, atLoad } = await open(`/m/${MEMBER}`);
   assert.ok((await p.locator("h1").first().innerText()).includes(NAME_A), "loaded as release A");
   assert.equal(await p.getByTestId("newer-data-note").count(), 0);
   setCurrent(B); // newer data is published while the tab stays open
@@ -523,7 +523,7 @@ test("a page left open says newer data exists: after 30 visible minutes, never w
   await p.evaluate(() => { window.__visible = false; document.dispatchEvent(new Event("visibilitychange")); });
   await p.clock.runFor(40 * 60 * 1000);
   await p.waitForTimeout(300);
-  assert.equal(asked.length, 0, "no polling while the tab is hidden");
+  assert.equal(asked.length, atLoad, "no polling while the tab is hidden");
   assert.equal(await p.getByTestId("newer-data-note").count(), 0);
 
   // Visible again and more than 30 minutes since the last check: one check, then the polite note.
@@ -532,7 +532,7 @@ test("a page left open says newer data exists: after 30 visible minutes, never w
   await note.waitFor();
   assert.equal((await note.innerText()).trim(), "Newer data has been published. Reload to see it.");
   assert.equal(await p.locator(".newer-slot").getAttribute("aria-live"), "polite");
-  assert.equal(asked.length, 1);
+  assert.equal(asked.length, atLoad + 1);
   assert.ok((await p.locator("h1").first().innerText()).includes(NAME_A), "the page itself is not reloaded");
   await p.getByRole("button", { name: "Dismiss" }).click();
   assert.equal(await p.getByTestId("newer-data-note").count(), 0);
@@ -542,7 +542,7 @@ test("a page left open says newer data exists: after 30 visible minutes, never w
   const perm = await open(`/r/${A}/m/${MEMBER}`);
   await perm.p.clock.runFor(35 * 60 * 1000);
   await perm.p.waitForTimeout(300);
-  assert.equal(perm.asked.length, 1);
+  assert.ok(perm.atLoad >= 1 && perm.asked.length === perm.atLoad, "read at load for the snapshot comparison, never polled");
   assert.equal(await perm.p.getByTestId("newer-data-note").count(), 0);
   await perm.p.close();
 });

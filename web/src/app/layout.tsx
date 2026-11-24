@@ -86,7 +86,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               <strong>Sample data.</strong> Every member, company, amount and record link on this build is invented for testing. Nothing here describes a real person.
             </Notice>
           )}
-          <StaleBanner built={built} sample={IS_SAMPLE} />
+          <StaleBanner built={built} sample={IS_SAMPLE} release={release} />
           <NewerDataNote built={built} release={release} />
         </div>
         <main id="main" tabIndex={-1}>

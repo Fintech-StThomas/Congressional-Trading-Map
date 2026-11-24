@@ -63,6 +63,7 @@ Rules of thumb: pure logic lives in `src/lib` and imports other lib files with a
 | Change assumptions (whose trades count) | `?as=own,…` | `lib/domain/assume.ts` (rules), `components/shared/Assume.tsx` (UI, URL) |
 | Read a member's case file | `/m/<id>` | `app/m/[id]/page.tsx`, `components/member/*` |
 | Download every record | `/m/<id>/records` | `components/records/RecordsView.tsx`, `DataTable.tsx`, `lib/domain/records.ts` (tables, CSV), `lib/domain/holdings.ts` |
+| Read a member's campaign money (loans to own campaign, leadership PAC spending by FEC category) | `/m/<id>#money`; tables and CSV in the full file at `/m/<id>/records#rec-money`; compact block in the printed case file | `components/member/CampaignMoney.tsx` (section; `LoansTable.tsx` folds to the latest 3 cycles, `LeadershipPacPanel.tsx` has the cycle selector and bars), `CaseFileMoney.tsx` (print), `components/records/FinanceRecords.tsx` (DataTables + CSV + cite), `lib/domain/finance.ts` (ordering, shares, tables, coverage line), `lib/copy-finance.ts` (`FINANCE` wording), `lib/format.ts` (`reportedMoney`: null is "not reported"), `styles/finance.css`, fixtures in `scripts/fixture-finance.mjs` |
 | See everyone at once, or one year | `/wall`, `/wall?y=2012` | `components/wall/WallView.tsx`, `lib/domain/wallyears.ts`, `lib/domain/party.ts` |
 | Look at an organisation | `/o/<id>` (rewritten to `/org`), `/orgs` | `components/org/OrgView.tsx`, `OrgReach.tsx`, `OrgsBrowse.tsx` |
 | Cases and method | `/cases`, `/cases/page/3`, `/cases/ties/trade-pac/chamber/senate/party/r`, `/method` | `components/cases/CasesView.tsx`, `lib/domain/casepages.ts` (paths, filters, 50 per page), `app/cases/page.tsx` (page 1), `app/cases/[...slug]/page.tsx` (every other page and filter, all prerendered), `app/method/page.tsx` |
@@ -181,6 +182,7 @@ Two captures of the same build differ by up to a few hundred pixels on the board
 
 | To change | Edit |
 |---|---|
+| Campaign money wording, the "no FEC category" label and explainer, how many loan cycles show before "Show all", fixture finance blocks | `src/lib/copy-finance.ts` (`FINANCE`), `src/lib/copy.ts` (`EXPLAIN.nocategory`), `LoansTable.tsx` (`FIRST`), `src/lib/domain/finance.ts` (tests: `tests/finance.test.mjs`), `scripts/fixture-finance.mjs` |
 | Site name, tagline, disclaimer | `src/lib/copy.ts` (`SITE`) |
 | Corrections link, issue prefill, corrections policy | `src/lib/copy.ts` (`CORRECTIONS`, `CORRECTIONS_POLICY`), `src/lib/urls.ts` (`correctionIssueUrl`) |
 | Cases per page, the cases filters and their URLs | `src/lib/domain/casepages.ts` (tests: `tests/casepages.test.mjs`) |

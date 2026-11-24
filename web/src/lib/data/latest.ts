@@ -40,3 +40,26 @@ export async function newerDataPublished(baseline: { release: string | null; bui
   const built = metaBuilt((await res.json()) as Parameters<typeof metaBuilt>[0]);
   return built !== null && built !== baseline.built;
 }
+
+/**
+ * The build time of the data published now, for the stale banner: a page served from an old cache entry can carry an
+ * old build time while newer data is already live. Pinned: the pointer's release meta.json; otherwise `metaUrl`.
+ * Null when it cannot be read (the caller then keeps the page's own build time).
+ */
+export async function publishedBuilt(pinned: boolean, metaUrl: string, fetchFn: Fetch): Promise<string | null> {
+  try {
+    const url = pinned ? `/releases/${await loadLatestRelease(fetchFn)}/meta.json` : metaUrl;
+    const res = await fetchFn(url);
+    if (!res.ok) return null;
+    return metaBuilt((await res.json()) as Parameters<typeof metaBuilt>[0]);
+  } catch {
+    return null;
+  }
+}
+
+/** The later of two ISO build times (either may be null). */
+export function laterBuilt(a: string | null, b: string | null): string | null {
+  if (!a) return b;
+  if (!b) return a;
+  return Date.parse(b) > Date.parse(a) ? b : a;
+}

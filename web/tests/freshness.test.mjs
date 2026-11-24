@@ -120,3 +120,16 @@ test("header counts: shown only when the latest file has them and they differ", 
   assert.deepEqual(differingCounts(snap, { ...snap }), {});
   assert.deepEqual(differingCounts(snap, null), {}, "an unknown latest count is never shown as a difference");
 });
+
+test("the stale banner judges by the build time published now when a cached page is older", async () => {
+  const { publishedBuilt, laterBuilt } = await import("../src/lib/data/latest.ts");
+  const R = "c".repeat(64);
+  const ok = (body) => ({ ok: true, status: 200, json: async () => body });
+  const fetchPinned = async (u) => (u.endsWith("current.json") ? ok({ schema_version: 1, release_id: R, manifest_sha256: "d".repeat(64) }) : u === `/releases/${R}/meta.json` ? ok({ build: { time: "2026-11-23T19:34:00Z" } }) : { ok: false, status: 404, json: async () => ({}) });
+  assert.equal(await publishedBuilt(true, "/data/meta.json", fetchPinned), "2026-11-23T19:34:00Z");
+  assert.equal(await publishedBuilt(false, "/data/meta.json", async () => ok({ build: { time: "2026-11-22T00:00:00Z" } })), "2026-11-22T00:00:00Z");
+  assert.equal(await publishedBuilt(true, "/data/meta.json", async () => { throw new Error("offline"); }), null);
+  assert.equal(laterBuilt("2026-11-18T00:00:00Z", "2026-11-23T19:34:00Z"), "2026-11-23T19:34:00Z");
+  assert.equal(laterBuilt("2026-11-23T00:00:00Z", null), "2026-11-23T00:00:00Z");
+  assert.equal(laterBuilt(null, null), null);
+});

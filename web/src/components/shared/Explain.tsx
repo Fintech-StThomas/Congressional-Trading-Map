@@ -1,15 +1,16 @@
 "use client";
 // A plain-language explainer: a term styled as a button that opens a short definition beside it. Click, tap or Enter
 // opens it; Escape or a click outside closes it and Escape returns focus to the term. Never hover-only. In print only
-// the term is printed. Definitions are in lib/copy.ts (EXPLAIN). The popover stays inside the viewport at 390 px.
+// the term is printed. Definitions are in lib/copy.ts (EXPLAIN) and lib/copy-finance.ts (FINANCE_EXPLAIN). The popover stays inside the viewport at 390 px.
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { EXPLAIN } from "@/lib/copy";
+import { FINANCE_EXPLAIN } from "@/lib/copy-finance";
 
-export type ExplainTerm = "household" | "range" | "tie" | "statistical";
+export type ExplainTerm = "household" | "range" | "tie" | "statistical" | "nocategory";
 
 /** `children` is the words shown as the button (default: the term itself); the definition always comes from EXPLAIN. */
 export function Explain({ term, children }: { term: ExplainTerm; children?: React.ReactNode }) {
-  const def = EXPLAIN[term];
+  const def = term === "nocategory" ? FINANCE_EXPLAIN.nocategory : EXPLAIN[term];
   const id = useId();
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLSpanElement>(null);

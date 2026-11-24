@@ -1,6 +1,12 @@
 // A small in-page index near the top of a long page: plain anchor links to its sections (Cases · Ties · Activity ·
-// Holdings · Trades). Sticky, script-free section shortcuts. Screen only. Wording is in lib/copy-ui.ts.
+// Campaign money · Holdings · Trades). Sticky, script-free section shortcuts. Screen only. Wording is in lib/copy-ui.ts.
 import { SECTION_INDEX } from "@/lib/copy-ui";
+
+/** The member page's sections, in page order (Cases only when the member has any). */
+export function memberSections(hasCases: boolean): { id: string; label: string }[] {
+  const ids = [...(hasCases ? (["cases"] as const) : []), "ties", "activity", "money", "holdings", "trades"] as const;
+  return ids.map((id) => ({ id, label: SECTION_INDEX[id] }));
+}
 
 export function SectionIndex({ links }: { links: { id: string; label: string }[] }) {
   return (

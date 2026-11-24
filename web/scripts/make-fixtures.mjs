@@ -11,6 +11,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildFixtureDelays } from "./fixture-delays.mjs";
+import { withFinance } from "./fixture-finance.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const OUT = join(here, "..", "fixtures", "data");
@@ -560,7 +561,7 @@ for (const m of MEMBERS) {
   const tr = TRADES[m.id];
   const tally = (f) => tr.reduce((o, t) => ((o[f(t)] = (o[f(t)] ?? 0) + 1), o), {});
   if (tr.length) write(`trades/${m.id}.json`, { cols: TCOLS, rows: tr.map((t) => TCOLS.map((c) => t[c] ?? null)), filings });
-  write(`members/${m.id}.json`, {
+  write(`members/${m.id}.json`, withFinance(m.id, {
     member: { ...s, terms: terms(m), committees: COMMITTEES[m.id] ?? [], fec_ids: [`H0SAMPLE${m.id.slice(-3)}`] },
     board: boardIds,
     nodes,
@@ -571,14 +572,13 @@ for (const m of MEMBERS) {
       last: tr.length ? tr[0].date : null,
       late: tr.filter((t) => t.late).length,
       by_year: tally((t) => (t.date ? t.date.slice(0, 4) : "none")),
-      by_owner: tally((t) => t.owner),
-      by_action: tally((t) => t.action),
+      by_owner: tally((t) => t.owner), by_action: tally((t) => t.action),
     },
     ledger: { cols: ["type", "kind", "other", "via", "exact", "low", "high", "count", "first", "last", "note", "dir"], rows: mine },
     ledger_totals: ledgerTotalsOf(mine, 0, 4, 7),
     cases: cases.filter((c) => c.member === m.id),
     coverage: coverage(m),
-  });
+  }));
 }
 write("orgs.json", orgSummaries);
 const shards = {};
