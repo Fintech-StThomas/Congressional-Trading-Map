@@ -100,18 +100,6 @@ jobs:
           R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
         run: python -m pipeline.publish_r2 --verify
 
-      # Requests the home page, /wall, /cases, /delays, /orgs, the trades feed and the 10 members with the most trades
-      # on the repository variable SITE_URL (https://host, no secret), one at a time with a short timeout, so the first
-      # real visitors find a warm cache. Skipped with a notice when SITE_URL is unset. It logs status codes and can
-      # never fail the job (the script always exits 0; continue-on-error is a second guard).
-      - name: Warm the site cache
-        if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && !github.event.repository.fork
-        continue-on-error: true
-        timeout-minutes: 10
-        env:
-          SITE_URL: ${{ vars.SITE_URL }}
-        run: python scripts/ops/warm_cache.py --site-url "$SITE_URL" --members web/public/data/members.json
-
       # Opt-in immutable archive (docs/RELEASE-OPERATIONS.md). Off unless the repository variable PT_PUBLISH_RELEASES
       # is exactly 1, and only on the default branch of the main repository. It runs after the legacy publish above,
       # which stays the production path and is unchanged. It stores each changed file once as releases/blobs/<sha256>,
@@ -131,6 +119,20 @@ jobs:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
         run: python -m pipeline.publish_release --dir web/public/data --activate --measure
+
+      # Runs after the archive step: in release mode the site reads releases/current.json, so warming before the pointer
+      # moved rebuilt pages from the previous release and kept them there for another hour (seen 2026-11-24).
+      # Requests the home page, /wall, /cases, /delays, /orgs, the trades feed and the 10 members with the most trades
+      # on the repository variable SITE_URL (https://host, no secret), one at a time with a short timeout, so the first
+      # real visitors find a warm cache. Skipped with a notice when SITE_URL is unset. It logs status codes and can
+      # never fail the job (the script always exits 0; continue-on-error is a second guard).
+      - name: Warm the site cache
+        if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && !github.event.repository.fork
+        continue-on-error: true
+        timeout-minutes: 10
+        env:
+          SITE_URL: ${{ vars.SITE_URL }}
+        run: python scripts/ops/warm_cache.py --site-url "$SITE_URL" --members web/public/data/members.json
 
       - name: Report failure
         if: failure()

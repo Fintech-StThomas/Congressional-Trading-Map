@@ -14,6 +14,12 @@ export const REVALIDATE_SECONDS = ((): number => {
 })();
 
 /**
+ * How long the release pointer (releases/current.json) stays fresh in the fetch cache: short, because it is a few bytes
+ * and a page rebuilt from a stale pointer keeps the previous release until its own next refresh (up to two hours).
+ */
+export const POINTER_REVALIDATE_SECONDS = Math.min(300, REVALIDATE_SECONDS);
+
+/**
  * The normalised base URL (no trailing slash), or null when remote mode is off. Throws on a malformed value.
  * `name` is the environment variable the value came from, for the error message (release.ts reuses the rule).
  */

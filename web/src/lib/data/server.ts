@@ -10,7 +10,7 @@ import type { Meta } from "../types.ts";
 import { metaBuilt as builtFrom } from "./meta.ts";
 import { createReader, type Data } from "./reader.ts";
 import { IS_BUILD, IS_PINNED, IS_REMOTE, RELEASE_BASE } from "./mode.ts";
-import { REVALIDATE_SECONDS } from "./remote.ts";
+import { POINTER_REVALIDATE_SECONDS } from "./remote.ts";
 import { isReleaseId, parsePointer, releasePointerUrl } from "./release.ts";
 
 export { IS_BUILD, IS_PINNED, IS_REMOTE, IS_SAMPLE, DATA_DIR, REMOTE_BASE, RELEASE_BASE } from "./mode.ts";
@@ -25,7 +25,7 @@ async function resolveLatest(): Promise<Data> {
   const url = releasePointerUrl(RELEASE_BASE as string);
   let res: Response;
   try {
-    res = await fetch(url, { next: { revalidate: REVALIDATE_SECONDS } });
+    res = await fetch(url, { next: { revalidate: POINTER_REVALIDATE_SECONDS } });
   } catch (err) {
     throw new Error(`[data] could not fetch the release pointer ${url}: ${(err as Error).message}`);
   }
