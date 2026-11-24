@@ -1,6 +1,8 @@
 // "Disclosed holdings" on the member page: House annual reports only. Server component.
 import Link from "next/link";
 import { FinancialProfile } from "./FinancialProfile";
+import { nwBar } from "@/lib/domain/holdings-missing";
+import { HOLDINGS_MISSING } from "@/lib/copy-member-totals";
 import { coverageWords, netWorthText, rowsOf, type HoldingsFile } from "@/lib/domain/holdings";
 import { signedShortMoney } from "@/lib/format";
 import { HOLDINGS_YEARS } from "@/lib/years";
@@ -23,7 +25,10 @@ function BandChart({ h }: { h: HoldingsFile }) {
   const years = Array.from({ length: y1 - y0 + 1 }, (_, i) => y0 + i);
   const vals = years.flatMap((y) => {
     const nw = h.years[String(y)]?.net_worth;
-    return nw ? [nw.low ?? 0, nw.high ?? nw.high_valued ?? nw.low ?? 0] : [];
+    if (!nw) return [];
+    const b = nwBar(nw);
+    // An unbounded-below year has no lower value to scale to; only its known top counts.
+    return b.kind === "range" ? [b.bottom, b.top] : b.top === null ? [] : [b.top];
   });
   const lo = Math.min(0, ...vals), hi = Math.max(1, ...vals);
   const W = 560, H = 150, pad = { l: 52, r: 8, t: 8, b: 22 };
@@ -49,8 +54,20 @@ function BandChart({ h }: { h: HoldingsFile }) {
             </g>
           );
         }
-        const top = nw.high ?? nw.high_valued ?? nw.low ?? 0;
-        const bot = nw.low ?? 0;
+        const b = nwBar(nw);
+        if (b.kind === "unbounded_below") {
+          // No lower bound: a dashed line running off the bottom of the chart, never a bar from $0.
+          const yTop = b.top === null ? yy(0) : yy(b.top), yBot = H - pad.b;
+          return (
+            <g key={y} data-testid="nw-unbounded">
+              <title>{HOLDINGS_MISSING.unboundedTip(y, b.top === null ? null : signedShortMoney(b.top))}</title>
+              <line x1={x(i)} x2={x(i)} y1={yTop} y2={yBot - 5} strokeDasharray="3 3" strokeWidth={2} stroke="var(--text-2)" />
+              <path d={`M${x(i) - 4} ${yBot - 6} L${x(i) + 4} ${yBot - 6} L${x(i)} ${yBot} Z`} fill="var(--text-2)" />
+              <text x={x(i)} y={H - 6} className="hold__axis" textAnchor="middle">{label}</text>
+            </g>
+          );
+        }
+        const top = b.top, bot = b.bottom;
         const open = nw.high === null;
         return (
           <g key={y}>
@@ -90,6 +107,13 @@ export function HoldingsSection({ h, facts, memberId }: { h: HoldingsFile | null
         <span className="hold__v mono">{netWorthText(Y.net_worth)}</span>
       </p>
       <BandChart h={h} />
+      {(() => {
+        const ys = years.filter((y) => nwBar(h.years[y].net_worth).kind === "unbounded_below");
+        return ys.length > 0 && (
+          <p className="hold__small" data-testid="nw-unbounded-note">A dashed line running off the bottom marks a year with no lower bound ({HOLDINGS_MISSING.unbounded}) because a liability is open-ended: {ys.join(", ")}.</p>
+        );
+      })()}
+      <p className="hold__small" data-testid="nw-mortgage-note">{HOLDINGS_MISSING.netWorthNote}</p>
       <CoverageNote facts={facts} scopes={["holdings"]} testId="holdings-coverage" />
       <p className="hold__small">
         <strong>What the law leaves out:</strong> {h.net_worth_definition.excludes.join("; ")}.

@@ -19,6 +19,9 @@ import type { Edge, OrgSummary } from "@/lib/types";
 import { TieSection } from "@/components/member/TieSection";
 import { TradesTable } from "@/components/member/TradesTable";
 import { LedgerTable } from "@/components/member/LedgerTable";
+import { moneyTotals } from "@/lib/domain/money-totals";
+import { moneyYearSeries } from "@/lib/domain/money-years";
+import { YEAR_CHART } from "@/lib/copy-member-totals";
 import { Timeline } from "@/components/member/Timeline";
 import { CaseFile, caseNumber } from "@/components/member/CaseFile";
 import { pickAgainst, pickBoard } from "@/lib/domain/pick";
@@ -115,8 +118,6 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
   // Trades per year under each date basis, from the trade rows themselves (never mixed; undated counted apart).
   const none = countByBasis([], "event");
   const tradeCounts = countWire(tradeFile) ?? { event: none, public: none };
-  const moneyByYear: Record<number, number> = {};
-  for (const e of file.edges) if (e.family === "money") for (const b of e.by_year) moneyByYear[b.y] = (moneyByYear[b.y] ?? 0) + b.n;
 
   const orgName = (oid: string) => orgIndex.get(oid)?.name ?? oid;
   const built = metaBuilt(meta);
@@ -220,15 +221,15 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
             {ledgerPartial ? ` This list holds the ${count(ledger.length)} largest of ${count(ledgerTotalRows)}; the totals cover all of them.` : ""}
           </p>
           <ErrorBoundary label="ledger">
-            <LedgerTable rows={ledger} names={ledgerNames} totals={totals} />
+            <LedgerTable rows={ledger} names={ledgerNames} money={moneyTotals({ member: id, edges: file.edges, ledger, totals })} seats={totals.sits_with?.edges ?? 0} />
           </ErrorBoundary>
         </section>
       )}
 
       <section className="section" id="activity" aria-labelledby="time-h">
         <h2 id="time-h">Activity by year</h2>
-        <p className="section__note">Bars show trades reported and itemised money records per year. Shading shows how complete the underlying data is for that year.</p>
-        <Timeline trades={tradeCounts} moneyByYear={moneyByYear} coverage={file.coverage} served={m.served} />
+        <p className="section__note">{YEAR_CHART.note}</p>
+        <Timeline trades={tradeCounts} money={moneyYearSeries(file.edges, ledger)} coverage={file.coverage} served={m.served} />
       </section>
 
       <CampaignMoney cf={file.campaign_finance} />

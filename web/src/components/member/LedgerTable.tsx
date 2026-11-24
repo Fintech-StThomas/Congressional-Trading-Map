@@ -4,9 +4,10 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { recordUrlFor, memberHref, orgHref } from "@/lib/urls";
 import { type LedgerRow } from "@/lib/data/decode";
-import type { LedgerTotals } from "@/lib/types";
+import type { KindTotal } from "@/lib/domain/money-totals";
+import { MoneyTotals } from "./MoneyTotals";
 import { directionWord, TYPE_LABEL } from "@/lib/domain/edges";
-import { amountText, count, plural, yearSpan } from "@/lib/format";
+import { amountText, count, yearSpan } from "@/lib/format";
 import { IS_SAMPLE_CLIENT } from "@/lib/data/fetch";
 import { ExternalIcon } from "@/components/shared/ExternalIcon";
 import { FOLD_UI } from "@/lib/copy-ui";
@@ -14,7 +15,9 @@ import { FOLD_UI } from "@/lib/copy-ui";
 type Props = {
   rows: LedgerRow[];
   names: Record<string, string>;
-  totals?: LedgerTotals;
+  /** All-in money totals (full ties plus this ledger), and the count of shared-committee rows. */
+  money?: KindTotal[];
+  seats?: number;
   /** For an org's ledger, the org's own record link applies to every row. */
   selfRecordUrl?: string | null;
 };
@@ -23,7 +26,7 @@ type Key = "name" | "type" | "amount" | "count" | "last";
 const FIRST = 10;
 
 /** Money ties that come without evidence arrays: one row per tie, linked to the official record by id. */
-export function LedgerTable({ rows, names, totals, selfRecordUrl }: Props) {
+export function LedgerTable({ rows, names, money, seats = 0, selfRecordUrl }: Props) {
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<{ k: Key; dir: 1 | -1 }>({ k: "amount", dir: -1 });
   const [limit, setLimit] = useState(FIRST);
@@ -50,7 +53,6 @@ export function LedgerTable({ rows, names, totals, selfRecordUrl }: Props) {
   }, [rows, q, sort, names]);
 
   if (!rows.length) return null;
-  const typeTotals = totals ? Object.entries(totals) : [];
 
   const th = (k: Key, label: string, cls?: string) => (
     <th scope="col" className={cls} aria-sort={sort.k === k ? (sort.dir === 1 ? "ascending" : "descending") : "none"}>
@@ -65,18 +67,7 @@ export function LedgerTable({ rows, names, totals, selfRecordUrl }: Props) {
 
   return (
     <div className="ledger" data-testid="ledger">
-      {typeTotals.length > 0 && (
-        <ul className="ledger__totals">
-          {typeTotals.map(([t, v]) => (
-            <li key={t}>
-              <span>{TYPE_LABEL[t as keyof typeof TYPE_LABEL] ?? t}</span>
-              <span className="mono">
-                {plural(v.edges, "tie")} · {plural(v.records, "record")} · {amountText(v) ?? "no amount"}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
+      {money && <MoneyTotals kinds={money} seats={seats} />}
       <div className="filters">
         <label className="filters__search">
           <span>Find in the ledger</span>

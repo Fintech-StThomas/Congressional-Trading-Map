@@ -153,7 +153,8 @@ report, not measurements repeated in this session.
 **Review pass, November 2026** (plan and reasons in [`docs/REVIEW-2026-11.md`](docs/REVIEW-2026-11.md); this comes first)
 - P1 privacy: a street address in House liability text was published (Pelosi, FD 10075701); fix the redaction rule and add a validator check. Owner decides whether to withdraw archived releases that hold it.
 - P2 correctness: amended House trade reports are counted as new trades, inflating trade counts, summed ranges and "public over 45 days".
-- P3–P5: missing shown as zero on member pages; money totals that leave out the largest ties; wording and citation precision.
+- P3–P4 done (member pages): residence-secured liabilities say "not identified in the filing" instead of $0–$0; a net-worth year with no lower bound gets an "unbounded below" marker, not a bar from $0; "Activity by year" counts money records placed on one year plus further ties by first and last year, and the current year says "in progress"; "Money totals, all in" gives one total per money kind (listed ties plus further ties), outside spending for and against kept apart (against counted in spenders, never ties), money between members received and paid kept apart, and "at least" on every split line of a former member whose further-ties list is cut. Reconciled with `wall.json` for P000197 and M000355 and a 59-member sample; checked on real pages at 1280 and 390 px. Print not checked by eye.
+- P5: wording and citation precision; also opposing outside spending is drawn with the red tie mark in the ties list (VIGOP, NRLC on P000197), which the colour decision forbids.
 - P6: release, cache and feed hardening. P7–P8: campaign receipts per cycle; leadership PAC receipts and totals.
 
 **Housekeeping**
