@@ -6,12 +6,19 @@ const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD",
 const num = new Intl.NumberFormat("en-US");
 
 export const NOT_DISCLOSED = "not disclosed";
+/** What a blank FEC campaign-finance figure says: missing is never zero. */
+export const NOT_REPORTED = "not reported";
 
 // ---------------------------------------------------------------- money
 
 /** "$12,500"; null stays "not disclosed" (missing is never zero). */
 export function money(n: number | null | undefined): string {
   return n == null ? NOT_DISCLOSED : usd.format(n);
+}
+
+/** Exact dollars from an FEC summary ("$12,500"); null (blank or not published) is "not reported", never "$0". */
+export function reportedMoney(n: number | null | undefined): string {
+  return n == null ? NOT_REPORTED : usd.format(n);
 }
 
 function trim(v: number) {

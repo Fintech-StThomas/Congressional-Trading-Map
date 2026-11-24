@@ -42,6 +42,7 @@ export const SECTION_INDEX = {
   cases: "Cases",
   ties: "Ties",
   activity: "Activity",
+  money: "Campaign money",
   holdings: "Holdings",
   trades: "Trades",
 } as const;

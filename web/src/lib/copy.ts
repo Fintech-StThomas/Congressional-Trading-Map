@@ -882,6 +882,10 @@ export const EXPLAIN = {
     label: "statistical tie",
     body: "A statistical tie is not a filed record: it meets a published statistical rule against a shuffled baseline. It is marked STATISTICAL wherever it appears.",
   },
+  nocategory: {
+    label: "No FEC category on the filing",
+    body: "The FEC files most PAC spending without a category code, so this row is usually the largest. It means the filing carries no category, not that the money went anywhere in particular. The amount is as filed; the site does not guess a category.",
+  },
   /** The button's accessible hint, read after the term. */
   hint: "explanation",
   close: "Close explanation",

@@ -1,0 +1,235 @@
+/* "Campaign money" on the member page and its print block (components/member/CampaignMoney.tsx, LeadershipPacPanel.tsx,
+   LoansTable.tsx, CaseFileMoney.tsx). Neutral tokens only: red means a tie and nothing else, so bars are chalk grey. */
+
+.fin__h3 {
+  font-size: 15px;
+  margin: 26px 0 4px;
+}
+.fin__coverage {
+  margin: -6px 0 0;
+}
+.fin__empty {
+  color: var(--text-2);
+  font-size: 14px;
+  margin: 0 0 8px;
+}
+.fin__notshown {
+  margin-top: 22px;
+  max-width: 72ch;
+}
+
+/* loans table */
+.fin__wrap {
+  overflow-x: auto;
+}
+.fin__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+.fin__table th,
+.fin__table td {
+  padding: 9px 12px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--rule-soft);
+}
+.fin__table thead th {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-3);
+  background: var(--bg-2);
+}
+.fin__table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+/* one leadership PAC */
+.fin__pac {
+  margin-top: 14px;
+  padding: 14px 16px 12px;
+  border: 1px solid var(--rule-soft);
+  border-radius: var(--r);
+  background: var(--surface);
+}
+.fin__pachead {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 16px;
+  align-items: start;
+}
+.fin__pacname {
+  font-size: 15px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.fin__pacid {
+  grid-column: 1;
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text-3);
+  overflow-wrap: anywhere;
+}
+.fin__cycle {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-3);
+}
+.fin__cycle select {
+  min-height: 32px;
+  padding: 0 8px;
+  color: var(--text);
+  background: var(--bg-2);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-sm);
+  font: inherit;
+}
+.fin__totals {
+  margin: 10px 0 4px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.fin__nocat {
+  margin: 4px 0 8px;
+  font-size: 14px;
+  color: var(--text);
+}
+.fin__cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 4px 14px;
+  margin-top: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--rule-soft);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+.fin__cols span:first-child {
+  grid-column: 1 / span 2;
+}
+.fin__bars {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.fin__bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 2px 14px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--rule-soft);
+  font-size: 13.5px;
+}
+.fin__bar:last-child {
+  border-bottom: 0;
+}
+.fin__bar.is-none .fin__label {
+  font-weight: 600;
+}
+.fin__label {
+  overflow-wrap: anywhere;
+}
+.fin__track {
+  display: block;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--bg-2);
+  overflow: hidden;
+}
+.fin__fill {
+  display: block;
+  height: 100%;
+  min-width: 0;
+  background: var(--text-2);
+}
+.fin__bar.is-none .fin__fill {
+  background: var(--text);
+}
+.fin__spent,
+.fin__refund {
+  display: block;
+}
+.fin__spent .sub,
+.fin__refund .sub {
+  display: block;
+  font-family: var(--sans);
+}
+.fin__refnote {
+  margin: 8px 0 0;
+  max-width: 72ch;
+}
+
+@media (max-width: 720px) {
+  /* loans become stacked rows with their labels */
+  .fin__table thead {
+    display: none;
+  }
+  .fin__table,
+  .fin__table tbody,
+  .fin__table tr,
+  .fin__table td {
+    display: block;
+    width: 100%;
+  }
+  .fin__table tbody tr {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--rule-soft);
+  }
+  .fin__table td {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 2px 0;
+    border: 0;
+    text-align: right;
+  }
+  .fin__table td::before {
+    content: attr(data-label);
+    color: var(--text-3);
+    font-family: var(--sans);
+    font-size: 12px;
+    text-align: left;
+  }
+  .fin__pachead {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .fin__cycle {
+    grid-column: 1;
+    grid-row: auto;
+    margin-top: 6px;
+  }
+  /* category rows: label, bar, then spent and refunds side by side */
+  .fin__cols {
+    display: none;
+  }
+  .fin__bar {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .fin__label,
+  .fin__track {
+    grid-column: 1 / -1;
+  }
+  .fin__spent::before,
+  .fin__refund::before {
+    content: attr(data-label);
+    display: block;
+    color: var(--text-3);
+    font-family: var(--sans);
+    font-size: 11.5px;
+  }
+}
+
+@media print {
+  .cf__cap {
+    caption-side: top;
+    text-align: left;
+    font-size: 9.5pt;
+    margin-bottom: 3pt;
+  }
+}

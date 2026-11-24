@@ -5,7 +5,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { EXPLAIN } from "@/lib/copy";
 
-export type ExplainTerm = "household" | "range" | "tie" | "statistical";
+export type ExplainTerm = "household" | "range" | "tie" | "statistical" | "nocategory";
 
 /** `children` is the words shown as the button (default: the term itself); the definition always comes from EXPLAIN. */
 export function Explain({ term, children }: { term: ExplainTerm; children?: React.ReactNode }) {

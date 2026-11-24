@@ -1,5 +1,5 @@
 // The member page ("case file") for one data reader: header and counts, cases, ties with evidence, the ledger of
-// further ties, activity by year, holdings, trades, and the print-only case file. Shared by the latest route
+// further ties, activity by year, campaign money (FEC loans and leadership PAC spending), holdings, trades, and the print-only case file. Shared by the latest route
 // (app/m/[id], with its live twin) and the release permalink (app/r/[release]/m/[id]), which adds a banner.
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -26,6 +26,7 @@ import { ownTradeCount } from "@/lib/domain/assume";
 import "@/styles/casefile.css";
 import "@/styles/positions.css";
 import { PositionsPanel } from "@/components/member/PositionsPanel";
+import { CampaignMoney } from "@/components/member/CampaignMoney";
 import { HoldingsSection } from "@/components/member/HoldingsSection";
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 import { CorrectionLink, CorrectionProvider } from "@/components/shared/CorrectionLink";
@@ -172,6 +173,7 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
           ...(file.cases.length > 0 ? [{ id: "cases", label: SECTION_INDEX.cases }] : []),
           { id: "ties", label: SECTION_INDEX.ties },
           { id: "activity", label: SECTION_INDEX.activity },
+          { id: "money", label: SECTION_INDEX.money },
           { id: "holdings", label: SECTION_INDEX.holdings },
           { id: "trades", label: SECTION_INDEX.trades },
         ]}
@@ -237,6 +239,8 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
         <p className="section__note">Bars show trades reported and itemised money records per year. Shading shows how complete the underlying data is for that year.</p>
         <Timeline trades={tradeCounts} moneyByYear={moneyByYear} coverage={file.coverage} served={m.served} />
       </section>
+
+      <CampaignMoney cf={file.campaign_finance} />
 
       <HoldingsSection h={holdings} facts={facts} memberId={m.id} />
       {holdings && <PositionsPanel memberId={m.id} available={!!holdings.positions_summary} />}

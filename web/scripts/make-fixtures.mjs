@@ -11,6 +11,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildFixtureDelays } from "./fixture-delays.mjs";
+import { extraFecIds, financeFor } from "./fixture-finance.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const OUT = join(here, "..", "fixtures", "data");
@@ -561,7 +562,7 @@ for (const m of MEMBERS) {
   const tally = (f) => tr.reduce((o, t) => ((o[f(t)] = (o[f(t)] ?? 0) + 1), o), {});
   if (tr.length) write(`trades/${m.id}.json`, { cols: TCOLS, rows: tr.map((t) => TCOLS.map((c) => t[c] ?? null)), filings });
   write(`members/${m.id}.json`, {
-    member: { ...s, terms: terms(m), committees: COMMITTEES[m.id] ?? [], fec_ids: [`H0SAMPLE${m.id.slice(-3)}`] },
+    member: { ...s, terms: terms(m), committees: COMMITTEES[m.id] ?? [], fec_ids: [`H0SAMPLE${m.id.slice(-3)}`, ...extraFecIds(m.id)] },
     board: boardIds,
     nodes,
     edges: mineEdges,
@@ -578,6 +579,7 @@ for (const m of MEMBERS) {
     ledger_totals: ledgerTotalsOf(mine, 0, 4, 7),
     cases: cases.filter((c) => c.member === m.id),
     coverage: coverage(m),
+    ...(financeFor(m.id) !== undefined ? { campaign_finance: financeFor(m.id) } : {}),
   });
 }
 write("orgs.json", orgSummaries);

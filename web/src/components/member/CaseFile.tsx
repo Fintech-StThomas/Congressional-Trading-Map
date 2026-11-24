@@ -4,6 +4,7 @@ import type { Edge, MemberFileWire, MetaSource } from "@/lib/types";
 import { ledgerTieCount, type LedgerRow, type TradeRow } from "@/lib/data/decode";
 import { directionWord, typeLabel, amountLabel } from "@/lib/domain/edges";
 import { count, date, money, PARTY_NAMES, seat, served, yearRange, yearSpan } from "@/lib/format";
+import { CaseFileMoney } from "@/components/member/CaseFileMoney";
 import { CASE_NOT_SHOWN, caseRuleText, notShown, SITE, USE_NOTICE } from "@/lib/copy";
 
 /** PT-<bioguide>-<data build date as YYYYMMDD>: deterministic for a member and a build. */
@@ -148,6 +149,8 @@ export function CaseFile({ file, board, against, names, ledger, trades, sources,
           </table>
         </section>
       )}
+
+      <CaseFileMoney cf={file.campaign_finance} />
 
       {nTrades > 0 && (
         <section className="cf__sec">
