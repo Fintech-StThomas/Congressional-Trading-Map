@@ -311,7 +311,7 @@ they did not choose public life.
   `UTMA`/`UGMA`/`UTA`, are redacted. When the filing gives no way to tell and the owner is not a dependent child, the
   text is published as filed. Counts per rule: `meta.json.reports.holdings` (`asset_minor_name_redacted_<rule>`).
 - **Never published:** street addresses (locations are cut to "City, ST"; street addresses in asset, creditor and
-  liability-type text become `[street address redacted]`) and personal residences (rows that name a personal
+  liability-type text become `[street address redacted]`, rules and build gate in `docs/privacy-redaction.md`) and personal residences (rows that name a personal
   residence or non-rental second home are dropped). The pipeline never reads the FEC individual-contributions file,
   so no individual contributor is published.
 

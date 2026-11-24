@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import re
 
+from .address_rules import A4, A4_STRONG, REDACTED, redact_extended, tidy
+
 # Dataset owner -> contract owner. The House form prints SP / JT / DC in the owner column and nothing for the
 # filer; the dataset maps a blank column AND any unrecognised text to "self" (recipe/schema.py norm_owner), so
 # its "self" cannot be told apart from "not stated". We publish it as "unspecified" (never defaulted to self).
@@ -47,16 +49,19 @@ REAL_ESTATE = re.compile(
 _SUFFIX_ALL = (r"street|st|avenue|ave|road|rd|drive|dr|lane|ln|boulevard|blvd|court|ct|way|place|pl|circle|cir|"
                r"terrace|ter|highway|hwy|parkway|pkwy|trail|trl|square|sq|pike|loop|alley|crescent|plaza")
 _SUFFIX_SAFE = r"street|avenue|ave|road|rd|lane|ln|boulevard|blvd|highway|hwy|parkway|pkwy|drive|terrace|court|circle"
-_NO_HOUSE_NO = r"(?!(?:acres?|ac\b|units?|shares?|percent|sq|square|ft|feet|%|interest|lots?)\b)"
+_NO_HOUSE_NO = (r"(?i:(?!(?:acres?|ac\b|units?|shares?|percent|sq|square|ft|feet|%|interest|lots?|bank|union|federal|financial|"
+                r"fcu|jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|"
+                r"nov(?:ember)?|dec(?:ember)?)\b))(?!(?:and|or|of|the|for|to|in|at|on|with|by|per)\b)")   # small words: lower case only
 # A1, every row: house number + up to four words + street suffix ("1600 Pennsylvania Ave", "12 N. Main St.").
-A1 = re.compile(rf"\b\d{{1,6}}[A-Za-z]?\s+(?:[NSEW]\.?\s+)?(?:[A-Za-z0-9'.\-]+\s+){{0,4}}?(?:{_SUFFIX_ALL})\b\.?", re.I)
+A1 = re.compile(rf"(?<!\d/)\b\d{{1,6}}[A-Za-z]?\s+(?:[NSEW]\.?\s+)?(?:[A-Za-z0-9'.\-]+\s+){{0,4}}?(?:{_SUFFIX_ALL})\b\.?", re.I)
 # A2, real-property rows: a house number followed by a name ("5214 29th", "169 Crystal Dew"); years are kept.
-A2 = re.compile(rf"\b(?!(?:19|20)\d\d\b)(?!529\b)\d{{2,6}}[A-Za-z]?\s+{_NO_HOUSE_NO}[A-Za-z0-9][A-Za-z0-9'.\-]*"
+A2 = re.compile(rf"(?<![\d./])(?<!\d-)(?<!\d,)(?i:(?<!box\s))\b"
+               rf"(?:\d{{1,6}}[A-Za-z]?\s*[-&/]\s*)?(?!(?:19|20)\d\d\b)(?!529\b)\d{{2,6}}[A-Za-z]?\s+(?!\d/\d){_NO_HOUSE_NO}"
+               rf"[A-Za-z0-9][A-Za-z0-9'.\-]*"
                 rf"(?:\s+[A-Z][A-Za-z'.\-]+){{0,2}}")
 # A3, real-property rows: a street name without a number ("JOHNSTOWN ROAD", "East 92nd Street").
 A3 = re.compile(rf"\b(?:(?:North|South|East|West|NORTH|SOUTH|EAST|WEST|N|S|E|W)\.?\s+)?(?:[A-Z0-9][A-Za-z0-9'.\-]*\s+){{1,2}}"
                 rf"(?i:{_SUFFIX_SAFE})\b\.?")
-REDACTED = "[street address redacted]"
 
 
 # Minors only. Adults named in public filings are published as filed (IRAs "FBO" an adult, spouse or member names,
@@ -157,30 +162,54 @@ _FUNDISH = re.compile(r"\b(?:529|plan|fund|funds|portfolio|account|ira|401k|trus
                       r"insurance|savings|money market|etf|stock|shares)\b", re.I)
 
 
-def _redact_one(text: str, real_property: bool) -> str:
+def _redact_one(text: str, real_property: bool, liability: bool = False, extended: bool = True) -> str:
     out = A1.sub(REDACTED, text)
+    if extended:
+        out = redact_extended(out, liability, real_property)
     if real_property:
         out = A2.sub(REDACTED, out)
         out = A3.sub(lambda m: m.group(0) if m.group(0).startswith("[") else REDACTED, out)
-    return re.sub(rf"(?:{re.escape(REDACTED)}[\s,;-]*){{2,}}", REDACTED + " ", out).strip()
+    for _ in range(2 if extended else 1):
+        out = re.sub(rf"(?:{re.escape(REDACTED)}[\s,;-]*){{2,}}", REDACTED + " ", out).strip()
+        out = tidy(out) if extended else out
+    return out.strip()
 
 
-def redact(text: str | None, real_property: bool, has_location: bool = False) -> tuple[str | None, bool]:
+def segments(text: str, real_property: bool, has_location: bool = False) -> list[tuple[str, bool]]:
+    """Split an account path on "⇒" into (segment, whether the looser real-property rules apply to it)."""
+    parts = text.split("⇒")
+    return [(seg.strip(), real_property and (bool(REAL_ESTATE.search(seg)) or
+                                             (has_location and i == len(parts) - 1 and not _FUNDISH.search(seg))))
+            for i, seg in enumerate(parts)]
+
+
+def cued_residual(text: str | None, real_property: bool, has_location: bool = False, liability: bool = False) -> bool:
+    """The cue-word check the redactor itself applies, segment by segment (used by the holdings validator)."""
+    return any((A4 if liability or rp else A4_STRONG).search(seg) for seg, rp in segments(text or "", real_property, has_location))
+
+
+def redact(text: str | None, real_property: bool, has_location: bool = False, liability: bool = False,
+           extended: bool = True) -> tuple[str | None, bool]:
     """Remove street addresses. Account paths ("Trust ⇒ Broker ⇒ Asset") are handled one segment at a time: the
     looser patterns A2/A3 apply only to a segment that names real property, or to the last segment of a row the
     form gives a Location for, unless that segment names a fund, plan or account (529 plans print a state).
+    The cue-word and liability rules (address_rules.py) apply to every segment of liability text and the cue-word
+    rule to all asset text; `extended=False` gives the older rules only (to count what the newer ones add).
     Returns (text, whether anything was removed)."""
     if not text:
         return text, False
-    parts = text.split("⇒")
-    out = []
-    for i, seg in enumerate(parts):
-        rp = real_property and (bool(REAL_ESTATE.search(seg)) or
-                                (has_location and i == len(parts) - 1 and not _FUNDISH.search(seg)))
-        red = _redact_one(seg.strip(), rp)
-        out.append(red)
-    joined = " ⇒ ".join(out)
-    return (text, False) if joined == " ⇒ ".join(p.strip() for p in parts) else (joined, True)
+    segs = segments(text, real_property, has_location)
+    joined = " ⇒ ".join(_redact_one(seg, rp, liability, extended) for seg, rp in segs)
+    return (text, False) if joined == " ⇒ ".join(seg for seg, _ in segs) else (joined, True)
+
+
+def added_by_extended(text: str | None, real_property: bool, has_location: bool = False, liability: bool = False) -> bool:
+    """Whether the cue-word / liability rules (address_rules.py) changed this text beyond the older rules."""
+    return redact(text, real_property, has_location, liability)[0] != redact(text, real_property, has_location, liability, False)[0]
+
+
+def liability_added(kind: str | None, creditor: str | None, real_property: bool) -> bool:
+    return added_by_extended(kind, real_property, liability=True) or added_by_extended(creditor, real_property, liability=True)
 
 
 def city_state(location: str | None) -> tuple[str | None, bool]:

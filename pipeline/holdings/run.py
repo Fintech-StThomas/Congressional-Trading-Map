@@ -334,7 +334,7 @@ def run() -> None:
             c[f"asset_minor_name_redacted_{named}"] += 1
         loc, loc_hit = rules.city_state(r["location"]) if r["location"] else (None, False)
         if hit:
-            c["asset_text_redacted"] += 1
+            c.update(asset_text_redacted=1, asset_text_redacted_by_extended_rules=rules.added_by_extended(asset, True, bool(r["location"])))
             if len(red_examples) < 15:
                 red_examples.append((r["id"], text))
         c["location_trimmed"] += loc_hit
@@ -364,9 +364,9 @@ def run() -> None:
         c["liabilities_in_used_docs"] += 1
         res = rules.is_residence_debt(r["creditor"] or "", r["liability_type"] or "")
         real = bool(rules.REAL_ESTATE.search(f"{r['liability_type'] or ''} {r['creditor'] or ''}"))
-        kind, h1 = rules.redact(r["liability_type"], real)
-        cred, h2 = rules.redact(r["creditor"], real)
-        c["liability_text_redacted"] += h1 or h2
+        kind, h1 = rules.redact(r["liability_type"], real, liability=True)
+        cred, h2 = rules.redact(r["creditor"], real, liability=True)
+        c.update(liability_text_redacted=h1 or h2, liability_text_redacted_by_extended_rules=rules.liability_added(r["liability_type"], r["creditor"], real))
         c["liability_residence_secured"] += res
         if r["liability_type"] and re.fullmatch(r"\s*mortgage\s*", r["liability_type"], re.I):
             c["liability_generic_mortgage_counted"] += 1

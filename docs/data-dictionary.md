@@ -885,8 +885,8 @@ type Overlap = {              // a holding and a filed tie with the same org in 
   that id; the rest become `tk:<TICKER>`.
 - **Real property and residences.** Publish only what the filing prints, at city/state granularity at most: the
   dataset's Location is cut to "City, ST". Street addresses are replaced by `[street address redacted]` in asset,
-  creditor and liability-type text (number + street suffix everywhere; in real-property text also a house number
-  followed by a name, and a street name without a number), and counted. Nothing is geocoded. An asset whose text names
+  creditor and liability-type text by the rules listed in `docs/privacy-redaction.md` (suffix, cue-word, liability and
+  property-row rules; no business-name exemption), and counted; the validator's gate fails the build on any left. Nothing is geocoded. An asset whose text names
   a personal residence or non-rental second home is never published (counted as `personal_residence`).
   `residence_secured` marks a liability whose type or creditor names a residence, home mortgage or home equity
   (and not rental, investment, commercial, farm or business).
