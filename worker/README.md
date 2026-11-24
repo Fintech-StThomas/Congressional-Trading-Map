@@ -11,7 +11,7 @@ rate-limited `r2.dev` address for the legacy `data/` tree.
 | Request | Answer |
 |---|---|
 | `/releases/current.json`, `/releases/index.json` | The pointer and the history list, `Cache-Control: no-cache, max-age=0, must-revalidate`. 404 when missing. |
-| `/releases/<64 hex>/<path>` | The file at `<path>` in that release. 404 when the id or path is invalid, the release has a tombstone (`releases/withdrawn/<id>.json`), has no descriptor, or the path is not in it. 502 `Release data is unavailable.` when the descriptor names a blob that is missing or has the wrong size. Immutable cache headers, ETag `"<sha256>"`, `304` for a matching `If-None-Match`. `Content-Type` comes from the requested path's extension (a blob can be shared by two paths of different types). |
+| `/releases/<64 hex>/<path>` | The file at `<path>` in that release. A missing descriptor is remembered for 5 minutes (memory and Cache API), so a made-up id costs one bucket read per window. 404 when the id or path is invalid, the release has a tombstone (`releases/withdrawn/<id>.json`), has no descriptor, or the path is not in it. 502 `Release data is unavailable.` when the descriptor names a blob that is missing or has the wrong size. Immutable cache headers, ETag `"<sha256>"`, `304` for a matching `If-None-Match`. `Content-Type` comes from the requested path's extension (a blob can be shared by two paths of different types). |
 | `/data/<path>` | Pass-through to the legacy `data/<path>` object, `Cache-Control: public, max-age=300, s-maxage=3600, stale-while-revalidate=86400`; 404 when missing. |
 | anything else | 404. The bucket is never listed. |
 

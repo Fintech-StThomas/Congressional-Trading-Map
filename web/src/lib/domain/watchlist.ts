@@ -73,6 +73,16 @@ export function watchlistFeedHref(l: { members?: readonly string[]; orgs?: reado
   return q.length ? `/feed/w.xml?${q.join("&")}` : null;
 }
 
+/**
+ * The canonical path for a valid feed query that is spelled any other way (ids in another order, escaped commas,
+ * repeated ids), else null (already canonical, or invalid: the route then answers it as it always did).
+ */
+export function canonicalWatchRedirect(search: string): string | null {
+  const parsed = parseWatchlist(search);
+  const href = parsed.ok ? watchlistFeedHref(parsed.list) : null;
+  return href !== null && search.replace(/^\?/, "") !== href.slice(href.indexOf("?") + 1) ? href : null;
+}
+
 /** The same address with a site origin in front, for a link to copy into a feed reader. */
 export function absoluteFeedUrl(origin: string, href: string): string {
   return `${origin.replace(/\/+$/, "")}${href}`;

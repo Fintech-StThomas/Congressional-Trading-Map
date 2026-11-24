@@ -29,6 +29,7 @@ from .release_manifest import (
     validate_meta, validate_pointer, validate_release_id,
 )
 from .release_refs import load_descriptor
+from .release_repair import index_previous
 from .release_store import (  # noqa: F401 - re-exported for callers and tests
     BLOB_PREFIX, CURRENT, IMMUTABLE_CACHE, INDEX, POINTER_CACHE, PREFIX, get_object, is_withdrawn, now_utc, status,
 )
@@ -88,6 +89,7 @@ def _activate(client: Any, bucket: str, manifest: dict, descriptor: bytes,
         raise PublishError("current release changed concurrently; activation refused")
     # Exact readback resolves an ambiguous response without unconditionally rewriting current.
     verify_body(_get(client, bucket, CURRENT, sleep), identity(desired), "application/json", POINTER_CACHE)
+    index_previous(client, bucket, previous, sleep, now)
     _record_history(client, bucket, manifest["release_id"], build_time, sleep, now)
 
 

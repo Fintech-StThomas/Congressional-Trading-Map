@@ -48,7 +48,7 @@ Matching is exact on a normalised name, plus a hand-reviewed override file (`pip
   Objects no longer in the build are deleted only after metadata and manifest publication. A failed data-file
   upload leaves previous metadata and manifest in place, but already-uploaded files are not rolled back.
 
-## Offline release manifest (basis of the archive; production cutover pending)
+## Offline release manifest (basis of the archive; live since 2026-11-16)
 
 `python -m pipeline.release_manifest --dir <validated-data-tree> --output <outside-tree>/release.json`
 creates a deterministic descriptor for a future immutable release. It does not validate the data's meaning,
@@ -66,7 +66,7 @@ its original bytes. Relative paths and file sizes are part of the identity; file
 There is no self-hash cycle: `release_id` is added after computing the digest. A checksum proves byte identity,
 not source accuracy or authorship. Future publishing must preserve the exact files described here.
 
-## Immutable archive publication (opt-in; production cutover pending)
+## Immutable archive publication (live since 2026-11-16; gated by PT_PUBLISH_RELEASES)
 
 The archive publisher uses a separate fixed `releases/` prefix, outside the legacy publisher's `data/` cleanup.
 Content is addressed by hash, so a file that did not change is stored once however many releases contain it:
@@ -105,16 +105,16 @@ every blob, a full read of `meta.json`, and the same pointer precondition (`--fu
 ### Release history index (mutable)
 
 `releases/index.json` is `{schema_version: 1, releases: [{release_id, build_time, activated_at}]}`, newest first,
-for a future "compare releases" view. `release_id` is the 64-hex ID; `build_time` is the release's `meta.json`
-`build.time`; `activated_at` is a UTC timestamp `YYYY-MM-DDTHH:MM:SSZ`. There is one entry per release: activating
-a release already in the list (a rollback or roll-forward) moves its entry to the front with a new `activated_at`;
-re-running the activation of the release already at the front changes nothing, so a repair re-run is idempotent.
-The list holds at most 400 entries (the oldest are dropped; the release objects themselves stay). The file uses the
-pointer's `Cache-Control` and is written with the pointer's discipline (`If-Match` on the captured ETag, or
-`If-None-Match: *` when absent; bounded retries when it changed concurrently). A malformed existing index fails
+for the "compare releases" view and as the site's allow-list for permalinks. `release_id` is the 64-hex ID;
+`build_time` is the release's `meta.json` `build.time`; `activated_at` is a UTC timestamp `YYYY-MM-DDTHH:MM:SSZ`.
+One entry per release: activating a release already in the list (a rollback or roll-forward) moves its entry to the
+front with a new `activated_at`; re-running the activation of the release already at the front changes nothing, so a
+repair re-run is idempotent; a release left out by an earlier failed write is added on the next activation, with the
+repair time as `activated_at`. At most 10,000 entries (a safety bound; the oldest would be dropped, the objects stay).
+The file uses the pointer's `Cache-Control` and is written with the pointer's discipline (`If-Match` on the captured ETag, or `If-None-Match: *` when absent; bounded retries when it changed concurrently). A malformed existing index fails
 closed. It is written only after the pointer has moved. **The pointer is the only authority for which release is
-current**; the index is a convenience, is never part of a release hash, and may be repaired by re-running the
-activation. Readers must not use it to decide what is current.
+current**; the index is never part of a release hash and is repaired by re-running the activation. Readers must
+not use it for "current", but the site serves `/r/<release_id>/...` only for a listed (or the current) release.
 
 ### Withdrawal tombstone
 

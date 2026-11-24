@@ -13,10 +13,15 @@ import { isOrgId } from "./ids.ts";
 import { MEMBER_ITEMS, READ_CONCURRENCY, buildFeedFromItems, channelDescription, recentTrades, tradeItem, type FeedItem } from "../domain/feed.ts";
 import { ORG_FEED_FILES, ORG_ITEMS } from "../domain/orgfeed.ts";
 import { oneLine } from "../domain/escape.ts";
-import { WATCH_ITEMS, WATCH_MEMBERS_MAX, WATCH_ORGS_MAX, mergeItems, parseWatchlist, watchlistFeedHref } from "../domain/watchlist.ts";
+import { WATCH_ITEMS, WATCH_MEMBERS_MAX, WATCH_ORGS_MAX, mergeItems, canonicalWatchRedirect, parseWatchlist, watchlistFeedHref } from "../domain/watchlist.ts";
 
 const NOT_FOUND = () => new Response("Not found", { status: 404 });
 const text = (status: number, body: string) => new Response(body, { status, headers: { "Content-Type": "text/plain; charset=utf-8" } });
+
+/** 308 (permanent, method-preserving) to a same-origin path. */
+function redirectTo(path: string): Response {
+  return new Response(null, { status: 308, headers: { Location: path } });
+}
 
 /** The org id in a "/feed/o/<file>" last segment ("co%3A320193.xml", already decoded or not), or null. */
 export function orgIdOfFile(file: string): string | null {
@@ -55,6 +60,11 @@ export async function watchFeedResponse(data: Data, search: string): Promise<Res
   const parsed = parseWatchlist(search);
   if (!parsed.ok) return text(400, `${WATCH.badRequest}: ${parsed.error}\n`);
   const { members, orgs } = parsed.list;
+  // One list, one address: any other spelling (ids in another order, escapes, repeats) is sent to the canonical one
+  // before any data is read, so a feed reader's polling hits one cache key instead of factorially many.
+  const canonical = watchlistFeedHref(parsed.list) as string;
+  const moved = canonicalWatchRedirect(search);
+  if (moved) return redirectTo(moved);
   const unknown = (await Promise.all(members.map((m) => data.isKnownMember(m)))).some((ok) => !ok);
   if (unknown) return text(400, `${WATCH.badRequest}: a member id is not in this data.\n`);
   const c = await context(data);
@@ -71,7 +81,7 @@ export async function watchFeedResponse(data: Data, search: string): Promise<Res
     if (!file) continue; // sequential: the member-file bound is shared, followed members first
     orgItems.push(await orgFeedItems(data, file, files, c, Math.max(0, WATCH_MEMBERS_MAX - files.size), `${oneLine(file.org.name)}: `));
   }
-  const href = watchlistFeedHref(parsed.list) as string;
+  const href = canonical;
   const channel = {
     title: WATCH.channelTitle,
     link: SITE.url,

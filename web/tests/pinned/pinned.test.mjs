@@ -82,7 +82,7 @@ function writeRelease(id, { name, built }) {
   writeFileSync(join(dir, "release.json"), JSON.stringify({ schema_version: 1, release_id: id, files: {} }));
 }
 
-/** releases/index.json (the mutable, advisory release list), newest first, as docs/data-dictionary.md describes it. */
+/** releases/index.json (the mutable release list, also the permalink allow-list), newest first, as docs/data-dictionary.md describes it. */
 function writeIndex() {
   const releases = [
     { release_id: B, build_time: BUILT_B, activated_at: "2026-03-09T07:00:00Z" },
@@ -361,8 +361,8 @@ test("an unpublished release is a 404 with explicit wording and never the latest
   for (const path of ["search-index", "board-data/CA", `board-member/${MEMBER}`]) {
     assert.equal((await fetch(`${site}/r/${UNKNOWN}/${path}`)).status, 404, path);
   }
-  assert.ok(bucketLog.includes(`/releases/${UNKNOWN}/meta.json`), "availability is checked against that release only");
-  assert.ok(!bucketLog.some((x) => x.includes(UNKNOWN) && !x.endsWith("/meta.json")), "nothing else was fetched for it");
+  assert.ok(bucketLog.includes("/releases/index.json"), "the release list decides (an unlisted id never reaches the Worker)");
+  assert.ok(!bucketLog.some((x) => x.includes(UNKNOWN)), "nothing was fetched for an unlisted release");
   await p.close();
 });
 

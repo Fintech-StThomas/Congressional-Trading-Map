@@ -1,4 +1,5 @@
-"""Mutable releases/index.json: strict validator and conditional add/remove of history entries (never authoritative)."""
+"""Mutable releases/index.json: strict validator and conditional add/remove of history entries. Not the authority for
+which release is current (the pointer is), but the site's allow-list for /r/<id>/ permalinks."""
 from __future__ import annotations
 
 import time
@@ -9,7 +10,9 @@ from .publish_r2 import PublishError
 from .release_manifest import ReleaseManifestError, canonical_json, decode_json, validate_release_id
 from .release_store import INDEX, cas_write, now_utc, utc_timestamp, valid_timestamp
 
-MAX_ENTRIES = 400
+# The site accepts /r/<id>/ permalinks only for listed releases, so this bound is a safety limit, not a retention policy:
+# 10,000 entries is about 1.6 MB and 27 years of daily releases. Entries stay newest first.
+MAX_ENTRIES = 10_000
 MAX_BUILD_TIME = 100
 
 

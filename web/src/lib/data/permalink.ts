@@ -13,8 +13,14 @@ export async function permalinkData(release: string, memberId?: string): Promise
   return data;
 }
 
-/** A permalink JSON route: 404 unless `valid` (the other ids' shapes) and the release is available, else `fn` on its reader. */
+/** What a 200 permalink JSON answer carries: the release never changes. Errors never get it (see next.config.ts). */
+export const IMMUTABLE_CACHE = "public, max-age=86400, s-maxage=31536000, immutable";
+
+/** A permalink JSON route: 404 unless `valid` (the other ids' shapes) and the release is available, else `fn` on its reader; only a 200 is marked immutable. */
 export async function releaseResponse(release: string, valid: boolean, fn: (data: Data) => Promise<Response>): Promise<Response> {
   const data = valid ? await permalinkData(release) : null;
-  return data ? fn(data) : new Response("Not found", { status: 404 });
+  if (!data) return new Response("Not found", { status: 404 });
+  const res = await fn(data);
+  if (res.status === 200) res.headers.set("Cache-Control", IMMUTABLE_CACHE);
+  return res;
 }

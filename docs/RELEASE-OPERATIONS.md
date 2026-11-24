@@ -1,10 +1,13 @@
 <!-- Owner runbook for the immutable release archive: layout, Worker, activation order, rollback, withdrawal, storage. -->
 # Release operations
 
-Status: **nothing in this document has been run against the real storage provider.** The archive publisher, the
-history index, the withdrawal command, the provider check and the Worker are tested only against a fake S3 (moto),
-fakes that do or do not enforce conditions, and a fake R2 binding. No R2 credentials were available when they were written. The first real
-run is the provider check below, and its result decides whether anything else may be switched on.
+Status (2026-11-24): **live.** The archive has run in the daily job on the real R2 bucket since 2026-11-16 (first
+release `f86168d2...`, 10 or more releases since), the Worker has served it from
+`https://paper-trail-releases.lota-inc0.workers.dev` since then, and the public site reads only archived releases
+(`RELEASE_BASE_URL` is set in Production). What has **not** been run for real is the withdrawal command: it is
+tested only against a fake S3 (moto) and a fake R2 binding, never against the real bucket, Vercel or Cloudflare.
+The activation checklist below is kept as the record of the order that was followed and as the procedure for a
+second environment.
 
 The legacy publisher (`pipeline/publish_r2.py`, prefix `data/`) stays the production path throughout. The archive
 lives under `releases/` and is never touched by the legacy cleanup. A checksum identifies bytes; it does not
@@ -17,12 +20,12 @@ show who made them or that a record is accurate.
 | `releases/blobs/<sha256>` | The exact bytes of one distinct file, stored once however many releases contain it. Immutable cache headers; `Content-Type` from the first path that uploaded it. |
 | `releases/<release_id>/release.json` | The release: its descriptor (`path -> {sha256, bytes}`), written only after every blob it names is verified. |
 | `releases/current.json` | The pointer. The only authority for "current". No-cache headers. |
-| `releases/index.json` | History list (newest first, 400 at most) for the compare view. Never authoritative. |
+| `releases/index.json` | History list (newest first, 10,000 at most). Not the authority for "current" (the pointer is), but the site's allow-list: `/r/<id>/...` is served only for a listed release (or the current one), and `/changes` reads it. A release missing from it is unreachable by permalink. |
 | `releases/withdrawn/<release_id>.json` | Tombstone for a withdrawn release. |
 | `release-provider-check/<run id>/...` | Disposable keys of the provider check; deleted by the check itself. |
 
 The release ID is unchanged: the hash of the descriptor's identity. Shapes are in `docs/data-dictionary.md`.
-Nothing is archived in production yet, so this layout replaced the earlier per-release copy without a migration.
+This layout replaced an earlier per-release copy before anything was archived in production, so there was no migration.
 
 Readers never see blobs. The Cloudflare Worker (`worker/`) answers `<base>/current.json`, `<base>/index.json` and
 `<base>/<id>/<path>` exactly as before and looks the path up in the descriptor. Two paths whose files have identical
@@ -141,14 +144,51 @@ identifier that got past the validators. The owner decides; nobody else should r
   the bytes. The Worker answers 404 for a tombstoned release (checked at most 30 seconds late per instance).
 - Blobs left unreferenced by failed publishes (not by withdrawals) are not found or removed by any command yet.
 
-What readers see: a citation or permalink to a withdrawn release must show an explicit "not available" message.
-It must never fall back to the latest data. (Reader behaviour belongs to the web work; it is not verified here.)
+What readers see: a citation or permalink to a withdrawn release shows an explicit "not available" page and never
+falls back to the latest data. The site accepts `/r/<id>/...` only for an id that `releases/index.json` lists (or
+the current release) and re-reads that list at most every 5 minutes (`LISTING_REVALIDATE_SECONDS`), and the permalink
+pages re-run that check at most every 5 minutes (`revalidate = 300`). The withdrawal command removes the entry from
+the index, so **HTML permalink pages stop rendering within about 10 minutes** (5 for the list, 5 for the page) even if
+Vercel's Data Cache still holds the files. **JSON routes (`/r/<id>/board-data`, `board-member`, `search-index`) and
+`/releases/<id>/...` files are cached as immutable (up to a year at the CDN), so they keep answering until the CDN
+and Data Cache are purged: the purge below is required, not optional.**
 
-What withdrawal does **not** do: cached pages, browser caches, CDN copies (Worker responses carry a one-year
-immutable edge cache header and a one-day browser cache) and earlier site deployments may keep serving the bytes
-until they expire or are redeployed or purged. Purging the Cloudflare cache for the Worker's hostname and
-redeploying the site are separate manual steps. Anyone who already downloaded the data keeps it. Withdrawal limits
-future exposure; it cannot recall past copies.
+**After the command finishes, purge the caches** (owner, same day; each step is manual):
+
+1. **Vercel Data Cache and CDN.** Pinned reads use `fetch(..., { cache: "force-cache" })`, and Vercel's Data Cache
+   persists across deployments, so a redeploy alone does not clear it. From `web/` with the Vercel CLI linked to the
+   project: `vercel cache purge --type data` then `vercel cache purge --type cdn` (or `vercel cache purge` for all
+   types; checked against the Vercel CLI docs on 2026-11-24). The dashboard has the same under Project -> Settings ->
+   Caches. Purging the Data Cache makes the next visit re-read from the Worker, which answers 404 for the withdrawn
+   release.
+2. **Cloudflare.** The Worker already answers 404 for a tombstoned release within 30 seconds per instance, and a
+   cached descriptor is never used without the tombstone check. Browsers and any CDN in front of the Worker may
+   still hold a 200 for up to one day (browser) or one year (edge, `s-maxage`). If the Worker is reached through a
+   Cloudflare cache rule or custom domain, purge that zone's cache for `/releases/<id>/*` (Caching -> Configuration
+   -> Purge by URL, or the API); for the plain `workers.dev` address there is no zone to purge, and the tombstone
+   check is the control.
+3. **Redeploy the site** (Vercel -> Deployments -> Redeploy, or push to `main`) so older deployments' build output
+   no longer renders the release, then open `/r/<id>/m/<member id>` and `/releases/<id>/meta.json` on the site and the
+   Worker and confirm both answer 404 (with `Cache-Control: no-store`).
+4. Tell anyone who holds a citation to the withdrawn release; the permalink will say it is not available.
+
+What withdrawal does **not** do: browser caches, caches outside your control and earlier site deployments may keep
+serving the bytes until they expire or are purged. Anyone who already downloaded the data keeps it. Withdrawal
+limits future exposure; it cannot recall past copies.
+
+**Release ids that were never published.** The site rejects a `/r/<id>/...` whose id is not in `releases/index.json`
+before any Worker call, and the Worker remembers a missing descriptor for 5 minutes (memory and Cache API), so a
+made-up id costs one bucket read per window. A just-published release that was requested within those 5 minutes
+before it existed may answer 404 until the window ends.
+
+**Error responses are never cached as immutable.** The Worker sends `no-store` on every 404, 405 and 502 and the
+one-year immutable policy only on 200 and 304; the site passes the Worker's headers through under `/releases/<id>/`
+and sets the immutable policy on `/r/<id>/board-data`, `board-member` and `search-index` only for a 200.
+
+**A failed index write.** The index is written after the pointer moves. If that write fails, the run says so and
+re-running repairs it; a no-change run re-adds the current release, and the next activation also adds the release that
+was current before it, so a failed write cannot leave a release unlisted. Until repaired, that release's `/r/<id>/...`
+permalinks answer "not available" (the current release is still served, because the site also accepts the pointer's id).
 
 ## Storage growth and retention
 
@@ -156,8 +196,8 @@ The owner chose daily refreshes with permanent releases that store only changed 
 free tier: 10 GB-month of storage, 1 million Class A (write/list) and 10 million Class B (read) requests a month,
 free DeleteObject, and $0.015 per GB-month beyond.
 
-Measured in a previous session: a full tree is about **306 MB in 3,811 files**; one measured day-over-day publish
-changed **125 of 3,056 files**. **Estimate only:** if every day changed about that share of files (4%) and those files
+Measured when the archive was first designed: a full tree is about **306 MB in 3,811 files**; one measured
+day-over-day publish changed **125 of 3,056 files**. **Estimate only:** if every day changed about that share of files (4%) and those files
 averaged the tree's average size, a day would add about 12 MB, a year about 4.5 GB, on top of the first 306 MB and the
 legacy `data/` copy (about the same size again); the free 10 GB would last roughly two years at that rate. File
 size, how often large files change and no-change days (which add nothing) all move the real figure, so **the real
@@ -166,6 +206,9 @@ number comes from the `--measure` output** ("new bytes this run", "archive bytes
 Requests per daily run, from the code (not measured against the provider): one HEAD per distinct blob (about 3,000
 Class B), one PUT and one read-back GET per new blob (about 125 each), the descriptor, the pointer and index, and a
 handful of listing calls for `--measure`: well inside the monthly allowances. A rollback is one HEAD per blob.
+Blobs are de-duplicated across releases, so a release costs only its changed files plus a descriptor; the first
+archive was 300.8 MiB in total (STATUS.md, run 43956409693), not that much per day. Read the real growth from the
+"archive bytes total" line of the daily run.
 
 **Open owner decision: retention.** No command deletes old releases, and deleting a release's descriptor does not
 free its blobs until they are unreferenced. Thinning (for example one release a month after N days) would need a
@@ -184,12 +227,16 @@ it necessary after reading a few months of `--measure` output.
 
 ## Not verified
 
-- Nothing here has run against the real provider (no credentials in the authoring session). Conditional writes
-  (`If-None-Match: *`, `If-Match`) on R2 through boto3 are assumed to work until the provider check says so.
-- The Worker has never run on Cloudflare (only against a fake bucket binding in Node); the Cache API and R2 binding
-  behaviour it relies on are as documented, not observed. Nor has `wrangler deploy` been run.
-- The workflows have been parsed as YAML but not executed on GitHub. The `PT_PUBLISH_RELEASES` variable gating,
-  the default-branch guard and secrets in the new step need one observed run.
-- Reader behaviour for pinned, missing and withdrawn releases (the web side) is not covered here.
-- Branch protection and the `production` environment are owner settings (`docs/SECURITY-REVIEW.md`, S6); once the
-  environment exists, enable `environment: production` in both workflows together.
+- The withdrawal command (`pipeline.withdraw_release`) has never run against the real bucket, and the purge steps in
+  "Withdrawal policy" have not been exercised on Vercel or Cloudflare. Rehearse it on a release created for the
+  purpose (never a cited one) before relying on it.
+- Worker behaviour that depends on Cloudflare itself (the Cache API negative entry for a missing descriptor, which
+  needs a `wrangler deploy` of the current `worker/` code to take effect) is tested here only against fakes.
+- Branch dispatches of the daily job run without `LDA_API_KEY`, `FEC_API_KEY` and `SEC_USER_AGENT`: they build and
+  validate, but the FEC leadership-PAC sponsors and purpose groups are published as null with a warning, and SEC
+  requests use the default User-Agent. Only the default branch of the main repository receives those three secrets.
+- Branch protection and the `production` environment are owner settings (`docs/SECURITY-REVIEW.md`, S6). `data.yml`
+  already enters `production` for default-branch runs; the R2 secrets and the three API settings are still repository
+  secrets until the owner moves them into that environment.
+- The release list is capped at 10,000 entries (about 27 years of daily releases); beyond that the oldest permalink is refused by the site
+  until retention is decided. Nothing near the cap has been exercised.

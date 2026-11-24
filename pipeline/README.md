@@ -226,7 +226,7 @@ archives or overwrites a conflicting immutable object. Interrupted uploads can b
 read and reused without retransmitting their bodies. The descriptor is the final immutable object written.
 
 Successful activation also maintains the mutable history list `releases/index.json` (newest first, one entry per
-release, at most 400, written with the same conditional discipline as the pointer; shape in the data dictionary).
+release, at most 10,000 as a safety bound (the site only serves permalinks for listed releases), written with the same conditional discipline as the pointer; shape in the data dictionary).
 The pointer stays the only authority. If the index update fails after the pointer moved, the command exits 1 and
 says that the pointer WAS activated; re-running the same command repairs the index and is idempotent.
 

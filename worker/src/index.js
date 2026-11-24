@@ -61,7 +61,7 @@ async function dataObject(request, env, rest) {
 }
 
 export function createHandler({ caches = globalThis.caches, now = () => Date.now() } = {}) {
-  const loadDescriptor = createDescriptorLoader({ caches });
+  const loadDescriptor = createDescriptorLoader({ caches, now });
   const withdrawn = new Set(); // tombstones never go away
   const notWithdrawnUntil = new Map(); // release id -> time before which "no tombstone" is trusted
 
@@ -81,6 +81,8 @@ export function createHandler({ caches = globalThis.caches, now = () => Date.now
   async function releaseFile(request, env, releaseId, rest, origin) {
     const path = decodePath(rest);
     if (path === null || !isSafePath(path)) return notFound();
+    // A recently missing descriptor answers before any bucket read; a withdrawn release has no descriptor, so it is 404 either way.
+    if (await loadDescriptor.isMissing(releaseId, origin)) return notFound();
     if (await isWithdrawn(env, releaseId)) return notFound();
     let files;
     try {
