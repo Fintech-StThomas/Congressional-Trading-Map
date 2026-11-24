@@ -17,19 +17,18 @@ from typing import Any, Callable
 
 import pyarrow.parquet as pq
 
-from .assemble import shard
-from .config import (BOARD_EDGES, FORMER_MEMBER_LEDGER_ROWS, LATE_DAYS, LEDGER_ONLY_TYPES, MAX_EVIDENCE, ORG_INDEX_TOP,
-                     SAMPLE_SEED, SAMPLE_SIZE)
+from .assemble import case_ok, shard
+from .config import (BOARD_EDGES, FORMER_MEMBER_LEDGER_ROWS, LATE_DAYS, LEDGER_ONLY_TYPES, MAX_EVIDENCE,
+                     MONEY_EDGES_PER_MEMBER, ORG_INDEX_TOP, SAMPLE_SEED, SAMPLE_SIZE)
 from .contract import (FAMILY, MEMBER_LEDGER_COLS, ORG_INDEX_COLS, ORG_TIE_COLS, PARTIES, SPLIT_MEASURES, TRADE_COLUMNS,
                        WALL_COLS, WALL_YEARS_COLS)
-from .assemble import case_ok
 from .assemble.orgs import year_party
-from .config import MONEY_EDGES_PER_MEMBER
 from .edges import edge_id, sum_amounts
 from .holdings.rules import redact_beneficiary
 from .util import BUILD, OUT, read_json
 from .validate_delays import check_delays
 from .validate_fec_spending import check_campaign_finance, load_links
+from .validate_trade_amendments import check_folding, check_trade_file
 
 DATE = "date"
 OWNERS = {"self", "spouse", "joint", "dependent", "unspecified"}
@@ -292,7 +291,7 @@ def check_member_ledger(c: Checker, mf: dict[str, Any], where: str, orgs: set[st
 
 def check_trades(c: Checker, mf: dict[str, Any], where: str, orgs: set[str]) -> int:
     t = mf
-    c.check(set(t) == {"cols", "rows", "filings"}, "schema", f"{where} keys")
+    check_trade_file(c, t, where)
     c.check(t.get("cols") == TRADE_COLUMNS, "schema", f"{where}.trades.cols")
     prev = None
     for r in t.get("rows", []):
@@ -303,7 +302,7 @@ def check_trades(c: Checker, mf: dict[str, Any], where: str, orgs: set[str]) -> 
                 and row["ticker_source"] in TICKER_SOURCES, "trade enums", f"{where}:{row['id']}")
         c.check(opt(is_date)(row["date"]) and opt(is_date)(row["available"]), "schema", f"{where}:{row['id']} dates")
         c.check(row["low"] is None or row["high"] is None or row["low"] <= row["high"], "trade low <= high", row["id"])
-        c.check((row["lag_days"] is None) == (row["date"] is None or row["available"] is None), "lag null iff a date is missing", row["id"])
+        c.check(row["lag_days"] is None if row["date"] is None or row["available"] is None else row["lag_days"] is not None or row["amended"] is True, "lag null iff a date is missing or a later version corrected the date", row["id"])
         c.check(row["late"] is None if row["lag_days"] is None else row["late"] == (row["lag_days"] > LATE_DAYS), "late = lag_days > 45", row["id"])
         c.check(row["doc"] in mf["filings"], "trade doc has a filing URL", row["id"])
         c.check(row["org"] is None or row["org"] in orgs, "trade org exists", f"{row['id']}:{row['org']}")
@@ -455,6 +454,7 @@ def main() -> int:
             and counts["edges"] == sum(counts["edges_by_type"].values()), "meta.json counts match the files", "")
 
     check_delays(c, read_json(OUT / "delays.json"), members, published_trades, trade_summaries, is_date)
+    check_folding(c, published_trades, meta, OUT)
 
     # Row counts across stages: no join may have multiplied or lost trades.
     resolved = pq.read_metadata(BUILD / "trades_resolved.parquet").num_rows

@@ -15,13 +15,13 @@ import pyarrow.parquet as pq
 
 from .. import config
 from ..config import BOARD_EDGES, FORMER_MEMBER_LEDGER_ROWS, LEDGER_ONLY_TYPES, MONEY_EDGES_PER_MEMBER, MONEY_MEMBERS_PER_ORG
-from ..contract import TRADE_COLUMNS, Case, Edge, Trade
+from ..contract import Case, Edge, Trade
 from ..util import BUILD, PORTRAITS, print_table, read_json, utc_now, write_json
 from .budget import ledger_totals, member_end, member_ledger, org_ties, split_member_edges
 from .cases import find_cases
 from .delays import build_delays
 from .finance import load_campaign_finance
-from .members import board_order, coverage, node_info, trade_row, trade_summary
+from .members import board_order, coverage, node_info, trade_file, trade_summary
 from .orgs import SplitStats, org_index, party_split, shard
 from .plugins import attach_evidence, load_edges, load_orgs, load_sources
 from .publish import git_commit, staging_dir, swap_into_place
@@ -103,8 +103,7 @@ def run() -> None:
         ledger_stats["ledger_rows_former_members_cut"] += len(rest) + len(context) - len(shown)
         ts = sorted(by_member_trades.get(mid, []), key=lambda t: (t["date"] or date.min, t["id"]), reverse=True)
         if ts:
-            write_json(staging / "trades" / f"{mid}.json", {"cols": TRADE_COLUMNS, "rows": [trade_row(t) for t in ts],
-                                                             "filings": {t["doc_id"]: t["url"] for t in ts}})
+            write_json(staging / "trades" / f"{mid}.json", trade_file(ts))
         refs = {end["id"]: end for e in full[mid] for end in (e["from"], e["to"]) if end["id"] != mid}
         write_json(staging / "members" / f"{mid}.json", {
             "member": {**summary, "terms": m["terms"], "committees": m["committees"], "fec_ids": m["fec_ids"]},
@@ -144,7 +143,8 @@ def run() -> None:
         "counts": {"members": len(summaries), "current_members": len(current), "trades": len(trades),
                    "orgs": len(used_orgs), "edges": len(edges), "edges_by_type": dict(sorted(edge_types.items())),
                    "edges_full": len(full_ids), "edges_full_by_type": dict(sorted(full_types.items())),
-                   "member_ties": len(member_ties), "cases": len(cases), "org_shards": n_shards, **ledger_stats},
+                   "member_ties": len(member_ties), "cases": len(cases), "org_shards": n_shards, **ledger_stats,
+                   **trades_report.get("amendment_counts", {})},
         "publication_budget": publication_budget(),
         "unmatched": {
             "trades_without_ticker": trades_report.get("null_ticker"),

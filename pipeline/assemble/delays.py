@@ -1,13 +1,15 @@
 """Disclosure-timing aggregate (`delays.json`). Data dictionary: "Disclosure timing (`delays.json`)".
 
 Counts, per member and site-wide, how many days passed between each trade's transaction date as filed and the date
-the report became publicly available (`lag_days`, already on every published trade). Observed elapsed days only:
+the trade first became publicly available (`lag_days`, already on every published trade; a House reprint marked
+Amended is folded into its original by pipeline/trade_amendments.py and adds no trade and no days). Observed elapsed days only:
 not a compliance finding. Pure functions; reads and writes nothing. The input rows are the same current-version
 trades that are published in `trades/<id>.json`, so a member's row can be re-derived from their trade file
 (`rows_from_trade_file`), which is what the validator does.
 
 Missing is never zero: a trade with no transaction date or no availability date has no lag, is counted as
-`undated`, and is in no band. A negative lag is counted separately and is in no band and no statistic.
+`undated`, and is in no band. A trade with both dates but no lag (a later version changed its transaction date, so
+the first public filing showed another date) is counted as `date_corrected`, also in no band. A negative lag is counted separately and is in no band and no statistic.
 Percentiles use the nearest-rank method over dated, non-negative lags (integers; the median is the 50th percentile).
 """
 from __future__ import annotations
@@ -24,7 +26,7 @@ BAND_LABELS = (f"0-{BAND_EDGES[0]}", f"{BAND_EDGES[0] + 1}-{BAND_EDGES[1]}", f"{
                f"{BAND_EDGES[2] + 1}-{BAND_EDGES[3]}", f"over-{BAND_EDGES[3]}")
 BAND_COLS = ("b0_30", "b31_45", "b46_90", "b91_365", "b366_plus")
 MEMBER_COLS = ["id", "count", "dated", *BAND_COLS, "negative", "undated", "amended", "median", "p90", "max",
-               "first_year", "last_year"]
+               "first_year", "last_year", "date_corrected"]
 CHAMBERS = ("rep", "sen")
 
 DEFINITION = {
@@ -38,11 +40,16 @@ DEFINITION = {
         "The statutory clock runs from the filer's notification of the transaction, up to 45 days after the "
         "transaction; notification dates are not in the data, and only the 45-day outer bound can be compared.",
         "Extensions and fee waivers granted by the ethics committees are not in the data.",
-        "Each trade is the current version of its event. For an amended event the availability date is the one "
-        "the source records for that current version; amended is counted separately and is also inside the bands.",
+        "Each trade is counted once, from the earliest date it was public: the earliest version of its event, and "
+        "the earliest filing when a later House filing marked Amended or Deleted prints it again unchanged.",
+        "When a later version changed the transaction date, the first public filing showed a different date; no "
+        "elapsed-days figure is given for that trade. It is counted as date corrected, in no band and no statistic.",
+        "A House row marked Amended that changes the date, owner, action, amount or asset cannot be tied to its "
+        "original exactly; it stays a trade of its own, counted from the amending filing. amended counts every "
+        "amended trade separately and is also inside the bands.",
         "Trades with no transaction date or no availability date are counted as undated, never as 0 days.",
-        "A negative value means the recorded availability date precedes the transaction date; the filing is "
-        "unexplained by these fields and is counted separately.",
+        "A negative value means the recorded availability date precedes the transaction date on a trade with a "
+        "single version; the filing is unexplained by these fields and is counted separately.",
     ],
 }
 
@@ -66,7 +73,7 @@ class Acc:
     def __init__(self) -> None:
         self.count = 0
         self.bands = [0] * len(BAND_LABELS)
-        self.negative = self.undated = self.amended = 0
+        self.negative = self.undated = self.amended = self.date_corrected = 0
         self.lags: list[int] = []
         self.years: list[int] = []
 
@@ -76,7 +83,9 @@ class Acc:
         if t["date"]:
             self.years.append(int(str(t["date"])[:4]))
         lag = t["lag_days"]
-        if lag is None:
+        if lag is None and t["date"] and t.get("available"):
+            self.date_corrected += 1
+        elif lag is None:
             self.undated += 1
         elif lag < 0:
             self.negative += 1
@@ -90,18 +99,21 @@ class Acc:
 
     def group(self) -> dict[str, Any]:
         med, p90, mx = self.stats()
-        return {"count": self.count, "dated": self.count - self.undated, "bands": dict(zip(BAND_LABELS, self.bands)),
-                "negative": self.negative, "undated": self.undated, "amended": self.amended,
+        return {"count": self.count, "dated": self.count - self.undated - self.date_corrected,
+                "bands": dict(zip(BAND_LABELS, self.bands)), "negative": self.negative, "undated": self.undated,
+                "date_corrected": self.date_corrected, "amended": self.amended,
                 "median": med, "p90": p90, "max": mx}
 
     def row(self, member: str) -> list[Any]:
         med, p90, mx = self.stats()
-        return [member, self.count, self.count - self.undated, *self.bands, self.negative, self.undated, self.amended,
-                med, p90, mx, min(self.years) if self.years else None, max(self.years) if self.years else None]
+        return [member, self.count, self.count - self.undated - self.date_corrected, *self.bands, self.negative,
+                self.undated, self.amended, med, p90, mx, min(self.years) if self.years else None,
+                max(self.years) if self.years else None, self.date_corrected]
 
 
 def build_delays(trades: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
-    """Each trade needs: member, chamber, date (date, ISO string or None), lag_days (int or None), amended."""
+    """Each trade needs: member, chamber, date (date, ISO string or None), lag_days (int or None), amended; and
+    `available` to tell a withheld lag (date corrected) from a missing date (absent or None: undated)."""
     total, per_member = Acc(), defaultdict(Acc)
     per_chamber, per_year = {ch: Acc() for ch in CHAMBERS}, defaultdict(Acc)
     for t in trades:
@@ -120,5 +132,5 @@ def rows_from_trade_file(member: str, rows: Iterable[Sequence[Any]]) -> list[dic
     for r in rows:
         d = dict(zip(TRADE_COLUMNS, r))
         out.append({"member": member, "chamber": None, "date": d["date"], "lag_days": d["lag_days"],
-                    "amended": d["amended"]})
+                    "amended": d["amended"], "available": d["available"]})
     return out

@@ -21,7 +21,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from .edges import by_year, make_edge, node, top_evidence
-from .trades import SOURCE_ID
+from .trades import SCHEMA, SOURCE_ID
 from .util import BUILD, EDGES_DIR, ORGS_DIR, print_table, read_json, write_jsonl, write_source_meta
 
 from .config import (TOGETHER_EXCLUDED_CLASSES as EXCLUDED_CLASSES, TOGETHER_MIN_LIFT as MIN_LIFT,
@@ -231,7 +231,8 @@ def org_rows(edges: list[dict[str, Any]], trades: list[dict[str, Any]], companie
 def run() -> None:
     trades = pq.read_table(BUILD / "trades.parquet").to_pylist()
     trades = resolve(trades, read_json(BUILD / "ticker_orgs.json"))
-    pq.write_table(pa.Table.from_pylist(trades), BUILD / "trades_resolved.parquet")
+    pq.write_table(pa.Table.from_pylist(trades, schema=SCHEMA.append(pa.field("org", pa.string()))),
+                   BUILD / "trades_resolved.parquet")
     companies = read_json(BUILD / "companies.json")
     spine = read_json(BUILD / "spine.json")
     traded = traded_edges(trades)

@@ -66,7 +66,7 @@ Times and peak memory (resident set of the whole process, which only grows) from
 | Stage | Code | Reads | Writes (under `pipeline/build/` unless noted) | Time | Peak RSS |
 |---|---|---|---|---:|---:|
 | `spine` | `spine.py` | congress-legislators (daily) | `spine.json`, `committees.json`, `sources/legislators.json` | 1 s | 0.1 GB |
-| `trades` | `trades.py` | HF `austin-starks/congressional-stock-trades` (by commit) | `trades.parquet`, `sources/hf_trades.json` | 5 s | 1.2 GB |
+| `trades` | `trades.py`, `trade_amendments.py` | HF `austin-starks/congressional-stock-trades` (by commit) | `trades.parquet`, `sources/hf_trades.json` | 5 s | 1.2 GB |
 | `companies` | `companies.py`, `sic.py` | SEC tickers (daily), FSDS `sub.txt`, `trades.parquet`, overrides | `ticker_orgs.json`, `companies.json`, `company_names.json`, `sources/sec.json` | 1 s | 1.2 GB |
 | `fec` | `fec/` | FEC bulk files (see its README), `spine.json`, `company_names.json`, overrides | `edges/fec_*.jsonl`, `orgs/fec.jsonl`, `sources/fec.json`, `campaign_finance.json`, `sources/fec_spending.json` | 162 s (+ about 5 s per cycle for spending, not yet measured in a full run) | 1.9 GB |
 | `edges_trades` | `edges_trades.py` | `trades.parquet`, `ticker_orgs.json`, `companies.json` | `trades_resolved.parquet`, `edges/trades.jsonl`, `orgs/trades.jsonl` | 23 s | 1.5 GB |
@@ -80,7 +80,7 @@ Times and peak memory (resident set of the whole process, which only grows) from
 
 `delays.json` (disclosure timing) is written by the `assemble` stage from `assemble/delays.py`, from the same current-version
 trade rows as `trades/<id>.json`; `validate.py` calls `validate_delays.py`, which re-derives it from the published trade
-files. Contract: data dictionary, "Disclosure timing"; audit: `docs/validation/disclosure-timing-audit.md`.
+files. Contract: data dictionary, "Disclosure timing"; audit: `docs/validation/disclosure-timing-audit.md`. House reprints marked Amended or Deleted are folded into the trade they restate by `trade_amendments.py` (exact signals only; counts in `meta.json`), checked by `validate_trade_amendments.py`.
 
 Whole run: 322-332 s, peak 4.3 GB (before this review: 294 s, 5.9 GB).
 
@@ -93,7 +93,7 @@ pipeline/
   contract.py         contract shapes: TypedDicts (Edge, Evidence, Case, Trade, ...), column lists, edge families
   util.py             paths, cached HTTP with retry, deterministic JSON, override file, name/ticker normalisation
   edges.py            range arithmetic (sum_amounts), by_year, evidence ranking, edge ids
-  spine.py trades.py companies.py sic.py edges_trades.py edges_committees.py    core sources and edges
+  spine.py trades.py trade_amendments.py companies.py sic.py edges_trades.py edges_committees.py    core sources and edges
   fec/                download -> load (parse) -> refs (identities) -> build (rules, edges, orgs) -> run (write, checks);
                       spending + spending_oppexp (loans and leadership PAC spending by category -> campaign_finance.json)
   holdings/           source (download) -> run (parse, resolve, emit) -> rules (redaction) -> validate
@@ -151,7 +151,8 @@ person checked. `util.read_overrides` is the only reader: rows without `reviewed
 endpoints, by_year sums, ledger completeness and caps, the Case rule re-derived from published edges, cross-file
 counts, no minor's name in trade text). `python -m pipeline.holdings.validate` checks the holdings files. Both
 exit 1 on any failure. The hand-check samples are written to `pipeline/build/`; the copies in `docs/validation/` are
-filled in by people and are never overwritten (see `docs/validation/README.md`).
+filled in by people and are never overwritten (see `docs/validation/README.md`). Validation re-reads the trades source
+from the download cache, so `--stage validate` alone needs the cache the build used (the daily job runs both in one step).
 
 ## Daily workflow
 
@@ -364,8 +365,8 @@ contributions file (`indiv`), and publishes no individual contributor; the notic
 - **Committees are current only.** `sits_with` reflects the current Congress. Historical assignments are not loaded.
 - **Publication budget.** Not every money tie is published with its evidence (see the data dictionary). Every tie
   stays in `pipeline/build/`, and totals cover all of them.
-- **Late flag.** `late` compares public availability with the transaction date (more than 45 days). The legal
-  deadline runs from the notification date, so a few flagged trades may have been filed on time.
+- **Late flag.** `late` compares the trade's first public availability with the transaction date (more than 45 days). The legal
+  deadline runs from the notification date, so a few flagged trades may have been filed on time. A House row marked Amended that changes a key field (date, owner, action, amount, asset) cannot be tied to its original exactly: both stay, and the amended one is timed from the amending filing (`meta.exclusions.amended_rows_without_original`).
 - **Memory.** Assembly holds every edge (without evidence) in memory: about 4.2 GB peak with the full FEC plug-in.
 - **Campaign finance block.** `MemberFile.campaign_finance` (loans as the FEC summarises them, leadership PAC spending
   by FEC category and by the FEC's purpose groups) comes from `pipeline/fec/spending.py` in the `fec` stage and writes

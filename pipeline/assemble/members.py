@@ -1,5 +1,6 @@
 """Pieces of a member file (`members/<id>.json`) and trade file (`trades/<id>.json`). Data dictionary: "MemberFile",
-"TradeFile", "Coverage". Pure functions; reads and writes nothing.
+"TradeFile", "Coverage". Pure functions; reads and writes nothing. `trade_file` also publishes the later House
+printings folded into a trade (`amendments`), so both filings stay citable.
 
 Coverage rule: one entry per year 2000..this year in which the member held office (a term ending on 3 January does
 not count that year). Trades: n/a before the STOCK Act year; none before the chamber's first filing year in the
@@ -76,6 +77,18 @@ def trade_row(t: Trade) -> list[Any]:
             "available": t["available"].isoformat() if t["available"] else None,
             "low": num(t["low"]), "high": num(t["high"]), "doc": t["doc_id"]}
     return [vals[c] for c in TRADE_COLUMNS]
+
+
+def trade_file(ts: list[Trade]) -> dict[str, Any]:
+    """trades/<id>.json. `filings` covers every cited filing: each trade's own and each later printing folded into it."""
+    filings = {t["doc_id"]: t["url"] for t in ts}
+    later: dict[str, list[dict[str, Any]]] = {}
+    for t in ts:
+        for a in t.get("amendments") or []:
+            filings[a["doc_id"]] = a["url"]
+            later.setdefault(t["id"], []).append({"id": a["id"], "doc": a["doc_id"], "status": a["status"],
+                                                  "available": a["available"].isoformat() if a["available"] else None})
+    return {"cols": TRADE_COLUMNS, "rows": [trade_row(t) for t in ts], "filings": filings, "amendments": later}
 
 
 def board_order(e: Edge, case_edges: set[str]) -> tuple[Any, ...]:

@@ -158,5 +158,6 @@ class Trade(TypedDict):
     low: float | None
     high: float | None
     url: str
-    doc_id: str
+    doc_id: str                 # the earliest filing of the trade
+    amendments: list[dict]      # later filings: {id, doc_id, url, status "Amended" | "Deleted" | "Version", available}
     org: str | None
