@@ -133,6 +133,18 @@ Notes on the kept rows:
   (201610110300102688) with different amounts, $50,000 and $500; the campaign reports $500. The page image decides
   it; until it is read and the owner decides, the site shows $50,000 as the bulk file has it.
 
+Two allow-listed rows were not PAC money in branch run 45687752846, which found 11 of the 13:
+
+- Country First PAC (`C00457705`) is John McCain's leadership PAC (OpenFEC sponsor S6AZ00019). In that run it was
+  linked to McCain, so its row to Scott Brown counts as member-to-member money (`keep:funds`, listed apart as
+  "funds rows over $10,000" in the FEC report).
+- KITPAC (`C00410357`) is Kit Bond's leadership PAC (OpenFEC sponsor S6MO00289; the leadership file leaves the
+  sponsor blank). Its row goes to Bond's own campaign (`C00216705`, Missourians for Kit Bond). When the PAC is linked
+  to Bond, the row is `drop:own_committee_transfer` and counted nowhere. The run's log does not show which rule
+  took the row in run 45687752846.
+
+Both stay on the allow-list in case a build classifies them as PAC money again.
+
 ## Effect
 
 The 38 rows were all kept as `pac_money` before: $1,270,341 to members no longer counted, most for Ciro Rodriguez

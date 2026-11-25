@@ -97,7 +97,7 @@ def print_report(ex: dict[str, Any], review: dict[str, Any], todo: list[dict[str
           f"(${over['dollars']:,.0f}, {over['givers']:,} givers); {sums['count']:,} giver-member-election sums above "
           f"${conduits.LIMIT:,}; {small['count']:,} giver-cycles with {conduits.SMALL_ROWS}+ rows under ${conduits.SMALL}")
     print(f"fec conduits report: {len(todo)} single rows above ${conduits.HARD:,} not on the allow-list "
-          f"({'FAIL' if enforce_hard else 'report only, see validate_fec_conduits.py'})")
+          f"({'enforced: each fails the build' if enforce_hard else 'report only, see validate_fec_conduits.py'})")
     for r in todo[:40]:
         print(f"  {r.get('date')} {r.get('committee')} {str(r.get('committee_name') or '')[:40]:40} -> {r.get('to')} "
               f"${r.get('amount'):,.0f} sub_id {r.get('sub_id')}")
