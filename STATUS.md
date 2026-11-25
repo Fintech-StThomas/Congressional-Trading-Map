@@ -3,7 +3,7 @@
 **Read this first.** It is the single shared picture of the project for every teammate and every AI assistant (Claude, ChatGPT or any other), in any session.
 **Rule:** whoever changes what is live, what is in progress, or what is planned updates this file in the same pull request. If this file and the code disagree, the code is right and this file must be fixed.
 
-Last updated: 2026-11-24 (America/Chicago)
+Last updated: 2026-11-25 (America/Chicago)
 
 ## What this is
 
@@ -133,6 +133,7 @@ web/ (Next.js on Vercel) reads the bucket: pages are built on first visit and re
 - The financial-history and security/CI continuation is now on `main`: House member pages include asset timelines, change since the first disclosed report and debt history; full files include transition CSV. Automated checks run on every PR, and this branch extends the site job to run Chromium/CSP tests.
 - The latest daily job inspected in this session succeeded (run 43784027285 on 2026-11-15 Central time). Branch protection could not be inspected with the available GitHub token.
 - Branch protection and moving R2 upload secrets into a `production` GitHub Environment remain owner setup; instructions are in `docs/SECURITY-REVIEW.md`.
+- Dependency updates (branch `claude/agent-2026-11-25-paper-trail`, 2026-11-25, waiting for review): `.github/dependabot.yml` asks Dependabot for weekly pull requests for GitHub Actions, `pipeline/` and `scripts/assets/` (pip) and `web/` (npm); minor and patch bumps grouped per ecosystem, a 7-day cooldown on new releases, at most 5 open each. Owner steps: switch on Dependabot alerts and security updates in the repository's security settings. Not yet solved: a Dependabot pull request that edits `web/package.json` or `pipeline/requirements.txt` fails "Require STATUS.md for code changes", so each one needs a STATUS.md line or a check exemption before it can pass.
 
 ## Security and capacity (reviewed 2026-11-15; full report in `docs/SECURITY-REVIEW.md`)
 
@@ -197,7 +198,6 @@ report, not measurements repeated in this session.
 - A custom domain on the R2 bucket (the current r2.dev address is rate-limited by Cloudflare and meant for development; on 2026-11-16 it answered 429 to a local build, which passed on retry, and Vercel builds read the same address).
 - Dated snapshots of the data, so any past figure can be cited and reproduced.
 - Split the largest files (the 7.5 MB trades file by year; the organisations index).
-- [agent] Automatic dependency updates and security alerts.
 - An uptime check on the site and on the daily job.
 
 ## Working rules

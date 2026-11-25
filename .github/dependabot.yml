@@ -1,0 +1,44 @@
+# Dependabot version updates: weekly pull requests for GitHub Actions, the Python pipeline and the Next.js site.
+# Minor and patch bumps are grouped into one pull request per ecosystem; majors arrive one at a time.
+# A new release waits 7 days before it is proposed (cooldown; security updates are not delayed).
+# Security alerts and security-update pull requests are repository settings, switched on by the owner.
+# The release Worker (worker/) has no dependencies, so it is not listed.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    groups:
+      actions:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "pip"
+    directories:
+      - "/pipeline"
+      - "/scripts/assets"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    groups:
+      python:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "npm"
+    directory: "/web"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    groups:
+      web:
+        update-types: ["minor", "patch"]
