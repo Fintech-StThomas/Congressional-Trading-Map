@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from . import reviewed_rows
 from .load import q
 
 FORWARDERS = {"C00694323": "WINRED", "C00401224": "ACTBLUE", "C00468314": "DEMOCRACY ENGINE, INC., PAC"}
@@ -137,7 +138,7 @@ def counts_only(rev: dict) -> dict:
 
 def report_all(con, report: dict, build_dir: Path) -> None:
     """FEC stage hook: exclusion counts and review counts into the report; the full review lists into REVIEW_FILE."""
-    excl, rev = exclusions(con), review(con)
+    excl, rev = exclusions(con) | reviewed_rows.exclusions(con), review(con)
     report["exclusions"], report["conduit_review"] = excl, counts_only(rev)
     build_dir.mkdir(parents=True, exist_ok=True)
     (build_dir / REVIEW_FILE).write_text(json.dumps(rev, indent=1, sort_keys=True) + "\n")
@@ -150,6 +151,10 @@ def print_report(excl: dict, rev: dict) -> None:
           f"({e['all_recipients']['rows']:,} rows, ${e['all_recipients']['dollars']:,.0f} to all recipients)")
     for c in e["committees"]:
         print(f"  {c['committee']} {c['name'][:44]:44} {c['rows']:>7,} ${c['dollars']:>12,.0f}")
+    rr = excl.get(reviewed_rows.KEY)
+    if rr:
+        print(f"reviewed single rows ({reviewed_rows.RULE}): {rr['rows']} of {rr['listed']} listed, ${rr['dollars']:,.0f}; "
+              f"not taken: {', '.join(rr['not_taken']) or 'none'}")
     print(f"kept pac_money rows (non-party givers) over ${LIMIT:,}: {rev['rows_over_limit']['count']:,} "
           f"(${rev['rows_over_limit']['dollars']:,.0f}, {rev['rows_over_limit']['givers']:,} givers); over ${HARD:,}: "
           f"{rev['rows_over_hard']['count']:,}; 24K giver-member-election sums over ${LIMIT:,}: "

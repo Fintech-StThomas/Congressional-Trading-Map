@@ -93,7 +93,9 @@ Every pas2 row gets exactly one label in `p_rules`. The audit below is a group-b
    "EARMARK", are individuals' money passed through (`drop:earmarked_via_conduit`). Separately, every 24K row of the
    PACs listed by exact id in `conduits.py`, in the cycle files listed for each, is `drop:conduit_pass_through`: they
    forward contributions earmarked by individuals as plain 24K rows. Their own direct gifts in those cycles are
-   dropped with them. Ids, evidence and counts: `docs/fec-conduits.md`.
+   dropped with them. Ids, evidence and counts: `docs/fec-conduits.md`. Single rows above $10,000 that were read
+   against the giver's and the recipient's filings and shown to be paid elsewhere, voided or forwarded are dropped by
+   exact `SUB_ID` (`reviewed_rows.py`, `drop:reviewed_not_received`; `docs/fec-reviewed-rows.md`).
 7. **Recipient.** A contribution counts only if `OTHER_ID` is an authorised campaign committee of a member: designation
    P or A in the linkage file, or in the committee master with a candidate id. If `OTHER_ID` is blank, the row's
    `CAND_ID` is used. Contributions to JFCs, leadership PACs, parties and unknown committees are dropped, each
@@ -168,6 +170,7 @@ per-cycle counts and the rule table for each cycle are in `sources/fec.json` (`f
 | drop:amount_equals_recipient_committee_id | 2 | 835,342 |
 | drop:earmarked_via_conduit | 1,319,594 | 48,592,098 (net; WinRed rows include refunds) |
 | drop:conduit_pass_through | counted from the next `main` run | (bulk files of 2026-11-24, no OpenFEC sponsors: 5,061 rows, 9,698,173) |
+| drop:reviewed_not_received | 38 (listed by row id) | 1,270,341 |
 | drop:recipient_campaign_not_member | 274,861 | 593,264,809 |
 | drop:recipient_not_a_campaign_committee | 435 | 1,155,846 |
 | drop:recipient_committee_unknown | 716 | 1,038,103 |
