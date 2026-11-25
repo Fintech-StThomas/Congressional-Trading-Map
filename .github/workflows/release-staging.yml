@@ -4,6 +4,10 @@ name: Release staging and rollback
 #   provider-check: verifies that the bucket honours conditional writes and headers, under a disposable prefix.
 #   rollback: verifies an archived release (every blob exists with the right size; meta.json is read and hashed;
 #             with full_verify every blob is hashed), then moves releases/current.json to it.
+#   withdraw: privacy or legal exposure only, owner's decision (docs/RELEASE-OPERATIONS.md, "Withdrawal from Actions").
+#             Tombstones the named releases and deletes their blobs that no live release references. A dry run
+#             unless dry_run is unticked. It shares the daily job's concurrency group, so it never runs while
+#             "Daily data refresh" is publishing. scripts/ops/withdraw_dispatch.py checks every input.
 # No schedule. Inputs reach the shell only through environment variables.
 
 on:
@@ -16,6 +20,7 @@ on:
         options:
           - provider-check
           - rollback
+          - withdraw
       release_id:
         description: "rollback only: the 64-character release ID to activate"
         type: string
@@ -26,6 +31,35 @@ on:
         type: boolean
         required: false
         default: false
+      release_ids:
+        description: "withdraw only: release IDs to withdraw, space-separated (64 hex each); the first is the one confirmed"
+        type: string
+        required: false
+        default: ""
+      reason:
+        description: "withdraw only: the reason word stored in the tombstone"
+        type: choice
+        required: false
+        default: privacy
+        options:
+          - privacy
+          - legal
+          - other
+      exposed_paths_file:
+        description: "withdraw only: committed file of exposed release paths, docs/withdrawals/<name>.txt (empty = every file is exposed)"
+        type: string
+        required: false
+        default: ""
+      confirm:
+        description: "withdraw only: the first release ID of release_ids, repeated"
+        type: string
+        required: false
+        default: ""
+      dry_run:
+        description: "withdraw only: plan and check against the bucket, change nothing. Untick for the real withdrawal"
+        type: boolean
+        required: false
+        default: true
 
 permissions:
   contents: read
@@ -40,6 +74,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: production   # holds the R2_* secrets, limited to main (docs/SECURITY-REVIEW.md, S6)
+    # A withdrawal deletes blobs, so it takes the daily job's group (data.yml): it waits for a running refresh and a
+    # refresh waits for it. GitHub keeps one waiting run per group; a newer one replaces it (see the runbook).
+    concurrency:
+      group: ${{ inputs.action == 'withdraw' && format('data-refresh-{0}', github.ref) || format('release-staging-job-{0}', github.ref) }}
+      cancel-in-progress: false
     steps:
       # Actions pinned to the commit of the tag in use (tag in the comment), as in data.yml.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (node24)
@@ -60,6 +99,11 @@ jobs:
           ACTION: ${{ inputs.action }}
           RELEASE_ID: ${{ inputs.release_id }}
           FULL_VERIFY: ${{ inputs.full_verify && '1' || '' }}
+          RELEASE_IDS: ${{ inputs.release_ids }}
+          REASON: ${{ inputs.reason }}
+          EXPOSED_PATHS_FILE: ${{ inputs.exposed_paths_file }}
+          CONFIRM: ${{ inputs.confirm }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
@@ -80,6 +124,10 @@ jobs:
               else
                 python -m pipeline.publish_release --release "$RELEASE_ID" --activate
               fi
+              ;;
+            withdraw)
+              # Every input is validated in Python before the bucket is touched; a rejected value is never echoed.
+              python -m scripts.ops.withdraw_dispatch
               ;;
             *)
               echo "::error::unknown action"
