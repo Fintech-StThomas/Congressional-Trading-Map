@@ -6,6 +6,7 @@ release `f86168d2...`, 10 or more releases since), the Worker has served it from
 `https://paper-trail-releases.lota-inc0.workers.dev` since then, and the public site reads only archived releases
 (`RELEASE_BASE_URL` is set in Production). What has **not** been run for real is the withdrawal command: it is
 tested only against a fake S3 (moto) and a fake R2 binding, never against the real bucket, Vercel or Cloudflare.
+A withdrawal of the ten releases before `219613c1...` was decided on 2026-11-25 (`docs/withdrawals/`).
 The activation checklist below is kept as the record of the order that was followed and as the procedure for a
 second environment.
 
@@ -132,9 +133,14 @@ identifier that got past the validators. The owner decides; nobody else should r
   the withdrawal until you publish or activate one that does not.
 - Say which file holds the exposed data with `--exposed-path <path in the release>` (repeatable). Without it every
   file of the release is treated as exposed, which in practice lists almost every release (they all share most
-  blobs); that is the safe default, not a bug.
+  blobs); that is the safe default, not a bug. `--exposed-paths-file <file>` reads the paths from a text file (one
+  per line, `#` comments allowed). The paths must be files of `--release`; the same paths in the `--also-withdraw`
+  releases count as exposed too, even where their bytes differ.
+- `--dry-run` reads the bucket, runs every refusal check and prints what would be withdrawn, deleted and kept. It
+  writes nothing. Run it first.
 - Run from a trusted machine with the `R2_*` variables, when no daily run is in progress:
-  `python -m pipeline.withdraw_release --release <id> --reason privacy|legal|other --confirm <id> [--exposed-path <path> ...] [--also-withdraw <id> ...]`.
+  `python -m pipeline.withdraw_release --release <id> --reason privacy|legal|other --confirm <id> [--exposed-path <path> ...] [--exposed-paths-file <file>] [--also-withdraw <id> ...] [--dry-run]`,
+  or from Actions (next section).
   Order: tombstones first, then the blobs no live release uses (exact `releases/blobs/<sha256>` keys), then the
   descriptors (so an interrupted run can be repeated), then one index update. The live-release list is recomputed
   right before deleting; a release that appeared in between and shares exposed bytes stops the run after the
@@ -143,6 +149,35 @@ identifier that got past the validators. The owner decides; nobody else should r
 - After withdrawal publishing or activating the same bytes is refused, because the release ID is the hash of
   the bytes. The Worker answers 404 for a tombstoned release (checked at most 30 seconds late per instance).
 - Blobs left unreferenced by failed publishes (not by withdrawals) are not found or removed by any command yet.
+
+### Withdrawal from Actions
+
+Actions -> "Release staging and rollback" -> Run workflow on `main` -> action `withdraw`. It runs the same command
+with the `production` environment's `R2_*` secrets, so no key leaves GitHub.
+
+| Input | Value |
+|---|---|
+| `release_ids` | The releases to withdraw, space-separated, 64 hexadecimal characters each. The first becomes `--release`, the others `--also-withdraw`. Never the current release. |
+| `reason` | `privacy`, `legal` or `other`. |
+| `exposed_paths_file` | A file committed on `main` directly under `docs/withdrawals/`, ending `.txt`: one release path per line, `#` comments allowed, paths only (never filed text). Empty means every file is exposed. |
+| `confirm` | The first ID of `release_ids` again. |
+| `dry_run` | Ticked by default: plan and check only. Untick it for the real withdrawal. |
+
+1. Commit the record first: `docs/withdrawals/<date>-<reason>.md` (which releases, why, scan counts, no filed text)
+   and the path list `docs/withdrawals/<date>-exposed-paths.txt`. Both are reviewed in a pull request like any change.
+2. Run with `dry_run` ticked. The log ends with `release withdrawal DRY RUN, nothing changed: {...}`: check
+   `would_withdraw` (every ID you named), `descriptors_found`, `exposed_blobs`, `would_delete_blobs` and
+   `would_keep_shared_blobs` (blobs the remaining live releases still use). A refusal names its cause and changes nothing.
+3. Run again with `dry_run` unticked. The log ends with `release withdrawn: {...}`. If it fails part-way, run it
+   again with the same inputs.
+4. Do the cache purge below the same day, and add the run number and the printed result to the record.
+
+`scripts/ops/withdraw_dispatch.py` checks every input before the bucket is touched (ID shape, no ID twice, `confirm`,
+the reason word, the file's location and that each line is a path) and never prints a rejected value. The job takes
+the daily job's concurrency group (`data-refresh-refs/heads/main`), so it waits while "Daily data refresh" is running
+and a refresh that starts during a withdrawal waits for it. GitHub keeps only one waiting run per group: if a
+withdrawal is waiting and a scheduled refresh arrives (or the other way round), the older waiting run is cancelled;
+dispatch it again. A refresh dispatched on another branch is not in that group; do not run one during a withdrawal.
 
 What readers see: a citation or permalink to a withdrawn release shows an explicit "not available" page and never
 falls back to the latest data. The site accepts `/r/<id>/...` only for an id that `releases/index.json` lists (or
@@ -229,7 +264,9 @@ it necessary after reading a few months of `--measure` output.
 
 - The withdrawal command (`pipeline.withdraw_release`) has never run against the real bucket, and the purge steps in
   "Withdrawal policy" have not been exercised on Vercel or Cloudflare. Rehearse it on a release created for the
-  purpose (never a cited one) before relying on it.
+  purpose (never a cited one) before relying on it. The `withdraw` action of the workflow has never run on GitHub;
+  it was rehearsed only against a fake store (moto) loaded with the real holdings files of the eleven releases
+  listed on 2026-11-25 (`docs/withdrawals/2026-11-25-privacy.md`). Its `dry_run` is the first real-bucket check.
 - Worker behaviour that depends on Cloudflare itself (the Cache API negative entry for a missing descriptor, which
   needs a `wrangler deploy` of the current `worker/` code to take effect) is tested here only against fakes.
 - Branch dispatches of the daily job run without `LDA_API_KEY`, `FEC_API_KEY` and `SEC_USER_AGENT`: they build and
