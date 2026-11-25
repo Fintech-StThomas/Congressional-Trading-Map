@@ -16,7 +16,7 @@ import duckdb
 import pytest
 
 from pipeline import validate_fec_conduits as vc
-from pipeline.fec import build, conduits, crosscheck, download, load, refs
+from pipeline.fec import build, conduits, crosscheck, download, load, refs, reviewed_rows
 from pipeline.validate import Checker
 
 FIX = Path(__file__).parent / "fixtures" / "fec_conduits"
@@ -167,7 +167,7 @@ def test_crosscheck_compares_like_with_like(monkeypatch) -> None:
 
 def meta_for(con) -> tuple[dict, dict]:
     """(meta.json as assembled: counts only; the full review as written to pipeline/build/)."""
-    ex, rev = conduits.exclusions(con), conduits.review(con)
+    ex, rev = conduits.exclusions(con) | reviewed_rows.exclusions(con), conduits.review(con)
     return {"exclusions": {"non_member_trade_rows": {"rows": 1, "reason": "x"}, **ex},
             "reports": {"fec": {"exclusions": ex, "conduit_review": conduits.counts_only(rev)}}}, rev
 
@@ -189,6 +189,9 @@ def test_report_writes_counts_to_the_report_and_lists_to_a_build_file(monkeypatc
     meta = {"exclusions": report["exclusions"], "reports": {"fec": report}}
     c = Checker()
     vc.check_conduits(c, meta, review_path=tmp_path / conduits.REVIEW_FILE)     # reads the lists from the build file
+    assert list(c.errors) == ["fec conduits: single pac_money row above $10,000 not on the reviewed allow-list"]
+    c = Checker()
+    vc.check_conduits(c, meta, review_path=tmp_path / conduits.REVIEW_FILE, enforce_hard=False)
     assert not c.errors
     c = Checker()
     vc.check_conduits(c, meta, review_path=tmp_path / "absent.json")
@@ -213,10 +216,10 @@ def test_validator_passes_reports_and_can_enforce(monkeypatch, capsys) -> None:
 
     con.execute("UPDATE p_rules SET amt = 25000 WHERE CMTE_ID = ? AND amt = 4000", [VALERO])
     meta, rev = meta_for(con)
-    c = run_check(meta, rev)                                             # report only by default: printed, not failed
+    c = run_check(meta, rev, enforce_hard=False)                        # report only: printed, not failed
     out = capsys.readouterr().out
     assert not c.errors and "1 single rows above $10,000" in out and VALERO in out and "report only" in out
-    c = run_check(meta, rev, enforce_hard=True)
+    c = run_check(meta, rev)                                             # enforced by default
     assert list(c.errors) == ["fec conduits: single pac_money row above $10,000 not on the reviewed allow-list"]
     (row,) = rev["rows_over_hard"]["rows"]
     monkeypatch.setattr(vc, "ALLOWED_ROWS", frozenset({row["sub_id"]}))

@@ -124,10 +124,10 @@ gifts in 2022 to 2026 are counted. In a listed cycle the committee's own direct 
 
 | Id | Name | Why not |
 |---|---|---|
-| `C00332296` | Susan B. Anthony List Candidate Fund | Mixed. It has rows above the limit (2018: $11,690 and $11,050; 2020: ten rows above $5,000) and runs of small rows (2006: 282 under $200; 2024: 277). A recipient (Friends of Chris Smith `C00096412`, October 2018) reports earmarks "through conduit" from "SBA LIST CANDIDATE FUND", but by name, as receipt type 15 and for less than the giver's row. Most of its rows are round gifts of $1,000 to $5,000. Not listed until the recipient side is matched by id; its rows above $5,000 are in the review report. |
+| `C00332296` | Susan B. Anthony List Candidate Fund | Mixed. It has rows above the limit (2018: $11,690 and $11,050; 2020: ten rows above $5,000) and runs of small rows (2006: 282 under $200; 2024: 277). A recipient (Friends of Chris Smith `C00096412`, October 2018) reports earmarks "through conduit" from "SBA LIST CANDIDATE FUND", but by name, as receipt type 15 and for less than the giver's row. Most of its rows are round gifts of $1,000 to $5,000. Not listed until the recipient side is matched by id; its rows above $5,000 are in the review report. Its four rows above $10,000 (purpose "EARMARKED CONTRIBUTION") are dropped row by row (`docs/fec-reviewed-rows.md`). |
 | `C00494971` | Florida Freedom Committee | Its one large row ($376,087 to committee `C00376087`) is an amount equal to the recipient's committee id, already dropped by that rule. The other rows are round gifts. |
 | `C00688069` | Support American Leaders PAC | No 24K rows in the 2018, 2020 or 2022 files. No evidence either way. |
-| `C00341396` | MoveOn.org Political Action | Found by the review report, not yet reviewed: ten kept rows above $10,000 to members (largest $105,295, 2006). A likely next entry once a recipient's report is checked. |
+| `C00341396` | MoveOn.org Political Action | Reviewed 2026-11-25. Its ten rows above $10,000 (2006, 2008, 2012, 2018; largest $105,295) are forwarded earmarks, by its own purpose text and the recipients' reports, and are dropped row by row (`docs/fec-reviewed-rows.md`). Most of its other rows in those cycles are round direct gifts (2018: 182 of 183), so the cycles are not listed. |
 
 ## Measured effect (bulk files of 2026-11-24, all cycles, without the OpenFEC sponsor list)
 
@@ -175,26 +175,11 @@ Chamber of Digital Commerce PAC `C00567412`, League of Conservation Voters Actio
 Campaign PAC `C00235853`. None of them has been
 checked against a recipient's report, so none is listed.
 
-**The hard failure is not switched on.** The intent is to fail the build on any single kept row above $10,000 that
-is not on a reviewed allow-list (`ALLOWED_ROWS`, by FEC `SUB_ID`, in `pipeline/validate_fec_conduits.py`). With the
-allow-list empty, 51 such rows remain (10 in the 2018 to 2022 files), so `ENFORCE_HARD` is `False` and the rows are
-printed. The ten in the 2018 to 2022 files:
-
-| Date | Giver | To | Amount | `SUB_ID` |
-|---|---|---|---|---|
-| 2018-07-03 | `C00488486` Communications Workers of America Working Voices | N000002 | $100,000 | 4082420181586075422 |
-| 2018-03-22 | `C00394775` Groom Law Group PAC | R000570 | $25,000 | 2042620181530472549 |
-| 2020-06-24 | `C00149013` Norton Rose Fulbright US LLP Federal Committee | C001056 | $25,000 | 4072520201794563330 |
-| 2017-06-20 | `C00341396` MoveOn.org Political Action | O000174 | $22,407 | 4072720171439249682 |
-| 2020-12-11 | `C00760124` National Victory Action Fund | L000594 | $20,600 | 4121120211385115934 |
-| 2018-09-10 | `C00372979` Radiance Technologies PAC | S001176 | $20,000 | 4110220181608549285 |
-| 2017-07-06 | `C00129742` California Beet Growers Association PAC | C001097 | $15,094 | 2042720181530585822 |
-| 2022-09-09 | `C00615203` Senior Care Pharmacy Coalition PAC | F000479 | $12,500 | 4101820221589103175 |
-| 2018-10-15 | `C00332296` Susan B. Anthony List Candidate Fund | S000522 | $11,690 | 4061120191657928519 |
-| 2017-05-23 | `C00332296` Susan B. Anthony List Candidate Fund | G000584 | $11,050 | 4072820171442270387 |
-
-Several look like keying errors or a year's gifts entered as one row; they are published as filed until reviewed.
-The other 41 are in the review file of a full run (`rows_over_hard`).
+**The hard failure is on (2026-11-25).** All 51 single kept rows above $10,000 were reviewed against the giver's
+and the recipient's filings: 38 are dropped by row id as `drop:reviewed_not_received` (`pipeline/fec/reviewed_rows.py`)
+and 13 are kept as filed on the allow-list (`ALLOWED_ROWS`, by FEC `SUB_ID`, in `pipeline/validate_fec_conduits.py`).
+`ENFORCE_HARD` is `True`: a new kept row above $10,000 on neither list fails the build until it is reviewed. Rows,
+evidence and reasons: `docs/fec-reviewed-rows.md`. The counts in the table above are from before the review.
 
 ## Known gap: contributions coded 24G
 

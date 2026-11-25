@@ -13,7 +13,7 @@ from datetime import date
 
 import duckdb
 
-from . import conduits, download, leadership, sponsors_api
+from . import conduits, download, leadership, reviewed_rows, sponsors_api
 from .load import q
 from .refs import Companies, Members, Overrides, normalise_name
 
@@ -233,7 +233,7 @@ def classify_rows(con: duckdb.DuckDBPyConnection, cycles: list[int], today: str)
                THEN 'drop:amount_equals_recipient_committee_id'
           WHEN tp IN ({contrib}) AND (CMTE_ID IN ({forwarders}) OR upper(coalesce(MEMO_TEXT,'')) LIKE '%EARMARK%')
                THEN 'drop:earmarked_via_conduit'
-          {conduits.when_sql()}
+          {conduits.when_sql()} {reviewed_rows.when_sql()}
           WHEN tp IN ({contrib}) AND rcpt_cmte_member IS NULL AND OTHER_ID IS NOT NULL AND rcpt_is_cand_cmte
                THEN 'drop:recipient_campaign_not_member'
           WHEN tp IN ({contrib}) AND rcpt_cmte_member IS NULL AND OTHER_ID IS NOT NULL AND rcpt_known_cmte

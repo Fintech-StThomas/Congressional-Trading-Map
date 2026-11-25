@@ -12,22 +12,27 @@ Report only (printed, never fails): kept pac_money rows from non-party givers ab
 election sums above $5,000, and givers with many rows under $200. These are candidates for the reviewed list, to be
 checked against the recipient's own Schedule A before an id is added.
 
-Single rows above $10,000: meant to become a hard failure for rows not on the reviewed allow-list `ALLOWED_ROWS`
-(FEC SUB_IDs). Measured 2026-11-24 with the allow-list empty: 10 such rows in the 2018, 2020 and 2022 files, 51 in
-all cycles (docs/fec-conduits.md), so `ENFORCE_HARD` is False and they are printed as a report. Turn it on once each
-has been reviewed and either allowed here or fixed by a rule; until then failing would stop the daily build on
-rows that are filed data.
+Single rows above $10,000 (hard): every kept one must be on the reviewed allow-list `ALLOWED_ROWS` (FEC SUB_IDs read
+against the giver's and the recipient's filings and kept as filed). The 51 rows of 2026-11-24 were reviewed
+(docs/fec-reviewed-rows.md): 38 are dropped by fec/reviewed_rows.py and 13 are allowed here. A new row above $10,000 fails the build until it is reviewed and added
+to one list or the other.
+`meta.exclusions.reviewed_not_received` must be the FEC stage's own count, its reasons adding up to it.
 """
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
 
-from .fec import conduits
+from .fec import conduits, reviewed_rows
 from .util import BUILD, read_json
 
-ALLOWED_ROWS: frozenset[str] = frozenset()   # FEC SUB_IDs of single rows above $10,000 reviewed and accepted as filed
-ENFORCE_HARD = False
+# FEC SUB_IDs of single rows above $10,000 reviewed and kept as filed (evidence: docs/fec-reviewed-rows.md)
+ALLOWED_ROWS: frozenset[str] = frozenset({
+    "4032920101124718041", "2120820161357086158", "2042620181530472549", "4100720242069224697", "4101720141226179175",
+    "4100220061069805649", "4061520141215164304", "2042720181530585822", "1091720090000738695", "4012520241816510641",
+    "4041920231743310395", "4012720111134918788", "4112220161351132702",
+})
+ENFORCE_HARD = True
 LISTS = (("rows_over_limit", "rows"), ("rows_over_hard", "rows"), ("sums_over_limit", "sums"), ("small_row_givers", "givers"))
 
 
@@ -47,6 +52,12 @@ def check_conduits(c: Any, meta: dict[str, Any], review: dict[str, Any] | None =
     rule = "fec conduits: exclusion is counted in meta.json"
     ex = (meta.get("exclusions") or {}).get(conduits.KEY)
     c.check(isinstance(ex, dict) and ex == (fec.get("exclusions") or {}).get(conduits.KEY), rule, "meta.exclusions vs reports.fec")
+    rr = (meta.get("exclusions") or {}).get(reviewed_rows.KEY)
+    by = rr.get("by_reason") if isinstance(rr, dict) and isinstance(rr.get("by_reason"), dict) else {}
+    c.check(isinstance(rr, dict) and rr == (fec.get("exclusions") or {}).get(reviewed_rows.KEY) and _num(rr.get("rows"))
+            and isinstance(rr.get("reason"), str) and sorted(by) == sorted(reviewed_rows.REASONS)
+            and sum(v.get("rows", 0) for v in by.values()) == rr.get("rows"),
+            "fec reviewed rows: exclusion is counted in meta.json", "meta.exclusions vs reports.fec")
     counts = fec.get("conduit_review")
     path = review_path or BUILD / conduits.REVIEW_FILE
     if review is None and path.exists():
