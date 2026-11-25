@@ -111,7 +111,7 @@ const TRADE_FIELDS: { key: keyof TradeRow; label: string; kind?: "text" | "date"
   { key: "lag_days", label: "Days to public", kind: "days" }, { key: "late", label: "Over 45 days", kind: "bool" },
   { key: "owner", label: "Owner" }, { key: "action", label: "Action" }, { key: "partial", label: "Partial sale", kind: "bool" },
   { key: "ticker", label: "Ticker" }, { key: "ticker_source", label: "Ticker source" }, { key: "asset", label: "Asset as filed" },
-  { key: "asset_class", label: "Asset class" }, { key: "org", label: "Organisation id" }, { key: "doc", label: "Filing id" },
+  { key: "asset_class", label: "Asset class" }, { key: "org", label: "Organisation id" }, { key: "doc", label: "Filing id" }, { key: "notCounted", label: "Not counted (deleted by a later filing)", kind: "bool" },
 ];
 
 /** Field-by-field differences of two rows with the same id. Amount is one field: the range before and after. */
@@ -125,13 +125,13 @@ export function tradeFieldChanges(a: TradeRow, b: TradeRow): FieldChange[] {
   }
   return out;
 }
-
+const counted = (m: Map<string, TradeRow>) => [...m.values()].filter((r) => !r.notCounted).length;
 /** One row per id; if a file repeats an id, the highest version wins, then the first. */
 function byId(rows: readonly TradeRow[]): Map<string, TradeRow> {
   const m = new Map<string, TradeRow>();
   for (const r of rows) {
     const cur = m.get(r.id);
-    if (!cur || (r.version ?? 0) > (cur.version ?? 0)) m.set(r.id, r);
+    if (!cur || (r.version ?? 0) > (cur.version ?? 0)) m.set(r.id, { ...r, notCounted: Boolean(r.notCounted) }); // listed rows carry the mark: a trade that becomes not counted is a change, never "removed"
   }
   return m;
 }
@@ -171,7 +171,7 @@ export function compareTrades(a: readonly TradeRow[], b: readonly TradeRow[], op
     counts[c.cls]++;
     if (c.origin) origins[c.origin]++;
   }
-  return { changes, unchanged, counts, origins, total: { a: A.size, b: B.size } };
+  return { changes, unchanged, counts, origins, total: { a: counted(A), b: counted(B) } };
 }
 
 // ---------------------------------------------------------------- ties (member-file edges)

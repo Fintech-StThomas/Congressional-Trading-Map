@@ -12,8 +12,10 @@ from typing import Any, Callable
 from .assemble.delays import BAND_LABELS, CHAMBERS, DEFINITION, MEMBER_COLS, Acc, rows_from_trade_file
 from .config import LATE_DAYS
 
-GROUP_KEYS = {"count", "dated", "bands", "negative", "undated", "date_corrected", "amended", "median", "p90", "max"}
-COUNT_KEYS = ("count", "negative", "undated", "date_corrected", "amended")
+GROUP_KEYS = {"count", "dated", "bands", "negative", "undated", "date_corrected", "amended_unmatched", "amended",
+              "median", "p90", "max"}
+COUNT_KEYS = ("count", "negative", "undated", "date_corrected", "amended_unmatched", "amended")
+WITHHELD = ("date_corrected", "amended_unmatched")
 
 
 def check_group(c: Any, g: Any, where: str) -> None:
@@ -24,10 +26,10 @@ def check_group(c: Any, g: Any, where: str) -> None:
         return
     c.check(all(isinstance(g[k], int) and g[k] >= 0 for k in ("dated", *COUNT_KEYS))
             and all(isinstance(v, int) and v >= 0 for v in g["bands"].values()), "delays: counts are non-negative integers", where)
-    c.check(sum(g["bands"].values()) + g["negative"] + g["undated"] + g["date_corrected"] == g["count"],
+    c.check(sum(g["bands"].values()) + g["negative"] + g["undated"] + sum(g[k] for k in WITHHELD) == g["count"],
             "delays: bands + negative + undated = count", where)
-    c.check(g["dated"] == g["count"] - g["undated"] - g["date_corrected"] and g["amended"] <= g["count"]
-            and g["date_corrected"] <= g["amended"], "delays: dated and amended consistent", where)
+    c.check(g["dated"] == g["count"] - g["undated"] - sum(g[k] for k in WITHHELD) and g["amended"] <= g["count"]
+            and sum(g[k] for k in WITHHELD) <= g["amended"], "delays: dated and amended consistent", where)
     stats = (g["median"], g["p90"], g["max"])
     none_ok = all(s is None for s in stats) if sum(g["bands"].values()) == 0 else all(isinstance(s, int) and s >= 0 for s in stats)
     c.check(none_ok and (stats[0] is None or stats[0] <= stats[1] <= stats[2]), "delays: median <= p90 <= max, null iff no dated non-negative trade", where)
@@ -42,9 +44,11 @@ def counts_of(g: dict[str, Any]) -> dict[str, Any]:
     return {k: g[k] for k in COUNT_KEYS} | {"bands": g["bands"]}
 
 
-def check_delays(c: Any, doc: Any, members: set[str], published: dict[str, list[list[Any]]],
+def check_delays(c: Any, doc: Any, members: set[str], published: dict[str, Any],
                  summaries: dict[str, dict[str, Any]], is_date: Callable[[Any], bool]) -> None:
-    """published: member id -> rows of trades/<id>.json; summaries: member id -> MemberFile.trade_summary."""
+    """published: member id -> trades/<id>.json (or its bare rows; only rows not in `not_counted` are counted);
+    summaries: member id -> MemberFile.trade_summary."""
+    published = {m: rows_from_trade_file(m, tf) for m, tf in published.items()}
     keys = {"definition", "totals", "by_chamber", "by_year", "members"}
     c.check(isinstance(doc, dict) and set(doc) == keys, "delays: schema", "keys")
     if not isinstance(doc, dict) or set(doc) != keys:
@@ -77,7 +81,7 @@ def check_delays(c: Any, doc: Any, members: set[str], published: dict[str, list[
     for r in rows:
         row = dict(zip(MEMBER_COLS, r))
         mid = row["id"]
-        pub = rows_from_trade_file(mid, published.get(mid, []))
+        pub = published.get(mid, [])
         acc = Acc()
         for t in pub:
             acc.add(t)
@@ -85,7 +89,7 @@ def check_delays(c: Any, doc: Any, members: set[str], published: dict[str, list[
             by_year[str(t["date"])[:4] if t["date"] else "none"].add(t)
         c.check(r == acc.row(mid), "delays: member row equals the one re-derived from trades/<id>.json", mid)
         c.check(row["count"] == len(pub) == summaries.get(mid, {}).get("count"), "delays: member count equals trade file rows and trade_summary.count", mid)
-        c.check(sum(row[k] for k in MEMBER_COLS[3:8]) + row["negative"] + row["undated"] + row["date_corrected"] == row["count"],
+        c.check(sum(row[k] for k in MEMBER_COLS[3:8]) + row["negative"] + row["undated"] + sum(row[k] for k in WITHHELD) == row["count"],
                 "delays: bands + negative + undated = count", mid)
         over = sum(row[k] for k in MEMBER_COLS[5:8])
         c.check(over == summaries.get(mid, {}).get("late"), f"delays: trades over {LATE_DAYS} days equals trade_summary.late", mid)

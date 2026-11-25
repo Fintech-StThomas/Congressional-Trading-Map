@@ -202,7 +202,8 @@ def build(years: dict[str, Any], trades: dict[str, Any] | None, companies: dict[
     for k, y, r in zip(keys, row_year, rows):
         lines[k][y].append(r)
     tcols = trades["cols"] if trades else []
-    tlist = [dict(zip(tcols, t)) for t in (trades or {}).get("rows", [])]
+    gone = (trades or {}).get("not_counted") or {}      # deleted by a later filing: listed in the trade file, not a trade here
+    tlist = [dict(zip(tcols, t)) for t in (trades or {}).get("rows", []) if t[0] not in gone]
     by_key: dict[str, list[dict[str, Any]]] = defaultdict(list)
     tstats = Counter()
     for t in tlist:

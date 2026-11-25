@@ -288,10 +288,10 @@ type Evidence = {
 type Trade = {
   id: string;                 // eventId; for a folded House amendment, the eventId of the earliest printing
   version: number;
-  amended: boolean;           // the event has more than one version, OR a later House printing marked Amended/Deleted was folded into it, OR its own House row is marked Amended/Deleted with no exactly matching earlier trade. Later filings: TradeFile.amendments[id]
+  amended: boolean;           // the event has more than one version, OR a later House printing marked Amended/Deleted was folded into it or deletes it, OR its own House row is marked Amended/Deleted with no exactly matching earlier trade. Later filings: TradeFile.amendments[id]
   date: string | null;        // transaction date as filed (the latest printing's)
-  available: string | null;   // date (US Eastern) the public could FIRST see the trade: the earliest version's availableAt, and the earliest filing when later House printings were folded (`doc` is that filing). Exception: a House row marked Amended with no matched original carries the amending filing's date
-  lag_days: number | null;    // available - date; never negative for a multi-version trade. null when a date is missing, AND when a later version (or a folded printing) changed the transaction date or the difference would be negative: the first public filing showed another date, so no elapsed-days figure is given ("date corrected"; then `amended` is true and both dates are present)
+  available: string | null;   // date (US Eastern) the public could FIRST see the trade: the earliest version's availableAt, and the earliest filing when later House printings were folded (`doc` is that filing). For a House row marked Amended with no matched original it is the amending filing's date: the earliest date known, not the first public date
+  lag_days: number | null;    // available - date; never negative for a multi-version trade. null when a date is missing, and WITHHELD (null though both dates are present; `amended` is true; reason in TradeFile.lag_withheld[id]) in two cases. "date_corrected": a later version or folded printing changed the transaction date, or the difference would be negative, so the first public filing showed another date. "amended_unmatched": the trade's earliest printing is a House row marked Amended whose original was not identified exactly, so its first public date is unknown and the amending filing's date would overstate the days. Never 0 in place of unknown
   late: boolean | null;       // lag_days > 45; null when lag_days is null
   owner: "self" | "spouse" | "joint" | "dependent" | "unspecified"; // never defaulted to self
   action: "buy" | "sell" | "exchange" | "other";
@@ -350,7 +350,7 @@ type MemberFile = {
   ledger: Table<keyof LedgerRow>; // cols: type, kind, other, via, exact, low, high, count, first, last, note, dir
   ledger_totals: LedgerTotals; // every tie published as a ledger row or not published at all
   trade_summary: {
-    count: number; first: string | null; last: string | null; late: number;
+    count: number; first: string | null; last: string | null; late: number; listed: number; // count and every other figure: counted trades only. listed = rows in trades/<id>.json (counted + TradeFile.not_counted), so listed >= count; the trade file exists iff listed > 0 (a member can have count 0 and listed >= 1)
     by_year: { [year: string]: number };   // "none" for trades without a transaction date
     by_owner: { [owner: string]: number }; by_action: { [action: string]: number };
   };
@@ -364,7 +364,8 @@ type TradeFile = {           // trades/<memberId>.json
                               // ticker, ticker_source, asset, asset_class, low, high, org, doc
   rows: unknown[][];          // newest first, current versions only; one row per trade (House reprints folded, see "Rules the pipeline must keep")
   filings: { [doc: string]: string }; // filing id -> official filing URL; covers every row's doc and every amendments[].doc
-  amendments: { [tradeId: string]: { id: string; doc: string; status: "Amended" | "Deleted" | "Version"; available: string | null }[] }; // later filings of that row's trade, oldest first; {} when none. "Amended"/"Deleted": a later House printing folded into the row (id = that printing's own eventId, never a row; status = the filing status the source records for it). "Version": the filing of a later version of the same dataset event (id = the row's own id; House and Senate). doc = the later filing, available = the date it became public. A "Deleted" printing does NOT remove the row: the trade stays published and summed, flagged amended (owner decision pending)
+  amendments: { [tradeId: string]: { id: string; doc: string; status: "Amended" | "Deleted" | "Version" | "Reprinted"; available: string | null }[] }; // later filings of that row's trade, oldest first; {} when none. "Amended"/"Deleted": a later House printing folded into the row (id = that printing's own eventId, never a row; status = the filing status the source records for it). "Version": the filing of a later version of the same dataset event (id = the row's own id; House and Senate). doc = the later filing, available = the date it became public. A "Deleted" printing does NOT remove the row: the trade stays listed (see not_counted)
+  lag_withheld: { [tradeId: string]: "date_corrected" | "amended_unmatched" }; not_counted: { [tradeId: string]: "deleted_by_later_filing" }; // both {} when none. lag_withheld: exactly the rows whose lag_days is null though both dates are present (Trade.lag_days). not_counted (owner decision 2026-11-25): each House printing marked Deleted cancels ONE live printing (status New, Amended or none) of the same trade that was public no later than it; the row is not counted only when no live printing is left (so a second live printing, or one public after the last Deleted printing, keeps the trade counted; no ordering of same-day filings is used). An Amended printing is a live copy like any other, so New, then Amended, then one Deleted row stays counted. The order in which `amendments` lists entries public on the same day is a display convention (Deleted first), not the order of filing. The web marks deletion from not_counted only: a counted row may still list a "Deleted" entry, and then also lists the surviving printings the dataset folded into it (status "Amended", or "Reprinted" for a printing marked New or unmarked; id `house:<doc>:<row>`). Such a row stays listed, flagged amended, with its own fields, but is left OUT of every figure: MemberSummary.counts.trades, wall and wall-years trade counts, trade_summary (count, late, by_*), `traded` and `traded_together` edges and their sums, org trade ties, position timelines, delays.json and meta.counts.trades. Its `org` is null when no counted trade publishes that org
 };
 
 type OrgFile = {
@@ -428,7 +429,7 @@ type Meta = {
     member_ties: number;               // edges in member-ties.json
     ledger_money_ties: number;         // money ties that are ledger rows rather than full edges
     ledger_rows_published: number; ledger_rows_former_members_cut: number;
-    trades_amended_reprints_folded: number; trades_same_key_other_filing: number; trades_lag_withheld_date_corrected: number; // folded: House printings marked Amended/Deleted folded into an earlier trade (not in `trades`); same_key: published trades equal in every key field to a trade of the same member in another filing, with no filed mark linking them: kept, never merged (per member: reports.hf_trades.amendments.same_key_other_filing); lag_withheld: published trades whose lag_days is null because the transaction date was corrected
+    trades_amended_reprints_folded: number; trades_same_key_other_filing: number; trades_lag_withheld_date_corrected: number; trades_lag_withheld_amended_unmatched: number; trades_deleted_by_later_filing: number; // `trades` (above) counts counted trades only: listed rows minus deleted. folded: House printings marked Amended/Deleted folded into an earlier trade (not in `trades`); same_key: published trades equal in every key field to a trade of the same member in another filing, with no filed mark linking them: kept, never merged (per member: reports.hf_trades.amendments.same_key_other_filing); lag_withheld_*: counted trades whose lag is withheld, by TradeFile.lag_withheld reason (= delays.json totals); deleted: listed rows in TradeFile.not_counted
   };
   publication_budget: {               // the constants of pipeline/config.py, see "Publication budget"
     money_edges_per_member: number; former_member_ledger_rows: number; money_members_per_org: number;
@@ -436,7 +437,7 @@ type Meta = {
   };
   unmatched: { trades_without_ticker: number | null; tickers_without_sec_match: number | null;
                trades_with_unmatched_ticker: number | null; edges_dropped_at_assembly: { [reason: string]: number } };
-  exclusions: { [what: string]: { rows: number; reason: string; filings?: unknown[][]; members?: string[] } }; // trades; `amended_rows_without_original`, `same_key_other_filing` and `lag_withheld_date_corrected` count rows that are KEPT (their reason says so); FEC: `conduit_pass_through` (also `dollars`, `committees`, `by_cycle`; see docs/fec-conduits.md)
+  exclusions: { [what: string]: { rows: number; reason: string; filings?: unknown[][]; members?: string[] } }; // trades; `amended_rows_without_original`, `same_key_other_filing`, `lag_withheld_date_corrected` and `deleted_by_later_filing` (kept and listed, not counted) count rows that are KEPT (their reason says so); FEC: `conduit_pass_through` (also `dollars`, `committees`, `by_cycle`; see docs/fec-conduits.md)
   assembly: { edges_read: { [file: string]: number }; edges_after_merge: number;
               edges_dropped: { [reason: string]: number }; edges_dropped_examples: { [reason: string]: string[] };
               org_files: string[];
@@ -507,19 +508,20 @@ field-level audit is [`docs/validation/disclosure-timing-audit.md`](validation/d
 
 ```ts
 type DelayGroup = {
-  count: number;              // trades in the group
-  dated: number;              // count - undated - date_corrected: trades with a lag_days (includes negative lags)
+  count: number;              // counted trades in the group (TradeFile.not_counted rows are in no group)
+  dated: number;              // count - undated - date_corrected - amended_unmatched: trades with a lag_days (includes negative lags)
   bands: { "0-30": number; "31-45": number; "46-90": number; "91-365": number; "over-365": number };
                               // trades by lag_days; the band keys are fixed text; 31-45 ends at config.LATE_DAYS
   negative: number;           // lag_days < 0 (availability recorded before the transaction); in no band, no statistic
   undated: number;            // lag_days is null because the transaction or availability date is missing; never counted as 0 days
-  date_corrected: number;     // lag_days is null though both dates are present: a later version changed the transaction date (see Trade.lag_days); in no band, no statistic
+  date_corrected: number;     // lag withheld, TradeFile.lag_withheld = "date_corrected": a later version changed the transaction date (see Trade.lag_days); in no band, no statistic
+  amended_unmatched: number;  // lag withheld, TradeFile.lag_withheld = "amended_unmatched": a House row marked Amended with no exactly matching original; first public date unknown; in no band, no statistic. A separate bucket from date_corrected because the reason differs (unknown first public date vs a known one for another transaction date)
   amended: number;            // trades with Trade.amended true; also counted in the bucket they belong to, so NOT additive
   median: number | null;      // nearest-rank percentiles of lag_days over dated, non-negative trades (integers)
   p90: number | null;
   max: number | null;         // all null when that set is empty
 };
-// bands + negative + undated + date_corrected == count in every group.
+// bands + negative + undated + date_corrected + amended_unmatched == count in every group.
 
 type Delays = {
   definition: {
@@ -529,36 +531,33 @@ type Delays = {
     percentile: string;       // the method, in words
     caveats: string[];        // fixed strings: observed elapsed days, not compliance; notification dates and extensions not in the data; amended, date-corrected and negative-lag handling
   };
-  totals: DelayGroup;         // every published trade
+  totals: DelayGroup;         // every counted trade
   by_chamber: { rep: DelayGroup; sen: DelayGroup }; // by the chamber of the filing as recorded by the dataset (Trade rows in trades/<id>.json carry no chamber,
                               // so this split cannot be re-derived from them, and it is not necessarily the member's chamber when a member served in both)
   by_year: { [year: string]: DelayGroup };   // calendar year of the transaction date; "none" when it is missing (as trade_summary.by_year);
                               // a trade with a date but no availability date is in its year and counted undated; keys ascending, "none" last
   members: Table<"id" | "count" | "dated" | "b0_30" | "b31_45" | "b46_90" | "b91_365" | "b366_plus" | "negative"
-                 | "undated" | "amended" | "median" | "p90" | "max" | "first_year" | "last_year" | "date_corrected">;
-                              // one row per member with at least one published trade, sorted by id; b* are the five
-                              // bands in order; first_year / last_year = earliest / latest transaction year, null
-                              // when no trade has a transaction date; names come from members.json
+                 | "undated" | "amended" | "median" | "p90" | "max" | "first_year" | "last_year" | "date_corrected" | "amended_unmatched">;
+                              // one row per member with at least one counted trade, sorted by id; b* are the five bands in order; first_year / last_year =
+                              // earliest / latest transaction year, null when no trade has a transaction date; names come from members.json
 };
 ```
 
 Rules:
 
-- Built from the same trade rows published in `trades/<id>.json`, so a member's row can be re-derived from that file (`lag_days`, `date`, `amended` columns). `lag_days = available - date` in days, `available` being the trade's earliest public date; see Trade. A reprint in a later House filing is not a second trade and adds no days.
-- Percentile method (nearest rank): sort the n dated, non-negative lags ascending; the p-th percentile is the value at
-  1-based position `ceil(p * n / 100)`. Median is p = 50 (the lower middle value for even n). No interpolation.
+- Built from the counted trade rows published in `trades/<id>.json` (rows not in `not_counted`), so a member's row can be re-derived from that file (`lag_days`, `date`, `amended` columns, `lag_withheld`). `lag_days = available - date` in days, `available` being the trade's earliest public date; see Trade. A reprint in a later House filing is not a second trade and adds no days.
+- Percentile method (nearest rank): sort the n dated, non-negative lags ascending; the p-th percentile is the value at 1-based position `ceil(p * n / 100)`. Median is p = 50 (the lower middle value for even n). No interpolation.
 - Output is deterministic: members sorted by id, `by_year` keys ascending, sorted JSON keys.
-- Data strings carry no ranking labels and no wording about violations. The `late` boolean in Trade is unchanged and
-  means only `lag_days > 45`.
-- Validation (`pipeline/validate_delays.py`): schema; bands + negative + undated + date_corrected == count in every group; each member
-  row equals the row re-derived from its trade file and its count equals both the file's row count and
+- Data strings carry no ranking labels and no wording about violations. The `late` boolean in Trade means only `lag_days > 45`.
+- Validation (`pipeline/validate_delays.py`): schema; bands + negative + undated + date_corrected + amended_unmatched == count in every group; each member
+  row equals the row re-derived from its trade file and its count equals both the file's counted rows and
   `MemberFile.trade_summary.count`; trades over 45 days equal `trade_summary.late`; totals equal the sum of member
   rows and the figures re-derived from all trade files; chambers sum to totals; by_year groups equal the re-derived
   figures and sum to totals; every member id exists in `members.json`.
 
 ## Rules the pipeline must keep
 
-- Amendments: use the current event version (`supersededAt` is null); keep `version` and `amended`. A multi-version event is timed from and cites (`doc`) its earliest version's filing; later versions' filings go in `TradeFile.amendments` (status "Version"); if the transaction date differs between the earliest and the current version, or the lag would be negative, `lag_days` and `late` are null (`exclusions.lag_withheld_date_corrected`, delays bucket `date_corrected`). **House reprints** (`pipeline/trade_amendments.py`). The source's `political_trades.filingStatus` is, on e-filed House PTRs, the "Filing Status: New / Amended / Deleted" the Clerk prints under each row (Amended and Deleted rows also print a transaction ID, `sourceTransactionId`; originals print none); on scanned and some text filings it is the dataset's reading of a filing-level statement that the report amends an earlier one (no ID). A current House event whose row is so marked is folded into an earlier-public event of the same member in a different filing only when both carry the same transaction ID, or every key field is equal (transaction date, owner, action, amount low and high, ticker, asset text minus its bracketed type code) and exactly one earlier filing qualifies. The folded trade keeps the earliest printing's `id`, `doc` and `available`, takes its other fields from the latest printing, is `amended`, and lists the later printings in `TradeFile.amendments`. Never by similarity. Limit of the exact key: it cannot tell which of several identical earlier rows a reprint restates (it pairs them one to one within the single earlier filing), and it cannot link an amendment that changes a key field, so a marked row without a match stays its own trade timed from the amending filing (`exclusions.amended_rows_without_original`). Rows of multi-version events are not key-matched. Unmarked same-key trades in different filings are both kept and counted (`counts.trades_same_key_other_filing`). A row marked Deleted is folded the same way and the trade stays published. Senate rows are not folded. `pipeline/validate_trade_amendments.py` re-derives the same-key count per member, re-reads the source's filing status to prove no marked row with a single exact earlier match was left unfolded, and checks that `doc` is the filing public on `available`.
+- Amendments: use the current event version (`supersededAt` is null); keep `version` and `amended`. A multi-version event is timed from and cites (`doc`) its earliest version's filing; later versions' filings go in `TradeFile.amendments` (status "Version"); if the transaction date differs between the earliest and the current version, or the lag would be negative, `lag_days` and `late` are null (`exclusions.lag_withheld_date_corrected`, delays bucket `date_corrected`). **House reprints** (`pipeline/trade_amendments.py`). The source's `political_trades.filingStatus` is, on e-filed House PTRs, the "Filing Status: New / Amended / Deleted" the Clerk prints under each row (Amended and Deleted rows also print a transaction ID, `sourceTransactionId`; originals print none); on scanned and some text filings it is the dataset's reading of a filing-level statement that the report amends an earlier one (no ID). A current House event whose row is so marked is folded into an earlier-public event of the same member in a different filing only when both carry the same transaction ID, or every key field is equal (transaction date, owner, action, amount low and high, ticker, asset text minus its bracketed type code) and exactly one earlier filing qualifies. The folded trade keeps the earliest printing's `id`, `doc` and `available`, takes its other fields from the latest printing, is `amended`, and lists the later printings in `TradeFile.amendments`. Never by similarity. Limit of the exact key: it cannot tell which of several identical earlier rows a reprint restates (it pairs them one to one within the single earlier filing), and it cannot link an amendment that changes a key field, so a marked row without a match stays its own trade, flagged amended, with its lag withheld (`lag_withheld: "amended_unmatched"`, `exclusions.amended_rows_without_original`). Rows of multi-version events are not key-matched. Unmarked same-key trades in different filings are both kept and counted (`counts.trades_same_key_other_filing`). A row marked Deleted is folded the same way; a Deleted printing the dataset itself folded into an event is listed in `amendments` with id `house:<doc>:<row>`. A trade is not counted anywhere, though it stays listed, when Deleted printings cancel every live printing of it, one each (`TradeFile.not_counted`, `exclusions.deleted_by_later_filing`); `reports.hf_trades` figures and `unmatched.trades_without_ticker` cover counted trades only. Senate rows are not folded. `pipeline/validate_trade_amendments.py` re-derives the same-key count per member, re-reads the source's filing status to prove no marked row with a single exact earlier match was left unfolded, and checks that `doc` is the filing public on `available`.
 - Owner and filer are separate. An unlabelled owner is `unspecified`.
 - Missing tickers, dates and amounts stay null. Missing is not zero.
 - FEC money is exact: for FEC edges and ledger rows `low = high = exact`.

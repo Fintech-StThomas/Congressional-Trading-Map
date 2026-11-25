@@ -1,14 +1,15 @@
 // Later filings of a trade (trades/<id>.json `amendments`): read the map tolerantly (files built before it existed have
 // none, and permalinks to those releases must keep working), then describe one trade's later filings in plain words.
 // Pure; tests/amendments.test.mjs loads it directly. A later filing that marks a transaction Deleted does not remove
-// the trade (owner decision pending); it is only said.
+// the trade; not_counted marks it listed-only (counted nowhere).
 import type { TradeFile } from "../types.ts";
+import { AMEND } from "../copy-amend.ts";
 import { safeHttpUrl } from "../urls.ts";
 
-export type LaterFiling = { id: string; doc: string; status: "Amended" | "Deleted" | "Version"; available: string | null };
+export type LaterFiling = { id: string; doc: string; status: "Amended" | "Deleted" | "Reprinted" | "Version"; available: string | null };
 export type AmendmentMap = { [tradeId: string]: LaterFiling[] };
 
-const STATUSES = new Set(["Amended", "Deleted", "Version"]);
+const STATUSES = new Set(["Amended", "Deleted", "Reprinted", "Version"]);
 
 /** The `amendments` map of a trade file; {} when it is absent or not the contract's shape. Malformed entries are dropped. */
 export function readAmendments(file: { amendments?: unknown } | null | undefined): AmendmentMap {
@@ -47,8 +48,8 @@ export function amendmentView(t: TradeLike, map: AmendmentMap, filings: { [doc: 
   const seen = new Set<string>();
   const later: LaterLink[] = [];
   for (const a of map[t.id] ?? []) {
-    if (seen.has(a.doc)) continue;
-    seen.add(a.doc);
+    if (seen.has(`${a.doc}|${a.status}`)) continue;
+    seen.add(`${a.doc}|${a.status}`);
     later.push({ doc: a.doc, status: a.status, available: a.available, url: safeHttpUrl(filings?.[a.doc]) });
   }
   const deleted = (map[t.id] ?? []).some((a) => a.status === "Deleted");
@@ -58,7 +59,7 @@ export function amendmentView(t: TradeLike, map: AmendmentMap, filings: { [doc: 
 /** CSV cell: "Amended 2024-03-02 (doc 123); Deleted 2024-04-01 (doc 456)"; null when the trade has no later filing. */
 export function laterFilingsText(list: readonly LaterFiling[] | undefined): string | null {
   if (!list?.length) return null;
-  return list.map((a) => `${a.status}${a.available ? ` ${a.available.slice(0, 10)}` : ""} (filing ${a.doc})`).join("; ");
+  return list.map((a) => `${AMEND.statusWord[a.status]}${a.available ? ` ${a.available.slice(0, 10)}` : ""} (filing ${a.doc})`).join("; ");
 }
 
 /** Space-separated official addresses of the later filings (http or https only); null when there are none. */
@@ -68,7 +69,7 @@ export function laterFilingUrls(list: readonly LaterFiling[] | undefined, filing
 }
 
 /** The part of a trade file's amendments map that the given trades use, with the filing addresses of those later filings. */
-export function amendmentsFor(file: { amendments?: unknown; filings?: { [doc: string]: string } } | null | undefined, ids: readonly string[]): { map: AmendmentMap; filings: { [doc: string]: string } } {
+export function amendmentsFor(file: { amendments?: unknown; filings?: { [doc: string]: string }; not_counted?: unknown } | null | undefined, ids: readonly string[]): { map: AmendmentMap; filings: { [doc: string]: string }; marked: boolean } {
   const all = readAmendments(file);
   const map: AmendmentMap = {};
   const filings: { [doc: string]: string } = {};
@@ -77,5 +78,11 @@ export function amendmentsFor(file: { amendments?: unknown; filings?: { [doc: st
     map[id] = all[id];
     for (const a of all[id]) if (file?.filings?.[a.doc]) filings[a.doc] = file.filings[a.doc];
   }
-  return { map, filings };
+  // `marked`: the file says which rows are not counted (builds after 2026-11-25), so a Deleted printing alone does not mean the trade is deleted.
+  return { map, filings, marked: file?.not_counted !== undefined };
+}
+
+/** The member has trade rows to list: `listed` (counted + not counted) when the build says it, else `count`. Gates every read of trades/<id>.json. */
+export function hasListedTrades(ts: { count?: number; listed?: number } | null | undefined): boolean {
+  return (ts?.listed ?? ts?.count ?? 0) > 0;
 }

@@ -16,14 +16,16 @@ from typing import Any
 
 from ..config import STOCK_ACT_YEAR
 from ..contract import FAMILY_ORDER, TRADE_COLUMNS, Edge, Node, SpineMember, Term, Trade
+from ..trade_amendments import DELETED
 from .budget import edge_size, num
 
 LEVELS = ["full", "partial", "none"]
 
 
-def trade_summary(ts: list[Trade]) -> dict[str, Any]:
+def trade_summary(ts: list[Trade], listed: int | None = None) -> dict[str, Any]:
+    """ts: the counted trades. listed: rows in the member's trade file (counted + not counted; default: all counted)."""
     dates = [t["date"] for t in ts if t["date"]]
-    return {"count": len(ts), "first": min(dates).isoformat() if dates else None,
+    return {"count": len(ts), "listed": len(ts) if listed is None else listed, "first": min(dates).isoformat() if dates else None,
             "last": max(dates).isoformat() if dates else None, "late": sum(bool(t["late"]) for t in ts),
             "by_year": dict(sorted(Counter(str(t["date"].year) if t["date"] else "none" for t in ts).items())),
             "by_owner": dict(sorted(Counter(t["owner"] for t in ts).items())),
@@ -79,8 +81,11 @@ def trade_row(t: Trade) -> list[Any]:
     return [vals[c] for c in TRADE_COLUMNS]
 
 
-def trade_file(ts: list[Trade]) -> dict[str, Any]:
-    """trades/<id>.json. `filings` covers every cited filing: each trade's own and each later printing folded into it."""
+def trade_file(ts: list[Trade], orgs: set[str] | None = None) -> dict[str, Any]:
+    """trades/<id>.json: every listed trade, counted or not. `filings` covers every cited filing: each trade's own and
+    each later printing folded into it. `orgs`: the published org ids; a not-counted trade draws no tie, so its org
+    may be unpublished and is then left null."""
+    ts = [{**t, "org": None} if t.get("deleted") and orgs is not None and t["org"] not in orgs else t for t in ts]
     filings = {t["doc_id"]: t["url"] for t in ts}
     later: dict[str, list[dict[str, Any]]] = {}
     for t in ts:
@@ -88,7 +93,15 @@ def trade_file(ts: list[Trade]) -> dict[str, Any]:
             filings[a["doc_id"]] = a["url"]
             later.setdefault(t["id"], []).append({"id": a["id"], "doc": a["doc_id"], "status": a["status"],
                                                   "available": a["available"].isoformat() if a["available"] else None})
-    return {"cols": TRADE_COLUMNS, "rows": [trade_row(t) for t in ts], "filings": filings, "amendments": later}
+    return {"cols": TRADE_COLUMNS, "rows": [trade_row(t) for t in ts], "filings": filings, "amendments": later,
+            "lag_withheld": {t["id"]: t["lag_withheld"] for t in ts if t.get("lag_withheld")},
+            "not_counted": {t["id"]: DELETED for t in ts if t.get("deleted")}}
+
+
+def counted_rows(tf: dict[str, Any]) -> list[list[Any]]:
+    """Rows of a published trade file that count: all but the ones in `not_counted`."""
+    skip = tf.get("not_counted") or {}
+    return [r for r in tf.get("rows", []) if r[0] not in skip]
 
 
 def board_order(e: Edge, case_edges: set[str]) -> tuple[Any, ...]:

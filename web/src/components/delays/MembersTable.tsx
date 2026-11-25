@@ -24,6 +24,7 @@ const COLS: { k: DelaySortKey; label: string; num: boolean }[] = [
   { k: "max", label: "Longest", num: true },
   { k: "undated", label: "No date", num: true },
   { k: "dateCorrected", label: DELAYS_AMEND.column, num: true },
+  { k: "amendedUnmatched", label: DELAYS_AMEND.unmatchedColumn, num: true },
   { k: "amended", label: "Amended", num: true },
 ];
 
@@ -32,7 +33,10 @@ export function MembersTable({ rows }: { rows: DelayViewRow[] }) {
   const [filter, setFilter] = useState<DelayFilter>({ chamber: "all", currentOnly: false, query: "" });
   const [limit, setLimit] = useState(PAGE);
   // A file built before the date-corrected bucket has no such count: leave the column out rather than show 0.
-  const cols = useMemo(() => (rows.some((r) => r.dateCorrected !== null) ? COLS : COLS.filter((c) => c.k !== "dateCorrected")), [rows]);
+  const cols = useMemo(
+    () => COLS.filter((c) => (c.k !== "dateCorrected" || rows.some((r) => r.dateCorrected !== null)) && (c.k !== "amendedUnmatched" || rows.some((r) => r.amendedUnmatched !== null))),
+    [rows],
+  );
   const view = useMemo(() => sortViewRows(filterViewRows(rows, filter), sort.k, sort.desc), [rows, filter, sort]);
   const shown = view.slice(0, limit);
   const filtered = view.length !== rows.length;
@@ -100,7 +104,8 @@ export function MembersTable({ rows }: { rows: DelayViewRow[] }) {
                 <td className="dl-num mono">{days(r.p90)}</td>
                 <td className="dl-num mono">{days(r.max)}</td>
                 <td className="dl-num mono">{count(r.undated)}</td>
-                {cols.length === COLS.length && <td className="dl-num mono">{r.dateCorrected === null ? "n/a" : count(r.dateCorrected)}</td>}
+                {cols.some((c) => c.k === "dateCorrected") && <td className="dl-num mono">{r.dateCorrected === null ? "n/a" : count(r.dateCorrected)}</td>}
+                {cols.some((c) => c.k === "amendedUnmatched") && <td className="dl-num mono">{r.amendedUnmatched === null ? "n/a" : count(r.amendedUnmatched)}</td>}
                 <td className="dl-num mono">{count(r.amended)}</td>
               </tr>
             ))}

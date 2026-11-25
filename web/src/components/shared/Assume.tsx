@@ -11,12 +11,14 @@ import { VIEW_EVENT } from "./useViewState";
 import { Switch } from "./ChipSelect";
 
 const NONE: TradeLite[] = [];
-type TradeWire = { cols: string[]; rows: unknown[][] };
+type TradeWire = { cols: string[]; rows: unknown[][]; not_counted?: Record<string, string> | null };
 type EdgeLite = Parameters<typeof applyAssumptions>[1][number];
 
 function decodeLite(t: TradeWire): TradeLite[] {
   const at = Object.fromEntries(t.cols.map((c, i) => [c, i]));
-  return t.rows.map((r) => ({
+  // Rows a later filing marks Deleted are counted nowhere, so no assumption can count them.
+  const dropped = t.not_counted ?? {};
+  return t.rows.filter((r) => !dropped[String(r[at.id])]).map((r) => ({
     owner: String(r[at.owner] ?? "unspecified"), asset_class: String(r[at.asset_class] ?? "unknown"),
     low: (r[at.low] as number | null) ?? null, late: (r[at.late] as boolean | null) ?? null, org: (r[at.org] as string | null) ?? null,
     date: (r[at.date] as string | null) ?? null, available: (r[at.available] as string | null) ?? null,

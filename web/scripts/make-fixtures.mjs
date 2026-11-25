@@ -563,14 +563,14 @@ for (const m of MEMBERS) {
   for (const r of mine) nodes[r[2]] = { name: orgById[r[2]].name, kind: orgById[r[2]].kind, ticker: null };
   const tr = TRADES[m.id];
   const tally = (f) => tr.reduce((o, t) => ((o[f(t)] = (o[f(t)] ?? 0) + 1), o), {});
-  if (tr.length) write(`trades/${m.id}.json`, { cols: TCOLS, rows: tr.map((t) => TCOLS.map((c) => t[c] ?? null)), filings, amendments: AMENDED.amendments[m.id] ?? {} });
+  if (AMENDED.rowsFor(m.id, tr).length) write(`trades/${m.id}.json`, { cols: TCOLS, rows: AMENDED.rowsFor(m.id, tr).map((t) => TCOLS.map((c) => t[c] ?? null)), filings, ...AMENDED.marksFor(m.id) });
   write(`members/${m.id}.json`, withFinance(m.id, {
     member: { ...s, terms: terms(m), committees: COMMITTEES[m.id] ?? [], fec_ids: [`H0SAMPLE${m.id.slice(-3)}`] },
     board: boardIds,
     nodes,
     edges: mineEdges,
     trade_summary: {
-      count: tr.length,
+      count: tr.length, listed: AMENDED.rowsFor(m.id, tr).length,
       first: tr.length ? tr[tr.length - 1].date : null,
       last: tr.length ? tr[0].date : null,
       late: tr.filter((t) => t.late).length,

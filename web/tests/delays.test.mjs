@@ -48,7 +48,7 @@ test("a trade with a date but no availability date is undated, not 0 days", () =
 
 test("empty group: zero counts and null statistics", () => {
   const g = delayGroupFromTrades([]);
-  assert.deepEqual(g, { count: 0, dated: 0, bands: { "0-30": 0, "31-45": 0, "46-90": 0, "91-365": 0, "over-365": 0 }, negative: 0, undated: 0, date_corrected: 0, amended: 0, median: null, p90: null, max: null });
+  assert.deepEqual(g, { count: 0, dated: 0, bands: { "0-30": 0, "31-45": 0, "46-90": 0, "91-365": 0, "over-365": 0 }, negative: 0, undated: 0, date_corrected: 0, amended_unmatched: 0, amended: 0, median: null, p90: null, max: null });
   const onlyBad = delayGroupFromTrades([T(-5), T(null)]);
   assert.equal(onlyBad.median, null);
   assert.equal(onlyBad.p90, null);
@@ -227,4 +227,53 @@ test("readDelays accepts a whole file without date_corrected (archived release) 
   assert.ok(readDelays(file({})));
   assert.equal(readDelays(file({})).totals.date_corrected, undefined, "left absent: the page leaves the row out rather than showing 0");
   assert.equal(readDelays(file({ date_corrected: 3 })).totals.date_corrected, 3);
+});
+
+// ---- owner decision 2026-11-25: Deleted rows are counted nowhere; amended rows with no original have their days withheld.
+test("a not-counted row is in no group; a withheld lag goes to the bucket the file names, never by guess", () => {
+  const w = (lagWithheld, extra = {}) => ({ date: "2020-03-01", available: "2020-03-20", lag_days: null, amended: true, lagWithheld, ...extra });
+  const g = delayGroupFromTrades([
+    T(10, { available: "2020-03-11" }), w("amended_unmatched"), w("date_corrected"), w(null),
+    { date: "2020-03-01", available: "2020-03-05", lag_days: 4, amended: true, notCounted: true },
+  ]);
+  assert.equal(g.count, 4, "the deleted row is not counted");
+  assert.equal(g.amended_unmatched, 1);
+  assert.equal(g.date_corrected, 1);
+  assert.equal(g.undated, 1, "the file has a lag_withheld map and this row is not in it: undated, not guessed");
+  assert.equal(g.dated, 1, "dated = count - undated - date_corrected - amended_unmatched");
+  assert.equal(g.amended, 3, "the not-counted row adds nothing to amended either");
+  assert.equal(g.bands["0-30"], 1);
+  const banded = Object.values(g.bands).reduce((a, b) => a + b, 0);
+  assert.equal(banded + g.negative + g.undated + g.date_corrected + g.amended_unmatched, g.count);
+  assert.equal(delayRowFromTrades("A", [w("amended_unmatched")]).amended_unmatched, 1);
+  // a file without the map (lagWithheld undefined) keeps the earlier rule: both dates and no lag is date corrected
+  assert.equal(delayGroupFromTrades([w(undefined)]).date_corrected, 1);
+});
+
+test("decode: trade files with and without not_counted and lag_withheld; deleted rows are dropped unless listed", async () => {
+  const { decodeTradeFile, countedWire } = await import("../src/lib/data/decode.ts");
+  const cols = ["id", "version", "amended", "date", "available", "lag_days", "late", "owner", "action", "doc"];
+  const rows = [["a", 1, true, "2020-03-01", "2020-03-20", null, null, "self", "buy", "D1"], ["b", 1, true, "2020-03-01", "2020-03-05", 4, false, "self", "buy", "D1"], ["c", 1, false, "2020-03-01", "2020-03-05", 4, false, "self", "buy", "D1"]];
+  const file = { cols, rows, filings: {}, lag_withheld: { a: "amended_unmatched" }, not_counted: { b: "deleted_by_later_filing" } };
+  assert.deepEqual(decodeTradeFile(file).map((r) => r.id), ["a", "c"]);
+  const listed = decodeTradeFile(file, undefined, { listed: true });
+  assert.deepEqual(listed.map((r) => [r.id, r.notCounted ?? false, r.lagWithheld]), [["a", false, "amended_unmatched"], ["b", true, null], ["c", false, null]]);
+  assert.equal(delayGroupFromTrades(listed).count, 2, "listed rows still count only the counted ones");
+  assert.equal(countedWire(file).rows.length, 2);
+  const old = { cols, rows, filings: {} };
+  assert.equal(decodeTradeFile(old).length, 3, "an old file has no marks: every row counts, as before");
+  assert.equal(decodeTradeFile(old)[0].lagWithheld, undefined);
+  assert.equal(countedWire(old), old);
+});
+
+const NEW_COLS = [...OLD_COLS, "date_corrected", "amended_unmatched"];
+test("decode: delays.json with amended_unmatched reads by name; one without it stays null, never 0", () => {
+  const cur = decodeDelayMembers({ cols: NEW_COLS, rows: [["A", 5, 2, 1, 0, 1, 0, 0, 0, 1, 2, 10, 60, 60, 2015, 2019, 1, 1]] });
+  assert.equal(cur[0].amended_unmatched, 1);
+  const mid = decodeDelayMembers({ cols: [...OLD_COLS, "date_corrected"], rows: [["A", 3, 1, 1, 0, 0, 0, 0, 0, 1, 1, 10, 10, 10, 2015, 2019, 1]] });
+  assert.equal(mid[0].amended_unmatched, null);
+  const who = () => ({ name: "Ann", party: "D", state: "CA", chamber: "sen", current: true });
+  assert.equal(viewRows(cur, who)[0].amendedUnmatched, 1);
+  assert.equal(viewRows(mid, who)[0].amendedUnmatched, null);
+  assert.ok(delaysCsv(viewRows(cur, who), "n").split("\r\n")[0].includes("amended_unmatched"));
 });

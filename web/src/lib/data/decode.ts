@@ -3,7 +3,16 @@
 import type { Columnar, Edge, EdgeType, LedgerTotals, MemberFileWire, OrgFileWire, Trade, TradeWire } from "../types.ts";
 
 /** A trade as the site uses it: the contract Trade plus the resolved filing URL. */
-export type TradeRow = Omit<Trade, "url"> & { url: string | null; ticker_source: string | null };
+export type TradeRow = Omit<Trade, "url"> & {
+  url: string | null; ticker_source: string | null;
+  /** A later House filing marks the transaction Deleted: the row is listed and marked, and counted nowhere (TradeFile.not_counted). */
+  notCounted?: boolean;
+  /** Why a null lag is null (TradeFile.lag_withheld): a reason, null when the file lists none for this row, undefined when the file has no such map (older builds). */
+  lagWithheld?: "date_corrected" | "amended_unmatched" | null;
+};
+
+/** The two maps of a trade file that mark rows (both absent in files built before the owner decision of 2026-11-25). */
+export type TradeMarks = { not_counted?: Record<string, string> | null; lag_withheld?: Record<string, string> | null };
 
 function isColumnar(v: unknown): v is Columnar {
   return Boolean(v && typeof v === "object" && Array.isArray((v as Columnar).cols) && Array.isArray((v as Columnar).rows));
@@ -22,9 +31,30 @@ export function fromColumns<T>(c: Columnar): T[] {
 }
 
 /** trades/<id>.json: a columnar table plus the filings map. */
-export function decodeTradeFile(f: { cols: string[]; rows: unknown[][]; filings?: Record<string, string> } | null, limit?: number): TradeRow[] {
+export function decodeTradeFile(f: ({ cols: string[]; rows: unknown[][]; filings?: Record<string, string> } & TradeMarks) | null, limit?: number, opts: { listed?: boolean } = {}): TradeRow[] {
   if (!f) return [];
-  return decodeTrades({ trades: { cols: f.cols, rows: f.rows }, filings: f.filings }, limit);
+  const rows = decodeTrades({ trades: { cols: f.cols, rows: f.rows }, filings: f.filings }, undefined);
+  const out = rows.map((r) => {
+    const reason = f.lag_withheld ? f.lag_withheld[r.id] : undefined;
+    return {
+      ...r,
+      ...(f.not_counted && f.not_counted[r.id] ? { notCounted: true } : {}),
+      ...(f.lag_withheld ? { lagWithheld: reason === "date_corrected" || reason === "amended_unmatched" ? reason : null } : {}),
+    } as TradeRow;
+  });
+  // By default only counted rows: feeds, /new, the embed card and release comparisons never see a deleted row.
+  // The trades table and the full file ask for the listed rows (`listed`), which carry `notCounted`.
+  const kept = opts.listed ? out : out.filter((r) => !r.notCounted);
+  return limit != null ? kept.slice(0, limit) : kept;
+}
+
+/** A trade file with the not-counted rows taken out of its table (for figures computed from the raw columns); the file as published otherwise. */
+export function countedWire<T extends { cols: string[]; rows: unknown[][] } & TradeMarks>(f: T | null | undefined): T | null {
+  if (!f) return null;
+  const nc = f.not_counted;
+  if (!nc || !Object.keys(nc).length) return f;
+  const at = f.cols.indexOf("id");
+  return { ...f, rows: f.rows.filter((r) => !nc[String(r[at])]) };
 }
 
 export function tradeCount(file: { trades?: MemberFileWire["trades"] }): number {

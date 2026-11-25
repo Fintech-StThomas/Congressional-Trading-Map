@@ -21,7 +21,7 @@ import { getJSON } from "@/lib/data/fetch";
 import { delaysHref, safeHttpUrl } from "@/lib/urls";
 import { ExternalIcon } from "@/components/shared/ExternalIcon";
 
-type Props = { initial: TradeRow[]; total: number; fullUrl: string; later?: Later };
+type Props = { initial: TradeRow[]; total: number; fullUrl: string; later?: Later; /** rows in the file, including those not counted (defaults to `total`) */ listed?: number };
 type Key = "date" | "available" | "lag_days" | "owner" | "action" | "asset" | "ticker" | "low";
 
 const ROW = 44; // px, fixed so the list can be windowed
@@ -72,10 +72,11 @@ const COLS: { k: Key; label: string; cls?: string }[] = [
  * Every periodic transaction report row, sortable and filterable. The list is
  * windowed: only the rows in view are in the DOM, so tens of thousands stay fast.
  */
-export function TradesTable({ initial, total, fullUrl, later: laterProp }: Props) {
+export function TradesTable({ initial, total, fullUrl, later: laterProp, listed }: Props) {
+  const rowsInFile = listed ?? total;
   const [trades, setTrades] = useState(initial);
-  const [later, setLater] = useState<Later>(laterProp ?? { map: {}, filings: {} });
-  const [status, setStatus] = useState<"ok" | "loading" | "error">(total > initial.length ? "loading" : "ok");
+  const [later, setLater] = useState<Later>(laterProp ?? { map: {}, filings: {}, marked: false });
+  const [status, setStatus] = useState<"ok" | "loading" | "error">(rowsInFile > initial.length ? "loading" : "ok");
   const [sort, setSort] = useState<{ k: Key; dir: 1 | -1 }>({ k: "date", dir: -1 });
   const [year, setYear] = useState("all");
   const [owner, setOwner] = useState("all");
@@ -90,23 +91,23 @@ export function TradesTable({ initial, total, fullUrl, later: laterProp }: Props
   const scroller = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (total <= initial.length) return;
+    if (rowsInFile <= initial.length) return;
     let live = true;
     getJSON<TradeFile>(fullUrl)
       .then((file) => {
         if (!live) return;
-        setTrades(decodeTradeFile(file));
-        setLater({ map: readAmendments(file), filings: file.filings ?? {} });
+        setTrades(decodeTradeFile(file, undefined, { listed: true }));
+        setLater({ map: readAmendments(file), filings: file.filings ?? {}, marked: file.not_counted !== undefined });
         setStatus("ok");
       })
       .catch(() => live && setStatus("error"));
     return () => {
       live = false;
     };
-  }, [fullUrl, total, initial.length]);
+  }, [fullUrl, rowsInFile, initial.length]);
 
   // The shared view first: assumptions drop trades, the year window splits the rest into in-window and undated.
-  const counted = useMemo(() => (isDefault(view.assume) ? trades : trades.filter((t) => tradeCounts(t, view.assume))), [trades, view.assume]);
+  const counted = useMemo(() => (isDefault(view.assume) ? trades : trades.filter((t) => t.notCounted || tradeCounts(t, view.assume))), [trades, view.assume]);
   const windowed = useMemo(() => splitByYears(counted, view.years, view.basis), [counted, view.years, view.basis]);
   const base = undatedOnly && view.years ? windowed.undated : windowed.shown;
   const yearOfRow = (t: TradeRow) => basisYear(t, view.basis)?.toString() ?? "undated";
@@ -120,7 +121,7 @@ export function TradesTable({ initial, total, fullUrl, later: laterProp }: Props
         (year === "all" || yearOfRow(t) === year) &&
         (owner === "all" || t.owner === owner) &&
         (cls === "all" || t.asset_class === cls) &&
-        (!late || t.late === true),
+        (!late || (t.late === true && !t.notCounted)),
     );
     return f.sort((a, b) => {
       const c = cmp(a, b, sort.k);
@@ -129,17 +130,20 @@ export function TradesTable({ initial, total, fullUrl, later: laterProp }: Props
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [base, view.basis, year, owner, cls, late, sort]);
 
-  const lateCount = useMemo(() => rows.reduce((n, t) => n + (t.late ? 1 : 0), 0), [rows]);
+  const lateCount = useMemo(() => rows.reduce((n, t) => n + (t.late && !t.notCounted ? 1 : 0), 0), [rows]);
+  // Rows a later filing marks Deleted are listed and marked, but counted nowhere: every figure below is over the counted rows.
+  const liveRows = useMemo(() => rows.filter((t) => !t.notCounted), [rows]);
+  const notCountedN = rows.length - liveRows.length;
   // Observed days from the transaction date to public availability, over every loaded trade (not the filtered rows).
   // The column appears only when this member has amended trades with later filings (older builds and most members have none).
-  const showLater = useMemo(() => trades.some((t) => t.amended && later.map[t.id]), [trades, later]);
+  const showLater = useMemo(() => trades.some((t) => (t.amended && later.map[t.id]) || t.notCounted || t.lagWithheld === "amended_unmatched"), [trades, later]);
   const timing = useMemo(() => delayGroupFromTrades(trades), [trades]);
 
   useEffect(() => {
     scroller.current?.scrollTo({ top: 0 });
   }, [year, owner, cls, late, sort, view.years, view.basis, view.assume, undatedOnly]);
 
-  if (!total) return <p className="empty">No periodic transaction reports on file for this member&rsquo;s household. Reports exist only from July 2012.</p>;
+  if (!total && !rowsInFile) return <p className="empty">No periodic transaction reports on file for this member&rsquo;s household. Reports exist only from July 2012.</p>;
 
   const first = Math.max(0, Math.floor(top / ROW) - OVERSCAN);
   const last = Math.min(rows.length, Math.ceil((top + ROW * VIEW_ROWS) / ROW) + OVERSCAN);
@@ -152,6 +156,7 @@ export function TradesTable({ initial, total, fullUrl, later: laterProp }: Props
           {DELAYS.memberLine}: median {days(timing.median)}, 90th percentile {days(timing.p90)}.{" "}
           {count(overCount(timing.bands))} of {count(timing.dated)} trades with both dates were public over 45 days after the transaction
           {timing.undated > 0 ? `; ${count(timing.undated)} with no date` : ""}
+          {(timing.amended_unmatched ?? 0) > 0 ? `; ${DELAYS_AMEND.memberUnmatched(timing.amended_unmatched ?? 0)}` : ""}
           {(timing.date_corrected ?? 0) > 0 ? `; ${DELAYS_AMEND.memberCorrected(timing.date_corrected ?? 0)}` : ""}.{" "}
           <Link href={delaysHref()}>{DELAYS.memberLink}</Link>
         </p>
@@ -202,8 +207,8 @@ export function TradesTable({ initial, total, fullUrl, later: laterProp }: Props
             ? `Loading all ${count(total)} trades…`
             : status === "error"
               ? `Showing ${count(trades.length)} of ${count(total)}; the rest failed to load.`
-              : `${count(rows.length)} ${rows.length === 1 ? "trade" : "trades"} · ${count(lateCount)} public over 45 days after the trade`}
-          {status === "ok" && owners.length > 0 && <OwnerMix trades={rows} />}
+              : `${count(liveRows.length)} ${liveRows.length === 1 ? "trade" : "trades"} · ${count(lateCount)} public over 45 days after the trade${notCountedN ? ` · ${count(notCountedN)} more listed, not counted` : ""}`}
+          {status === "ok" && owners.length > 0 && <OwnerMix trades={liveRows} />}
         </p>
       </div>
       <div
@@ -241,12 +246,12 @@ export function TradesTable({ initial, total, fullUrl, later: laterProp }: Props
           <tbody>
             {first > 0 && <tr className="vspacer" style={{ height: first * ROW }} aria-hidden="true"><td colSpan={showLater ? 9 : 8} /></tr>}
             {slice.map((t, i) => (
-              <tr key={t.id} aria-rowindex={first + i + 2}>
+              <tr key={t.id} aria-rowindex={first + i + 2} className={t.notCounted ? "is-notcounted" : undefined} title={t.notCounted ? AMEND.notCounted : undefined}>
                 <td className="mono">{t.date ? date(t.date) : <Nd />}</td>
                 <td className="mono">{t.available ? date(t.available) : <Nd />}</td>
                 <td className="num mono">
-                  {t.lag_days != null ? <>{count(t.lag_days)} d</> : t.date && t.available && t.amended ? <span className="nd" title={AMEND.dateCorrectedTitle}>{AMEND.dateCorrectedShort}</span> : <Nd />}
-                  {t.late && <span className="late" title={DELAYS.overTitle}>{DELAYS.overChip}</span>}
+                  {t.lag_days != null ? <>{count(t.lag_days)} d</> : t.lagWithheld === "amended_unmatched" ? <span className="nd" title={AMEND.unmatched}>{AMEND.unmatchedShort}</span> : t.date && t.available && t.amended ? <span className="nd" title={AMEND.dateCorrectedTitle}>{AMEND.dateCorrectedShort}</span> : <Nd />}
+                  {t.late && !t.notCounted && <span className="late" title={DELAYS.overTitle}>{DELAYS.overChip}</span>}
                 </td>
                 <td className={`owner owner--${t.owner}`}>{t.owner === "unspecified" ? <Nd text="not stated" /> : OWNER_LABEL[t.owner]}</td>
                 <td>
@@ -264,6 +269,7 @@ export function TradesTable({ initial, total, fullUrl, later: laterProp }: Props
                   <span className="sub">
                     {CLASS_LABEL[t.asset_class] ?? t.asset_class}
                     {t.amended ? ` · ${AMEND.amended}${t.version > 1 ? ` v${t.version}` : ""}` : ""}
+                    {t.notCounted ? ` · ${AMEND.notCountedShort}` : ""}
                   </span>
                 </td>
                 <td className="mono">{t.ticker ?? <Nd />}</td>

@@ -106,7 +106,8 @@ def test_amended_row_that_changes_a_key_field_is_not_folded() -> None:
     ts, counts = mapped(rows)
     assert len(ts) == 2 and counts["amended_without_original"] == 1 and counts["folded_amended"] == 0
     late = next(t for t in ts if t["id"] == "house:20016961:0")
-    assert late["amended"] is True and late["amendments"] == [] and late["lag_days"] == 185   # from the amending filing
+    assert late["amended"] is True and late["amendments"] == [] and late["available"] == date(2020, 7, 20)
+    assert late["lag_days"] is None and late["late"] is None and late["lag_withheld"] == "amended_unmatched"  # first public date unknown
     assert next(t for t in ts if t["id"] == "house:20015042:1")["amended"] is False
 
 
@@ -134,7 +135,7 @@ def test_chain_deleted_and_transaction_id() -> None:
     assert ts[0]["id"] == "house:20016961:0" and ts[0]["available"] == date(2020, 7, 20)
     redated = [ev("20016961", 0, "Amended", "2000060675"), ev("20018539", 0, "Amended", "2000060675", transactionDate=date(2020, 1, 15))]
     one = mapped(redated)[0][0]
-    assert one["date"] == date(2020, 1, 15) and one["lag_days"] is None and one["late"] is None and one["lag_withheld"] is True
+    assert one["date"] == date(2020, 1, 15) and one["lag_days"] is None and one["late"] is None and one["lag_withheld"] == "amended_unmatched"
     other_member = [ev("20016961", 0, "Amended", "2000060675"), ev("20018539", 0, "Amended", "2000060675", member="M001157", ticker="X")]
     assert len(mapped(other_member)[0]) == 2
 
@@ -146,11 +147,11 @@ def test_dataset_versions_cite_the_first_filing_and_withhold_a_corrected_lag() -
     a, b, c = (next(t for t in ts if t["id"] == i and t["ticker"] == k) for i, k in (
         ("house:20018355:0", "RBLX"), ("house:20018011:0", "RBLX"), ("house:20018011:0", "X")))
     assert a["doc_id"] == "20018355" and a["url"].endswith("20018355.pdf") and a["available"] == date(2021, 3, 9)
-    assert a["lag_days"] == 19 and a["late"] is False and a["amended"] is True and a["lag_withheld"] is False
+    assert a["lag_days"] == 19 and a["late"] is False and a["amended"] is True and a["lag_withheld"] is None
     assert a["amendments"] == [{"id": "house:20018355:0", "doc_id": "20018539", "url": "https://example.org/20018539.pdf",
                                 "status": "Version", "available": date(2021, 4, 9)}]
     for t in (b, c):            # the first public filing showed 2021-01-04; c would be -4 days: never published
-        assert t["available"] == date(2021, 1, 21) and t["lag_days"] is None and t["late"] is None and t["lag_withheld"] is True
+        assert t["available"] == date(2021, 1, 21) and t["lag_days"] is None and t["late"] is None and t["lag_withheld"] == "date_corrected"
     g = build_delays(ts)["totals"]
     assert g["date_corrected"] == 2 and g["undated"] == 0 and g["dated"] == 1 and g["negative"] == 0 and sum(g["bands"].values()) == 1
     assert trade_summary(ts)["late"] == 0
@@ -195,7 +196,7 @@ def test_load_folds_counts_and_uses_the_first_version_date(tmp_path) -> None:
     assert info["exclusions"]["same_key_other_filing"]["rows"] == 0 == info["amendment_counts"]["trades_same_key_other_filing"]
     v2 = next(t for t in ts if t["ticker"] == "RBLX")
     assert v2["version"] == 2 and v2["amended"] is True and v2["available"] == date(2021, 3, 9) and v2["lag_days"] == 19
-    assert v2["doc_id"] == "20018355" and [a["doc_id"] for a in v2["amendments"]] == ["20018539"] and "lag_withheld" not in v2
+    assert v2["doc_id"] == "20018355" and [a["doc_id"] for a in v2["amendments"]] == ["20018539"] and v2["lag_withheld"] is None and v2["deleted"] is False
     assert info["exclusions"]["lag_withheld_date_corrected"]["rows"] == 0 == info["amendment_counts"]["trades_lag_withheld_date_corrected"]
     assert pa.Table.from_pylist(ts, schema=trades.SCHEMA).num_rows == 6
     # a source without the filing-status column: nothing is folded, the pairs are counted, and the report says so
@@ -230,9 +231,14 @@ def test_trade_file_cites_both_filings_and_validates() -> None:
     assert "schema" in _errors(check_trade_file, {k: v for k, v in tf.items() if k != "amendments"}, "trades/P000197")
 
 
+def _as_is(r: dict[str, Any]) -> dict[str, Any]:
+    """The event mapped with no rule applied, as before the folding existed."""
+    return trades.map_row({**r, "amendments": [], "marked": False, "date_corrected": False, "unmatched": False, "deleted": False})
+
+
 def test_validator_requires_same_key_pairs_to_be_counted() -> None:
-    unfolded = [trades.map_row({**r, "amendments": [], "marked": False, "date_corrected": False}) for r in pelosi()]  # as before this rule
-    rows = {M: _published(unfolded)["rows"]}
+    unfolded = [_as_is(r) for r in pelosi()]  # as before this rule
+    rows = {M: _published(unfolded)}
     counted = same_key_other_filing(unfolded)
     assert counted == {"trades": 6, "groups": 2, "members": {M: 6}}
 
@@ -241,7 +247,7 @@ def test_validator_requires_same_key_pairs_to_be_counted() -> None:
                 "reports": {"hf_trades": {"amendments": {"same_key_other_filing": per_member}}}}
     assert _errors(check_same_key, rows, meta(6, counted)) == {}
     assert len(_errors(check_same_key, rows, meta(0, {"trades": 0, "groups": 0, "members": {}}))) == 2   # uncounted duplicates fail
-    folded = {M: _published(mapped(pelosi())[0])["rows"]}
+    folded = {M: _published(mapped(pelosi())[0])}
     assert _errors(check_same_key, folded, meta(0, {"trades": 0, "groups": 0, "members": {}})) == {}
 
 
@@ -254,19 +260,22 @@ def test_validator_rereads_the_source_and_catches_a_missed_fold(tmp_path) -> Non
     rows = pelosi() + [ev("20015042", 3), ev("20016961", 3, "Amended"), ev("20016961", 4, "Amended")]   # one original, two reprints
     marks, public = _source(rows)
     tf = _published(mapped(rows)[0])
-    assert _errors(check_against_source, {M: tf["rows"]}, {M: tf["amendments"]}, marks, public) == {}
-    unfolded = _published([trades.map_row({**r, "amendments": [], "marked": False, "date_corrected": False}) for r in pelosi()])
-    errs = _errors(check_against_source, {M: unfolded["rows"]}, {M: {}}, marks, public)
+    assert _errors(check_against_source, {M: tf}, marks, public) == {}
+    unfolded = _published([_as_is(r) for r in pelosi()])
+    errs = _errors(check_against_source, {M: unfolded}, marks, public)
     assert sorted(errs["amendments: a marked House row with one exact earlier filing was folded"]) == [
         f"{M}:house:20016961:0", f"{M}:house:20016961:1", f"{M}:house:20018539:0"]
-    assert "amendments: the source still carries the filing status column" in _errors(check_against_source, {M: tf["rows"]}, {M: tf["amendments"]}, None, public)
+    assert "amendments: the source still carries the filing status column" in _errors(check_against_source, {M: tf}, None, public)
     # `doc` must be the filing public on `available`: citing the amending filing with the original's date fails
     wrong = [[("20016961" if c == "20015042" else c) for c in r] for r in tf["rows"]]
-    assert "trade doc is the filing that became public on `available`" in _errors(check_against_source, {M: wrong}, {M: {}}, marks, public)
+    assert "trade doc is the filing that became public on `available`" in _errors(check_against_source, {M: {**tf, "rows": wrong, "amendments": {}}}, marks, public)
     # the stage did not read the status, or the cache is gone: both fail
-    meta = {"counts": {"trades_same_key_other_filing": 0}, "exclusions": {"same_key_other_filing": {"rows": 0}}, "sources": {"hf_trades": {"revision": "r"}},
-            "reports": {"hf_trades": {"filing_status_in_source": False, "amendments": {"marked_rows": 0, "same_key_other_filing": {"trades": 0, "groups": 0, "members": {}}}}}}
-    errs = _errors(check_folding, {M: _published(mapped(pelosi())[0])["rows"]}, meta, tmp_path, tmp_path)
+    zero = ("same_key_other_filing", "deleted_by_later_filing", "lag_withheld_date_corrected", "lag_withheld_amended_unmatched")
+    meta = {"counts": {f"trades_{k}": 0 for k in zero}, "sources": {"hf_trades": {"revision": "r"}},
+            "exclusions": {k: {"rows": 0} for k in (*zero, "amended_rows_without_original")},
+            "reports": {"hf_trades": {"filing_status_in_source": False, "trades_written": 5, "trades_counted": 5,
+                                      "amendments": {"marked_rows": 0, "same_key_other_filing": {"trades": 0, "groups": 0, "members": {}}}}}}
+    errs = _errors(check_folding, {M: _published(mapped(pelosi())[0])}, meta, tmp_path, tmp_path)
     assert len(errs) == 2 and any("filing status" in k for k in errs) and any("download cache" in k for k in errs)
 
 
@@ -275,4 +284,4 @@ def test_reprint_folded_into_a_date_corrected_event_keeps_the_lag_withheld() -> 
     reprint = ev("20018011", 5, "Amended", asset="Roblox", ticker="RBLX", transactionDate=date(2020, 1, 10))
     ts, counts = mapped([corrected, reprint])
     assert len(ts) == 1 and counts["folded_amended"] == 1
-    assert ts[0]["lag_withheld"] is True and ts[0]["lag_days"] is None and ts[0]["late"] is None
+    assert ts[0]["lag_withheld"] == "date_corrected" and ts[0]["lag_days"] is None and ts[0]["late"] is None

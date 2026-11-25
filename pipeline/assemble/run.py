@@ -51,14 +51,19 @@ def run() -> None:
     sources, reports, money_cov = load_sources()
     orgs, org_files = load_orgs()
     edges, edge_report = load_edges(set(spine), orgs, set(sources), slim=True)
-    trades: list[Trade] = pq.read_table(BUILD / "trades_resolved.parquet").to_pylist()
+    listed: list[Trade] = pq.read_table(BUILD / "trades_resolved.parquet").to_pylist()
+    # A trade a later filing marks Deleted stays listed in the trade file and is counted nowhere (TradeFile.not_counted).
+    trades = [t for t in listed if not t["deleted"]]
     trades_report = reports["hf_trades"]
     finance = load_campaign_finance(set(spine))
     this_year = date.today().year
 
     by_member_trades: dict[str, list[Trade]] = defaultdict(list)
-    for t in trades:
-        by_member_trades[t["member"]].append(t)
+    by_member_listed: dict[str, list[Trade]] = defaultdict(list)
+    for t in listed:
+        by_member_listed[t["member"]].append(t)
+        if not t["deleted"]:
+            by_member_trades[t["member"]].append(t)
     member_edges: dict[str, list[Edge]] = defaultdict(list)
     org_edges: dict[str, list[Edge]] = defaultdict(list)
     for e in edges:
@@ -106,16 +111,17 @@ def run() -> None:
         ledger_stats["ledger_money_ties"] += len(rest)
         ledger_stats["ledger_rows_published"] += len(shown)
         ledger_stats["ledger_rows_former_members_cut"] += len(rest) + len(context) - len(shown)
-        ts = sorted(by_member_trades.get(mid, []), key=lambda t: (t["date"] or date.min, t["id"]), reverse=True)
-        if ts:
-            write_json(staging / "trades" / f"{mid}.json", trade_file(ts))
+        rows = sorted(by_member_listed.get(mid, []), key=lambda t: (t["date"] or date.min, t["id"]), reverse=True)
+        ts = [t for t in rows if not t["deleted"]]
+        if rows:
+            write_json(staging / "trades" / f"{mid}.json", trade_file(rows, set(used_orgs)))
         refs = {end["id"]: end for e in full[mid] for end in (e["from"], e["to"]) if end["id"] != mid}
         write_json(staging / "members" / f"{mid}.json", {
             "member": {**summary, "terms": m["terms"], "committees": m["committees"], "fec_ids": m["fec_ids"]},
             "edges": full[mid], "board": [e["id"] for e in sorted(full[mid], key=lambda e: board_order(e, case_edges))[:BOARD_EDGES]],
             "nodes": {k: node_info(v, orgs, spine) for k, v in sorted(refs.items())},
             "ledger": member_ledger(mid, shown), "ledger_totals": ledger_totals(rest + context),
-            "trade_summary": trade_summary(ts),
+            "trade_summary": trade_summary(ts, len(rows)),
             "cases": member_cases.get(mid, []), "campaign_finance": finance.get(mid),
             "coverage": coverage(m, trades_report["coverage"], failed[mid], money_cov, this_year)})
 

@@ -16,10 +16,11 @@ from __future__ import annotations
 import argparse
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Any, Callable
 
-from .publish_r2 import MissingConfig, PublishError, _code, client_from_env, retry
+from .publish_r2 import WORKERS, MissingConfig, PublishError, _code, client_from_env, retry
 from .release_blobs import blob_key
 from .release_history import remove_releases
 from .release_manifest import ReleaseManifestError, canonical_json, decode_json, validate_pointer, validate_release_id
@@ -160,9 +161,16 @@ def withdraw(client: Any, bucket: str, release_id: str, reason: str, *, also: tu
     # Plan again right before deleting: a release created in the meantime may now reference one of these blobs.
     to_delete, kept, conflicts, live_count = _plan(client, bucket, targets, descriptors, exposed, sleep, cache)
     _refuse_shared(conflicts, named, _current_id(client, bucket, sleep))
-    for sha in sorted(to_delete):
+    # Deletes run in parallel like the archive uploads: one by one, ~7,000 blobs took over 30 minutes (2026-11-25).
+    # Deleting a blob that is already gone is a no-op, so a re-run after a timeout repeats only cheap requests.
+    def delete(sha: str) -> None:
         key = blob_key(sha)
-        retry(lambda key=key: client.delete_object(Bucket=bucket, Key=key), "delete release blob", sleep)
+        retry(lambda: client.delete_object(Bucket=bucket, Key=key), "delete release blob", sleep)
+
+    with ThreadPoolExecutor(max_workers=WORKERS) as pool:
+        for done, _ in enumerate(pool.map(delete, sorted(to_delete)), 1):
+            if done % 500 == 0:
+                print(f"withdraw: {done} of {len(to_delete)} blobs deleted", flush=True)
     for target in targets:
         if descriptors[target] is not None:
             key = descriptor_key(target)

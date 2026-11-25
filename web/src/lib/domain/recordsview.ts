@@ -2,7 +2,7 @@
 // (reported apart, never dropped, never in a year), and which trades the assumptions leave out. Pure; tested in
 // tests/viewstate.test.mjs. Ties are placed by the years of their records, trades by the chosen date basis.
 import type { Cell, Col } from "./records.ts";
-import { isDefault, tradeCounts, type Assumptions } from "./assume.ts";
+import { DEFAULT_ASSUMPTIONS, isDefault, tradeCounts, type Assumptions } from "./assume.ts";
 import { overlaps, yearOf, type YearSpan } from "./datebasis.ts";
 import type { DateBasis } from "./viewstate.ts";
 
@@ -50,7 +50,19 @@ function span(kind: TableKind, cols: Col[], basis: DateBasis): (r: Cell[]) => Ye
 }
 
 /** Apply the shared view to one table. Without a window and with default assumptions the rows pass through unchanged. */
-export function viewTable(kind: TableKind, cols: Col[], rows: Cell[][], w: TableWindow): TableView {
+export function viewTable(kind: TableKind, cols: Col[], rows: Cell[][], w: TableWindow, inner = false): TableView {
+  // Trade rows a later filing marks Deleted stay listed (marked) but are counted nowhere: they take no part in the
+  // assumption count, the year-window count or `total`, and are listed when they fall inside the window.
+  const ncAt = kind === "trades" && !inner ? at(cols, "not_counted") : -1;
+  const isNc = (r: Cell[]) => ncAt >= 0 && r[ncAt] != null;
+  const listedOnly = rows.filter(isNc);
+  if (listedOnly.length) {
+    rows = rows.filter((r) => !isNc(r));
+    const t = viewTable(kind, cols, rows, w, true);
+    // Listed-only rows follow the same window; those with no date stay in the undated bucket, marked, not counted.
+    const l = viewTable(kind, cols, listedOnly, { ...w, assume: DEFAULT_ASSUMPTIONS }, true);
+    return { ...t, rows: [...t.rows, ...l.rows], undated: [...t.undated, ...l.undated] };
+  }
   let kept = rows;
   let excluded = 0;
   if (kind === "trades" && !isDefault(w.assume)) {
