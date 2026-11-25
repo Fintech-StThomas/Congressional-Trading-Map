@@ -7,7 +7,8 @@ values to contract enums with explicit tables (never guessing an owner) -> write
 row per trade, org not yet resolved) and sources/hf_trades.json.
 Dates: availableAt is a UTC instant, converted to the Eastern calendar date. `available` is the EARLIEST public
 date of the trade (earliest version, earliest folded printing) and `doc_id` is that filing; later filings are in
-`amendments`. `late` = lag > config.LATE_DAYS; the lag is null when a later version changed the transaction date.
+`amendments`. `late` = lag > config.LATE_DAYS; the lag is withheld (`lag_withheld`) when a later version changed the
+transaction date or the row is an Amended House row with no exact original. `deleted`: listed, counted nowhere.
 `amended`: several versions, a folded later printing, or a House row marked so.
 """
 from __future__ import annotations
@@ -100,7 +101,11 @@ def map_row(r: dict[str, Any]) -> dict[str, Any]:
     action = ACTION.get(r["action"], "other")
     avail = available_date(r["first_available_at"])
     lag = (avail - r["transactionDate"]).days if avail and r["transactionDate"] else None
-    withheld = lag is not None and (r["date_corrected"] or (lag < 0 and r["n_versions"] > 1))
+    withheld = None                 # TradeFile.lag_withheld: both dates present, no elapsed-days figure given
+    if lag is not None and r["unmatched"]:
+        withheld = "amended_unmatched"
+    elif lag is not None and (r["date_corrected"] or (lag < 0 and r["n_versions"] > 1)):
+        withheld = "date_corrected"
     lag = None if withheld else lag
     return {
         "id": r["eventId"], "member": r["memberId"], "chamber": "sen" if r["chamber"] == "senate" else "rep",
@@ -115,7 +120,7 @@ def map_row(r: dict[str, Any]) -> dict[str, Any]:
         "asset_class": asset_class(r["chamber"], r["assetTypeCode"], r["assetTypeLabel"]),
         "asset_type_raw": r["assetTypeCode"] or r["assetTypeLabel"],
         "low": r["amountLow"], "high": r["amountHigh"], "url": r["sourceUrl"], "doc_id": r["sourceDocId"],
-        "lag_withheld": withheld,
+        "lag_withheld": withheld, "deleted": r["deleted"],
         "amendments": [{"id": a["id"], "doc_id": a["doc_id"], "url": a["url"], "status": a["status"],
                         "available": available_date(a["available_at"])} for a in r["amendments"]],
     }
@@ -148,22 +153,33 @@ def load(con: duckdb.DuckDBPyConnection, root: Path, spine_ids: set[str]) -> tup
     versions = dict(con.execute("""select eventId, list({'doc': sourceDocId, 'row': sourceRowIndex, 'url': sourceUrl,
         'at': availableAt, 'date': transactionDate} order by availableAt, version)
         from political_trade_events group by 1 having count(*) > 1""").fetchall())
-    rows, folded = amendments.fold(amendments.apply_versions(r, versions.get(r["eventId"])) for r in rows)
+    # Every House row the dataset folded into an event (its printings), to see a Deleted printing that is not the
+    # event's own row. Skipped when the source lacks the columns (then each event has its own row only).
+    printings: dict[str, list[dict[str, Any]]] = {}
+    if "contributorRowIds" in {r[0] for r in con.execute("describe political_trade_events").fetchall()} \
+            and {"filingStatus", "chamber", "availableAt", "sourceUrl"} <= have:
+        printings = dict(con.execute("""select e.eventId, list({'doc': t.docId, 'row': t.rowIndex, 'url': t.sourceUrl,
+            'at': t.availableAt, 'status': t.filingStatus} order by t.availableAt, t.docId, t.rowIndex)
+            from (select eventId, unnest(from_json(contributorRowIds, '["varchar"]')) as rid from cur where chamber = 'house') e
+            join political_trades t on t.chamber = 'house' and t.docId || ':' || t.rowIndex = e.rid group by 1""").fetchall())
+    rows, folded = amendments.fold(amendments.apply_versions({**r, "printings": printings.get(r["eventId"])},
+                                                             versions.get(r["eventId"])) for r in rows)
     kept = [r for r in rows if r["memberId"] in spine_ids]
     not_in_spine = Counter(r["memberId"] for r in rows if r["memberId"] not in spine_ids)
     trades = [map_row(r) for r in kept]
     same_key = amendments.same_key_other_filing(trades)
-    unmatched = folded["amended_without_original"] + folded["deleted_without_original"]
-    withheld = sum(t.pop("lag_withheld") for t in trades)
+    deleted = sum(t["deleted"] for t in trades)
+    withheld = Counter(t["lag_withheld"] for t in trades if not t["deleted"])      # counted trades only
 
     exclusions = {
         "superseded_event_versions": {
             "rows": one("select count(*) from political_trade_events where supersededAt is not null"),
             "reason": "older versions of amended events; the current version is kept and flagged amended"},
         "amended_reprints_folded": {"rows": n_cur - len(rows), "reason": amendments.REASONS["amended_reprints_folded"]},
-        "amended_rows_without_original": {"rows": unmatched, "reason": amendments.REASONS["amended_rows_without_original"]},
+        "amended_rows_without_original": {"rows": withheld["amended_unmatched"], "reason": amendments.REASONS["amended_rows_without_original"]},
         "same_key_other_filing": {"rows": same_key["trades"], "reason": amendments.REASONS["same_key_other_filing"]},
-        "lag_withheld_date_corrected": {"rows": withheld, "reason": amendments.REASONS["lag_withheld_date_corrected"]},
+        "lag_withheld_date_corrected": {"rows": withheld["date_corrected"], "reason": amendments.REASONS["lag_withheld_date_corrected"]},
+        amendments.DELETED: {"rows": deleted, "reason": amendments.REASONS[amendments.DELETED]},
         "trade_rows_folded_into_events": {
             "rows": counts["political_trades"] - one("select count(*) from political_trades where identitySource in ('non_member','unresolved')") - n_cur,
             "reason": "repeat printings of the same economic trade (duplicate filings, amendments) folded by the dataset into one event"},
@@ -191,10 +207,13 @@ def load(con: duckdb.DuckDBPyConnection, root: Path, spine_ids: set[str]) -> tup
         "select memberId, filingDate, docId from political_filings where extractionStatus = 'failed' order by docId").fetchall()]
     return trades, {"table_rows": counts, "current_events": n_cur, "exclusions": exclusions, "coverage": coverage,
                     "failed_filings": failed, "filing_status_in_source": "filingStatus" in have,
+                    "trades_counted": len(trades) - deleted,
                     "amendments": {**folded, "same_key_other_filing": same_key},
                     "amendment_counts": {"trades_same_key_other_filing": same_key["trades"],
                                          "trades_amended_reprints_folded": n_cur - len(rows),
-                                         "trades_lag_withheld_date_corrected": withheld}}
+                                         "trades_lag_withheld_date_corrected": withheld["date_corrected"],
+                                         "trades_lag_withheld_amended_unmatched": withheld["amended_unmatched"],
+                                         "trades_deleted_by_later_filing": deleted}}
 
 
 SCHEMA = pa.schema([
@@ -206,6 +225,7 @@ SCHEMA = pa.schema([
     ("low", pa.float64()), ("high", pa.float64()), ("url", pa.string()), ("doc_id", pa.string()),
     ("amendments", pa.list_(pa.struct([("id", pa.string()), ("doc_id", pa.string()), ("url", pa.string()),
                                        ("status", pa.string()), ("available", pa.date32())]))),
+    ("lag_withheld", pa.string()), ("deleted", pa.bool_()),
 ])
 
 
@@ -244,7 +264,7 @@ def run() -> None:
     con = duckdb.connect()
     trades, info = load(con, root, spine_ids)
     pq.write_table(pa.Table.from_pylist(trades, schema=SCHEMA), BUILD / "trades.parquet")
-    rep = {**info, **report(trades), "trades_written": len(trades)}
+    rep = {**info, **report([t for t in trades if not t["deleted"]]), "trades_written": len(trades)}   # figures: counted trades
     print(f"\nrows per table: {info['table_rows']}; current events kept: {len(trades)}")
     print(f"  amended House reprints: { {k: v for k, v in info['amendments'].items() if k != 'same_key_other_filing'} }")
     for k in ("null_ticker", "ticker_source", "null_owner_label", "null_date", "null_amount", "open_ended_amount",

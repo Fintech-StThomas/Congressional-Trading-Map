@@ -366,7 +366,7 @@ contributions file (`indiv`), and publishes no individual contributor; the notic
 - **Publication budget.** Not every money tie is published with its evidence (see the data dictionary). Every tie
   stays in `pipeline/build/`, and totals cover all of them.
 - **Late flag.** `late` compares the trade's first public availability with the transaction date (more than 45 days). The legal
-  deadline runs from the notification date, so a few flagged trades may have been filed on time. A House row marked Amended that changes a key field (date, owner, action, amount, asset) cannot be tied to its original exactly: both stay, and the amended one is timed from the amending filing (`meta.exclusions.amended_rows_without_original`).
+  deadline runs from the notification date, so a few flagged trades may have been filed on time. A House row marked Amended that changes a key field (date, owner, action, amount, asset) cannot be tied to its original exactly: both stay, and the amended one's lag is withheld (`TradeFile.lag_withheld`, delays bucket `amended_unmatched`). A trade a later House filing marks Deleted stays listed but is counted nowhere (`TradeFile.not_counted`).
 - **Memory.** Assembly holds every edge (without evidence) in memory: about 4.2 GB peak with the full FEC plug-in.
 - **Campaign finance block.** `MemberFile.campaign_finance` (loans as the FEC summarises them, leadership PAC spending
   by FEC category and by the FEC's purpose groups) comes from `pipeline/fec/spending.py` in the `fec` stage and writes

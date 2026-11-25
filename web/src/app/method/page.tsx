@@ -27,6 +27,13 @@ const TYPES_BY_FAMILY: [keyof typeof FAMILY_LABEL, EdgeType[]][] = [
   ["context", ["oversees", "sits_with", "legislates_with"]],
 ];
 
+/** The amended-reports limit that matches what this build did: newest rules, then reprints folded, then the older build. */
+function amendLimit(counts: unknown): string {
+  const c = (counts ?? {}) as Record<string, unknown>;
+  if (typeof c.trades_deleted_by_later_filing === "number") return METHOD_AMEND.limitNew;
+  return typeof c.trades_amended_reprints_folded === "number" ? METHOD_AMEND.limit : METHOD_AMEND.limitOld;
+}
+
 function label(k: string) {
   return k.replace(/_/g, " ").replace(/\.jsonl/g, "").replace(/^./, (c) => c.toUpperCase());
 }
@@ -173,7 +180,7 @@ export default async function MethodPage() {
             <li key={n}>{siteTerms(n)}</li>
           ))}
           <li>Periodic transaction reports exist only from July 2012, when the STOCK Act created them. Earlier years show &ldquo;no reports existed&rdquo;.</li>
-          <li>{typeof (meta.counts as Record<string, unknown> | undefined)?.trades_amended_reprints_folded === "number" ? METHOD_AMEND.limit : METHOD_AMEND.limitOld}</li>
+          <li>{amendLimit(meta.counts)}</li>
           <li>Names are matched exactly. A company that files under several names may appear as more than one organisation.</li>
           <li>A tie shows that a record exists. It does not show intent, influence, a conflict of interest or any wrongdoing.</li>
         </ul>

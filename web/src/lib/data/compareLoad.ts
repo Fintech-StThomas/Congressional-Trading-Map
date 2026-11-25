@@ -52,7 +52,7 @@ export async function loadMemberSide(release: string, member: string, buildTime:
     side: {
       buildTime: built,
       edges: Array.isArray(file.edges) ? file.edges : [],
-      trades: trades ? decodeTradeFile(trades as Parameters<typeof decodeTradeFile>[0]) : [],
+      trades: trades ? decodeTradeFile(trades as Parameters<typeof decodeTradeFile>[0], undefined, { listed: true }) : [],
       holdings: holdings as MemberSide["holdings"],
     },
   };

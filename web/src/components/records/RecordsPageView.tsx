@@ -1,5 +1,6 @@
 // "The full file" for one data reader: a plain technical view of every record held for one member. Shared by
 // /m/<id>/records (latest, with its live twin) and the permalink /r/<release>/m/<id>/records.
+import { hasListedTrades } from "@/lib/domain/amendments";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -76,7 +77,7 @@ export async function RecordsPageView({ data, id, pinned }: { data: Data; id: st
       <ErrorBoundary label="records">
         <RecordsView
           id={m.id}
-          hasTrades={(file.trade_summary?.count ?? 0) > 0}
+          hasTrades={hasListedTrades(file.trade_summary)}
           hasHoldings={hasHoldings}
           everHouse={everHouse}
           names={names}

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { dataUrl, safeHttpUrl } from "@/lib/urls";
 import { getJSON } from "@/lib/data/fetch";
+import { countedWire } from "@/lib/data/decode";
 import type { MemberFileWire } from "@/lib/types";
 import { caveats, DOC_COLS, documentRows, identifierLinks, TIE_COLS, tieRows, TRADE_COLS_ALL, tradeRows } from "@/lib/domain/records";
 import { USE_NOTICE, COVERAGE, VIEW } from "@/lib/copy";
@@ -27,6 +28,8 @@ import { ASSET_COLS, coverageWords, holdingRows, LIABILITY_COLS, netWorthText, t
 
 type TradeWire = { cols: string[]; rows: unknown[][]; filings: Record<string, string> };
 const NO_EDGES: never[] = [];
+/** Column of the trades table that says a row is not counted (rows a later filing marks Deleted are listed, never counted). */
+const NOT_COUNTED_AT = TRADE_COLS_ALL.findIndex((c) => c.key === "not_counted");
 type Source = { id: string; name: string; revision: string | null; retrieved: string | null; url: string | null };
 
 /** Everything the site holds for one member, unfiltered: loaded from the same public files the site uses. */
@@ -110,7 +113,7 @@ export function RecordsView({ id, hasTrades, hasHoldings, everHouse, names, sour
     if (!file) return [];
     const all = coverageFacts({
       member: file.member, coverage: file.coverage, tradeSummary: file.trade_summary, edges: file.edges, ledgerTotals: file.ledger_totals,
-      holdings, meta: cmeta, tradeValues: tradeValueStats(trades),
+      holdings, meta: cmeta, tradeValues: tradeValueStats(countedWire(trades)),
     });
     return holdState === "loading" || holdState === "error" ? all.filter((f) => f.scope !== "holdings") : all;
   }, [file, holdings, holdState, cmeta, trades]);
@@ -122,7 +125,7 @@ export function RecordsView({ id, hasTrades, hasHoldings, everHouse, names, sour
     const limitations = facts.map((f) => f.text);
     const view = (kind: "records", retrieved: string): Citation => buildViewCitation({
       kind, member: { id, name: file?.member.name ?? id }, limitations, env: { ...env, retrieved }, fec_candidate_ids: file?.member.fec_ids,
-      counts: { ties: ties.length, trades: hasTrades && trades ? tradeTable.length : null, source_documents: docs.length },
+      counts: { ties: ties.length, trades: hasTrades && trades ? tradeTable.filter((r) => r[NOT_COUNTED_AT] == null).length : null, source_documents: docs.length },
       dates: { first: file?.trade_summary?.first ?? null, last: file?.trade_summary?.last ?? null },
     });
     const table = (idKeys: TableCite["idKeys"]): TableCite => ({
@@ -133,7 +136,7 @@ export function RecordsView({ id, hasTrades, hasHoldings, everHouse, names, sour
       }),
     });
     return { view, ties: table({ edge_ids: "edge_id" }), trades: table({ trade_ids: "id", filing_docs: "doc" }), docs: table({ filing_docs: "id" }), finance: table({}) };
-  }, [facts, env, id, file, ties.length, tradeTable.length, docs.length, hasTrades, trades]);
+  }, [facts, env, id, file, ties.length, tradeTable, docs.length, hasTrades, trades]);
 
   if (state.member === "error") return <p className="rec__state" role="alert">The member file failed to load. Reload the page to try again.</p>;
   if (!file) return <p className="rec__state" aria-busy="true">Loading the file…</p>;
@@ -214,7 +217,7 @@ export function RecordsView({ id, hasTrades, hasHoldings, everHouse, names, sour
           ) : (
             <>
               {tables.trades.excluded > 0 && !tables.trades.years && <p className="rec__note" data-testid="rec-trades-leftout">{VIEW.leftOut(tables.trades.excluded)}</p>}
-              <DataTable id="trades" title="Every trade" cols={TRADE_COLS_ALL} rows={tables.trades.rows} file={`${m.id}-trades`} cite={cite.trades} years={tables.trades.years} />
+              <DataTable id="trades" title="Every trade" cols={TRADE_COLS_ALL} rows={tables.trades.rows} file={`${m.id}-trades`} cite={cite.trades} years={tables.trades.years} uncounted={(r) => r[NOT_COUNTED_AT] != null} />
               <UndatedBucket id="trades" title="Every trade" cols={TRADE_COLS_ALL} rows={tables.trades.undated} file={`${m.id}-trades`} />
             </>
           )}

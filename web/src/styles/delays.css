@@ -269,13 +269,20 @@
   flex-direction: column;
   overflow: hidden;
 }
-.trades__latertext,
+.trades__latertext {
+  white-space: normal;
+}
 .trades__laterlinks {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.vtable .tradetable th.trades__laterh { width: 300px; }
+/* A row a later filing marks Deleted: listed, marked, counted nowhere. Muted and italic, never a colour that reads as a tie. */
+.vtable tbody tr.is-notcounted td {
+  color: var(--text-3);
+  font-style: italic;
+}
+.vtable .tradetable th.trades__laterh { width: 280px; }
 .vtable .tradetable.has-later { min-width: 1216px; }
 @media print { .vtable .tradetable.has-later { min-width: 0; } }
 

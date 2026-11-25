@@ -1,7 +1,8 @@
-"""A null lag with both dates present is valid only for a trade a later dataset version corrected: flagged amended and
-either a later version (version > 1) or listing a later filing in its trade file's `amendments`
-(pipeline/validate_trade_amendments.py `lag_null_is_valid`).
-A wrongly withheld lag (no version, or no amended flag) fails validation."""
+"""A null lag with both dates present is valid only when the trade file withholds it for a stated reason
+(`lag_withheld[id]`: "date_corrected" or "amended_unmatched") on a trade flagged amended
+(pipeline/validate_trade_amendments.py `lag_null_is_valid`, `check_trade_file`).
+A wrongly withheld lag (no reason listed, an unknown reason, or no amended flag) fails validation, and so does a
+lag published for a trade the file says is withheld."""
 from __future__ import annotations
 
 from datetime import date
@@ -20,7 +21,7 @@ def _file(ts: list[dict[str, Any]]) -> dict[str, Any]:
 def _errors(tf: dict[str, Any]) -> dict[str, list[str]]:
     c = validate.Checker()
     validate.check_trades(c, tf, "trades/X", set())
-    return {k: v for k, v in c.errors.items() if k.startswith("lag null")}
+    return {k: v for k, v in c.errors.items() if k.startswith(("lag null", "lag_withheld"))}
 
 
 def _withhold(tf: dict[str, Any], tid: str) -> dict[str, Any]:
@@ -48,17 +49,25 @@ def test_a_wrongly_withheld_lag_fails() -> None:
     assert _errors(tf) != {}
 
 
-def test_a_withheld_lag_needs_the_amended_flag_and_a_later_version_or_filing() -> None:
+def test_a_withheld_lag_needs_a_listed_reason_and_the_amended_flag() -> None:
     ts, _ = mapped([versioned("20018011", "20018539", date(2021, 1, 4))])
     tf = _file(ts)
     tid = ts[0]["id"]
-    assert _errors({**tf, "amendments": {}}) == {}           # versions in one filing list no Version entry: still valid
-    assert _errors({**tf, "amendments": {tid: [{**tf["amendments"][tid][0], "status": "Amended"}]}}) == {}  # folded printing
+    assert tf["lag_withheld"] == {tid: "date_corrected"}
+    assert _errors({**tf, "amendments": {}}) == {}           # the reason is what counts, not the listed filings
     same, _ = mapped([versioned("20018011", "20018011", date(2021, 1, 4))])           # both versions in one filing
     assert _errors(_file(same)) == {}
-    v = TRADE_COLUMNS.index("version")
-    first = {**tf, "amendments": {}, "rows": [[*r[:v], 1, *r[v + 1:]] for r in tf["rows"]]}
-    assert _errors(first) != {}                               # amended but version 1 with nothing listed: wrongly withheld
+    assert _errors({**tf, "lag_withheld": {}}) != {}          # no reason listed: wrongly withheld
+    assert _errors({**tf, "lag_withheld": {tid: "because"}}) != {}
     i = TRADE_COLUMNS.index("amended")
-    unflagged = {**tf, "rows": [[*r[:i], False, *r[i + 1:]] for r in tf["rows"]]}
-    assert _errors(unflagged) != {}
+    assert _errors({**tf, "rows": [[*r[:i], False, *r[i + 1:]] for r in tf["rows"]]}) != {}
+    lag = TRADE_COLUMNS.index("lag_days")
+    assert _errors({**tf, "rows": [[*r[:lag], 17, *r[lag + 1:]] for r in tf["rows"]]}) != {}   # a lag published for a withheld trade
+
+
+def test_an_amended_row_without_its_original_is_withheld_not_timed_from_the_amendment() -> None:
+    ts, _ = mapped([ev("20016961", 0, "Amended", "2000060675")])
+    tf = _file(ts)
+    row = dict(zip(TRADE_COLUMNS, tf["rows"][0]))
+    assert row["lag_days"] is None and row["late"] is None and row["amended"] is True and row["available"] == "2020-07-20"
+    assert tf["lag_withheld"] == {row["id"]: "amended_unmatched"} and _errors(tf) == {}

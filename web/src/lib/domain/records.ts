@@ -12,7 +12,7 @@ export type RecTable = { id: string; title: string; cols: Col[]; rows: Cell[][] 
 
 type Names = (id: string) => string;
 type Wire = Pick<MemberFileWire, "member" | "edges" | "ledger" | "cases" | "coverage"> & { ledger_totals?: MemberFileWire["ledger_totals"] };
-type TradeWire = { cols: string[]; rows: unknown[][]; filings: Record<string, string>; amendments?: unknown } | null;
+type TradeWire = { cols: string[]; rows: unknown[][]; filings: Record<string, string>; amendments?: unknown; not_counted?: Record<string, string> | null; lag_withheld?: Record<string, string> | null } | null;
 
 export const TIE_COLS: Col[] = [
   { key: "published", label: "Published as", kind: "text", width: 96 },
@@ -74,7 +74,11 @@ export const TRADE_COLS_ALL: Col[] = [
   ["asset", "Asset as filed", "text", 260], ["asset_class", "Asset class", "text", 84], ["low", "Low $", "num", 90], ["high", "High $", "num", 90],
   ["org", "Org id", "text", 100], ["doc", "Filing id", "text", 110], ["url", "Filing", "links", 120],
   ["later", AMEND.csvLabel, "text", 200], ["later_urls", AMEND.csvLinks, "links", 160],
+  ["not_counted", AMEND.csvNotCounted, "text", 170], ["lag_withheld", AMEND.csvLagWithheld, "text", 150],
 ].map(([key, label, kind, width]) => ({ key, label, kind, width }) as Col);
+
+/** A reason key in plain words; null when the row has none. */
+const word = (k: string | undefined): string | null => (k ? AMEND.reasonWord[k] ?? k : null);
 
 export function tradeRows(t: TradeWire): Cell[][] {
   if (!t) return [];
@@ -84,6 +88,8 @@ export function tradeRows(t: TradeWire): Cell[][] {
   return t.rows.map((r) => keys.map((k) => {
     if (k === "url") return t.filings[String(r[at.doc])] ?? null;
     if (k === "later") return laterFilingsText(later[String(r[at.id])]);
+    if (k === "not_counted") return word(t.not_counted?.[String(r[at.id])]);
+    if (k === "lag_withheld") return word(t.lag_withheld?.[String(r[at.id])]);
     if (k === "later_urls") return laterFilingUrls(later[String(r[at.id])], t.filings);
     return (r[at[k]] ?? null) as Cell;
   }));
@@ -154,12 +160,18 @@ export function caveats(file: Wire, trades: TradeWire): string[] {
     out.push(`Former member: the ledger lists the ${listed.toLocaleString("en-US")} largest of ${total.toLocaleString("en-US")} further ties; ledger totals cover all of them.`);
   if (trades) {
     const at = Object.fromEntries(trades.cols.map((c, i) => [c, i]));
-    const n = (f: (r: unknown[]) => boolean) => trades.rows.reduce<number>((s, r) => s + (f(r) ? 1 : 0), 0);
+    // Tallies count the counted rows: a row a later filing marks Deleted is listed but counted nowhere.
+    const dropped = trades.not_counted ?? {};
+    const n = (f: (r: unknown[]) => boolean) => trades.rows.reduce<number>((s, r) => s + (!dropped[String(r[at.id])] && f(r) ? 1 : 0), 0);
     const unspecified = n((r) => r[at.owner] === "unspecified");
     const noTicker = n((r) => r[at.ticker] == null);
     const noDate = n((r) => r[at.date] == null);
     const unknownClass = n((r) => r[at.asset_class] === "unknown");
     const amended = n((r) => r[at.amended] === true);
+    const nc = Object.keys(trades.not_counted ?? {}).length;
+    const um = Object.entries(trades.lag_withheld ?? {}).filter(([id, v]) => v === "amended_unmatched" && !dropped[id]).length;
+    if (nc) out.push(AMEND.caveatNotCounted(nc));
+    if (um) out.push(AMEND.caveatUnmatched(um));
     if (unspecified) out.push(`${unspecified.toLocaleString("en-US")} trades have no owner stated on the filing; they are labelled “unspecified”, never assumed to be the member’s own.`);
     if (noTicker) out.push(`${noTicker.toLocaleString("en-US")} trades have no ticker; none is guessed.`);
     if (noDate) out.push(`${noDate.toLocaleString("en-US")} trades have no transaction date; their year comes from the date the report became public.`);

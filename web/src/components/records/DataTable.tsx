@@ -58,7 +58,7 @@ export type TableCite = {
   idKeys: { edge_ids?: string; trade_ids?: string; filing_docs?: string };
 };
 
-export function DataTable({ id, title, cols, rows, file, cite, years, select }: { id: string; title: string; cols: Col[]; rows: Cell[][]; file: string; cite?: TableCite; years?: YearWindow; select?: RowSelect }) {
+export function DataTable({ id, title, cols, rows, file, cite, years, select, uncounted }: { id: string; title: string; cols: Col[]; rows: Cell[][]; file: string; cite?: TableCite; years?: YearWindow; select?: RowSelect; /** Rows listed but counted nowhere (trades a later filing marks Deleted): left out of the counts, noted beside them. */ uncounted?: (row: Cell[]) => boolean }) {
   const [sort, setSort] = useState<{ i: number; desc: boolean } | null>(null);
   const [filters, setFilters] = useState<Record<number, string>>({});
   const [top, setTop] = useState(0);
@@ -88,13 +88,15 @@ export function DataTable({ id, title, cols, rows, file, cite, years, select }: 
     const t = window.setTimeout(() => el.querySelector("tr.is-selected")?.scrollIntoView({ block: "center" }), 0);
     return () => window.clearTimeout(t);
   }, [selIndex, select?.selected]);
-  const total = years ? years.total : rows.length;
+  const listedOnly = uncounted ? view.filter(uncounted).length : 0;
+  const counted = view.length - listedOnly;
+  const total = years ? years.total : rows.length - (uncounted ? rows.filter(uncounted).length : 0);
 
   return (
     <div className="rec__table" data-testid={`rec-${id}`}>
       <div className="rec__bar">
         <p className="rec__count mono" aria-live="polite" data-testid={`rec-${id}-count`}>
-          {filtered || years ? `${view.length.toLocaleString("en-US")} of ${total.toLocaleString("en-US")} rows` : `${rows.length.toLocaleString("en-US")} rows`}
+          {filtered || years || listedOnly ? `${counted.toLocaleString("en-US")} of ${total.toLocaleString("en-US")} rows` : `${rows.length.toLocaleString("en-US")} rows`}{listedOnly ? ` · ${listedOnly.toLocaleString("en-US")} more listed, not counted` : ""}
         </p>
         {years && <p className="rec__yearnote" data-testid={`rec-${id}-years`}>{VIEW.filtered(years.label)}. {years.note}</p>}
         {filtered && (

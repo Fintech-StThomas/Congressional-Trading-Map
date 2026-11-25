@@ -40,6 +40,7 @@ export function BandSummary({ g }: { g: DelayGroup }) {
           ))}
           <Row label={DELAYS.negativeLabel} note={DELAYS.negativeNote} n={g.negative} total={g.count} kind="apart" />
           <Row label={DELAYS.undatedLabel} note={DELAYS.undatedNote} n={g.undated} total={g.count} kind="apart" />
+          {g.amended_unmatched !== undefined && <Row label={DELAYS_AMEND.unmatchedLabel} note={DELAYS_AMEND.unmatchedNote} n={g.amended_unmatched} total={g.count} kind="apart" />}
           {g.date_corrected !== undefined && <Row label={DELAYS_AMEND.label} note={DELAYS_AMEND.note} n={g.date_corrected} total={g.count} kind="apart" />}
         </tbody>
         <tfoot>

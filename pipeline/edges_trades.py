@@ -1,7 +1,8 @@
 """`traded` (member -> org) and `traded_together` (member <-> member) edges from trades (data dictionary:
 "Rules the pipeline must keep", "traded_together rule"; thresholds in config.py).
 
-traded: one edge per member and org summing every current trade (ranges kept apart, missing stays null), weak when a
+traded: one edge per member and org summing every counted trade (a trade a later filing marks Deleted is listed
+in the trade file but draws no tie and adds to no sum; ranges kept apart, missing stays null), weak when a
 trade lacks a date or a closed range. traded_together: same org, same direction, within WINDOW_DAYS, tested
 against a seeded permutation baseline. Note on the keep rule: `(tickers >= MIN_TICKERS or observed >=
 MIN_OCCASIONS) and observed >= MIN_OBSERVED` reduces to `observed >= 5` while MIN_OCCASIONS == MIN_OBSERVED, so
@@ -235,6 +236,7 @@ def run() -> None:
                    BUILD / "trades_resolved.parquet")
     companies = read_json(BUILD / "companies.json")
     spine = read_json(BUILD / "spine.json")
+    listed, trades = len(trades), [t for t in trades if not t["deleted"]]   # deleted by a later filing: listed, no tie
     traded = traded_edges(trades)
     together, report = traded_together(trades, companies, spine)
     write_jsonl(EDGES_DIR / "trades.jsonl", traded + together)
@@ -247,4 +249,4 @@ def run() -> None:
     print_table("top 15 traded_together pairs by lift", [
         (r["names"][0], r["names"][1], r["observed"], r["expected"], r["lift"], r["tickers"], r["p"]) for r in report["top"]],
         ("member 1", "member 2", "obs", "expected", "lift", "tickers", "p"))
-    write_source_meta("trade_edges", {}, {"traded_edges": len(traded), "traded_orgs": len(orgs), "traded_together": report})
+    write_source_meta("trade_edges", {}, {"trades_listed": listed, "trades_counted": len(trades), "traded_edges": len(traded), "traded_orgs": len(orgs), "traded_together": report})

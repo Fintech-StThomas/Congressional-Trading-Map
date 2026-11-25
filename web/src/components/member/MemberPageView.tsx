@@ -6,7 +6,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { IS_SAMPLE, metaBuilt, orgNodesOf, type Data } from "@/lib/data/server";
-import { decodeLedger, decodeTradeFile, ledgerTotals } from "@/lib/data/decode";
+import { decodeLedger, ledgerTotals } from "@/lib/data/decode";
 import { countByBasis, countWire } from "@/lib/domain/datebasis";
 import { sortEdges, TYPE_LABEL } from "@/lib/domain/edges";
 import { count, date, money, plural, seat, stateName, yearRange } from "@/lib/format";
@@ -17,8 +17,9 @@ import { CASE_NOT_SHOWN, CORRECTIONS, caseRuleText, RELEASE, SITE, TIMING } from
 import { CASES_UI } from "@/lib/copy-ui";
 import type { Edge, OrgSummary } from "@/lib/types";
 import { TieSection } from "@/components/member/TieSection";
+import { memberTrades } from "@/components/member/memberTrades";
 import { TradesTable } from "@/components/member/TradesTable";
-import { amendmentsFor } from "@/lib/domain/amendments";
+import { amendmentsFor, hasListedTrades } from "@/lib/domain/amendments";
 import { LedgerTable } from "@/components/member/LedgerTable";
 import { moneyTotals } from "@/lib/domain/money-totals";
 import { moneyYearSeries } from "@/lib/domain/money-years";
@@ -69,7 +70,7 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
   if (!file) notFound();
   const m = file.member;
   const [meta, orgIndex, memberIndex, tradeFile, holdings] = await Promise.all([
-    data.getMeta(), data.getOrgIndex(), data.getMemberIndex(), (file.trade_summary?.count ?? 0) > 0 ? data.getTradeFile(file.member.id) : null, data.getHoldings(file.member.id),
+    data.getMeta(), data.getOrgIndex(), data.getMemberIndex(), hasListedTrades(file.trade_summary) ? data.getTradeFile(file.member.id) : null, data.getHoldings(file.member.id),
   ]);
   const sources = sourceNames(meta);
   const minTypes = caseMinTypes(meta);
@@ -115,10 +116,9 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
 
   const ts = file.trade_summary;
   const nTrades = ts?.count ?? 0;
-  const initialTrades = nTrades ? decodeTradeFile(tradeFile, 60) : [];
-  // Trades per year under each date basis, from the trade rows themselves (never mixed; undated counted apart).
-  const none = countByBasis([], "event");
-  const tradeCounts = countWire(tradeFile) ?? { event: none, public: none };
+  const { listedN, initialTrades, countedInitial, countedFile } = memberTrades(tradeFile, nTrades);
+  // Trades per year under each date basis, from the counted trade rows (never mixed; undated counted apart).
+  const tradeCounts = countWire(countedFile) ?? { event: countByBasis([], "event"), public: countByBasis([], "event") };
 
   const orgName = (oid: string) => orgIndex.get(oid)?.name ?? oid;
   const built = metaBuilt(meta);
@@ -137,7 +137,7 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
   // Coverage limits that apply to this member, shown beside the measures they qualify and recorded in citations.
   const facts = coverageFacts({
     member: m, coverage: file.coverage, tradeSummary: ts, edges: file.edges, ledgerTotals: file.ledger_totals,
-    holdings, meta: coverageMeta(meta), tradeValues: tradeValueStats(tradeFile),
+    holdings, meta: coverageMeta(meta), tradeValues: tradeValueStats(countedFile),
   });
   const cite: MemberCiteProps = {
     member: { id: m.id, name: m.name }, fecIds: m.fec_ids, hasTrades: nTrades > 0, limitations: facts.map((f) => f.text),
@@ -251,13 +251,13 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
         </p>
         <CoverageNote facts={facts} scopes={["trades", "owner", "values"]} label="Coverage for trades" testId="coverage-trades" />
         <ErrorBoundary label="trades table">
-          <TradesTable initial={initialTrades} total={nTrades} fullUrl={data.fileUrl(`trades/${m.id}.json`)} later={amendmentsFor(tradeFile, initialTrades.map((t) => t.id))} />
+          <TradesTable initial={initialTrades} total={nTrades} fullUrl={data.fileUrl(`trades/${m.id}.json`)} later={amendmentsFor(tradeFile, initialTrades.map((t) => t.id))} listed={listedN} />
         </ErrorBoundary>
-        {nTrades > initialTrades.length && <p className="print-only">The full list of {count(nTrades)} trades is on the website; this dossier prints the {initialTrades.length} most recent.</p>}
+        {nTrades > countedInitial.length && <p className="print-only">The full list of {count(nTrades)} trades is on the website; this dossier prints the {countedInitial.length} most recent.</p>}
       </section>
 
       <style>{`@media print { @page { @top-left { content: "${SITE.name} · ${caseNo}"; } } }`}</style>
-      <CaseFile file={file} board={pickBoard(m.id, file.edges)} against={pickAgainst(file.edges)} names={nameOf} ledger={ledger} trades={initialTrades} sources={metaSources(meta)} built={built} orgName={orgName} caseMinTypes={minTypes} foldedAmendments={tradeFile?.amendments !== undefined} conduitsExcluded={conduitsExcluded(meta)} />
+      <CaseFile file={file} board={pickBoard(m.id, file.edges)} against={pickAgainst(file.edges)} names={nameOf} ledger={ledger} trades={countedInitial} sources={metaSources(meta)} built={built} orgName={orgName} caseMinTypes={minTypes} foldedAmendments={tradeFile?.amendments !== undefined} conduitsExcluded={conduitsExcluded(meta)} />
       <MemberCitePrint {...cite} />
 
       <footer className="provenance">

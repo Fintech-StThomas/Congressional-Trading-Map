@@ -159,5 +159,7 @@ class Trade(TypedDict):
     high: float | None
     url: str
     doc_id: str                 # the earliest filing of the trade
-    amendments: list[dict]      # later filings: {id, doc_id, url, status "Amended" | "Deleted" | "Version", available}
+    amendments: list[dict]      # later filings: {id, doc_id, url, status "Amended" | "Deleted" | "Version" | "Reprinted", available}
+    lag_withheld: str | None    # "date_corrected" | "amended_unmatched": both dates present, lag_days null
+    deleted: bool               # Deleted printings cancel every live printing: listed, left out of every count and sum
     org: str | None

@@ -157,6 +157,7 @@ type MemberFile = {
   ledger_totals: LedgerTotals; // every tie published as a ledger row or not published at all
   trade_summary: {
     count: number; first: string | null; last: string | null; late: number;
+    listed?: number;                       // rows in the trade file, counted + not counted; absent in older builds (then count)
     by_year: { [year: string]: number };   // "none" for trades without a transaction date
     by_owner: { [owner: string]: number }; by_action: { [action: string]: number };
   };
@@ -170,7 +171,9 @@ type TradeFile = {           // trades/<memberId>.json
                               // ticker, ticker_source, asset, asset_class, low, high, org, doc
   rows: unknown[][];          // newest first, one row per trade (House reprints folded)
   filings: { [doc: string]: string }; // filing id -> official filing URL; covers every row's doc and every amendments[].doc
-  amendments?: { [tradeId: string]: { id: string; doc: string; status: "Amended" | "Deleted" | "Version"; available: string | null }[] }; // later filings of that row's trade, oldest first; {} when none; ABSENT in files built before this field existed. A "Deleted" printing does not remove the row
+  amendments?: { [tradeId: string]: { id: string; doc: string; status: "Amended" | "Deleted" | "Reprinted" | "Version"; available: string | null }[] }; // later filings of that row's trade, oldest first; {} when none; ABSENT in files built before this field existed. id may be "house:<doc>:<row>" (a printing, never a trade link); "Reprinted" = a surviving printing marked New or unmarked. A "Deleted" printing does not remove the row; not_counted decides that
+  lag_withheld?: { [tradeId: string]: "date_corrected" | "amended_unmatched" }; // rows whose lag_days is null though both dates are present, and why; ABSENT in builds before the owner decision of 2026-11-25
+  not_counted?: { [tradeId: string]: "deleted_by_later_filing" }; // rows a later filing marks Deleted: listed and marked, counted nowhere; absent in older builds
 };
 
 type OrgFile = {
@@ -259,41 +262,4 @@ export type Meta = {
   [key: string]: unknown;
 };
 
-// ---------------------------------------------------------------------------
-// Disclosure timing (delays.json). Data dictionary: "Disclosure timing (`delays.json`)".
-// Observed elapsed days between the transaction date as filed and the date the report became
-// public. Not a finding about whether any filing was on time or lawful.
-// ---------------------------------------------------------------------------
-
-export type DelayBands = { "0-30": number; "31-45": number; "46-90": number; "91-365": number; "over-365": number };
-
-export type DelayGroup = {
-  count: number;              // trades in the group
-  dated: number;              // count - undated - date_corrected (includes negative lags)
-  bands: DelayBands;          // trades by lag_days; the band keys are fixed text; 31-45 ends at the threshold (45)
-  negative: number;           // lag_days < 0: in no band, no statistic
-  undated: number;            // lag_days is null because a date is missing: never counted as 0 days
-  date_corrected?: number;    // lag_days is null though both dates are present (a later version changed the transaction date); absent in files built before this field existed (then inside `undated`)
-  amended: number;            // current version of an event with more than one version; also inside the buckets above
-  median: number | null;      // nearest-rank percentiles over dated, non-negative trades; all null when that set is empty
-  p90: number | null;
-  max: number | null;
-};
-
-export type DelayMemberCol =
-  | "id" | "count" | "dated" | "b0_30" | "b31_45" | "b46_90" | "b91_365" | "b366_plus" | "negative"
-  | "undated" | "amended" | "median" | "p90" | "max" | "first_year" | "last_year" | "date_corrected";
-
-export type Delays = {
-  definition: {
-    measured: string;
-    threshold_days: number;
-    bands: string[];
-    percentile: string;
-    caveats: string[];
-  };
-  totals: DelayGroup;
-  by_chamber: { rep: DelayGroup; sen: DelayGroup };
-  by_year: { [year: string]: DelayGroup };   // calendar year of the transaction date; "none" when missing
-  members: { cols: DelayMemberCol[]; rows: unknown[][] };
-};
+export type { DelayBands, DelayGroup, DelayMemberCol, Delays } from "./types-delays.ts";

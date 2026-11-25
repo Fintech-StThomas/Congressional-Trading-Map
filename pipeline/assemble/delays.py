@@ -9,7 +9,10 @@ trades that are published in `trades/<id>.json`, so a member's row can be re-der
 
 Missing is never zero: a trade with no transaction date or no availability date has no lag, is counted as
 `undated`, and is in no band. A trade with both dates but no lag (a later version changed its transaction date, so
-the first public filing showed another date) is counted as `date_corrected`, also in no band. A negative lag is counted separately and is in no band and no statistic.
+the first public filing showed another date) is counted as `date_corrected`, and a House row marked Amended whose
+original was not identified exactly (first public date unknown) as `amended_unmatched`; both are in no band. A
+negative lag is counted separately and is in no band and no statistic. A trade a later filing marks Deleted is
+listed in the trade file but is not an input here (`TradeFile.not_counted`).
 Percentiles use the nearest-rank method over dated, non-negative lags (integers; the median is the 50th percentile).
 """
 from __future__ import annotations
@@ -26,7 +29,7 @@ BAND_LABELS = (f"0-{BAND_EDGES[0]}", f"{BAND_EDGES[0] + 1}-{BAND_EDGES[1]}", f"{
                f"{BAND_EDGES[2] + 1}-{BAND_EDGES[3]}", f"over-{BAND_EDGES[3]}")
 BAND_COLS = ("b0_30", "b31_45", "b46_90", "b91_365", "b366_plus")
 MEMBER_COLS = ["id", "count", "dated", *BAND_COLS, "negative", "undated", "amended", "median", "p90", "max",
-               "first_year", "last_year", "date_corrected"]
+               "first_year", "last_year", "date_corrected", "amended_unmatched"]
 CHAMBERS = ("rep", "sen")
 
 DEFINITION = {
@@ -45,8 +48,10 @@ DEFINITION = {
         "When a later version changed the transaction date, the first public filing showed a different date; no "
         "elapsed-days figure is given for that trade. It is counted as date corrected, in no band and no statistic.",
         "A House row marked Amended that changes the date, owner, action, amount or asset cannot be tied to its "
-        "original exactly; it stays a trade of its own, counted from the amending filing. amended counts every "
-        "amended trade separately and is also inside the bands.",
+        "original exactly, so the date the trade was first public is unknown; no elapsed-days figure is given for "
+        "it. It is counted as amended, original not matched, in no band and no statistic.",
+        "A trade that a later House filing marks Deleted is listed on the member's page and is not counted here.",
+        "amended counts every amended trade separately; it overlaps the bands and the other counts.",
         "Trades with no transaction date or no availability date are counted as undated, never as 0 days.",
         "A negative value means the recorded availability date precedes the transaction date on a trade with a "
         "single version; the filing is unexplained by these fields and is counted separately.",
@@ -73,7 +78,7 @@ class Acc:
     def __init__(self) -> None:
         self.count = 0
         self.bands = [0] * len(BAND_LABELS)
-        self.negative = self.undated = self.amended = self.date_corrected = 0
+        self.negative = self.undated = self.amended = self.date_corrected = self.amended_unmatched = 0
         self.lags: list[int] = []
         self.years: list[int] = []
 
@@ -83,8 +88,10 @@ class Acc:
         if t["date"]:
             self.years.append(int(str(t["date"])[:4]))
         lag = t["lag_days"]
-        if lag is None and t["date"] and t.get("available"):
-            self.date_corrected += 1
+        if lag is None and t["date"] and t.get("available"):    # withheld; the reason is TradeFile.lag_withheld
+            unmatched = t.get("lag_withheld") == "amended_unmatched"
+            self.amended_unmatched += unmatched
+            self.date_corrected += not unmatched
         elif lag is None:
             self.undated += 1
         elif lag < 0:
@@ -99,21 +106,23 @@ class Acc:
 
     def group(self) -> dict[str, Any]:
         med, p90, mx = self.stats()
-        return {"count": self.count, "dated": self.count - self.undated - self.date_corrected,
+        return {"count": self.count, "dated": self.count - self.undated - self.date_corrected - self.amended_unmatched,
                 "bands": dict(zip(BAND_LABELS, self.bands)), "negative": self.negative, "undated": self.undated,
-                "date_corrected": self.date_corrected, "amended": self.amended,
+                "date_corrected": self.date_corrected, "amended_unmatched": self.amended_unmatched, "amended": self.amended,
                 "median": med, "p90": p90, "max": mx}
 
     def row(self, member: str) -> list[Any]:
         med, p90, mx = self.stats()
-        return [member, self.count, self.count - self.undated - self.date_corrected, *self.bands, self.negative,
-                self.undated, self.amended, med, p90, mx, min(self.years) if self.years else None,
-                max(self.years) if self.years else None, self.date_corrected]
+        return [member, self.count, self.count - self.undated - self.date_corrected - self.amended_unmatched,
+                *self.bands, self.negative, self.undated, self.amended, med, p90, mx,
+                min(self.years) if self.years else None, max(self.years) if self.years else None, self.date_corrected,
+                self.amended_unmatched]
 
 
 def build_delays(trades: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
-    """Each trade needs: member, chamber, date (date, ISO string or None), lag_days (int or None), amended; and
-    `available` to tell a withheld lag (date corrected) from a missing date (absent or None: undated)."""
+    """trades: the counted trades. Each needs: member, chamber, date (date, ISO string or None), lag_days (int or
+    None), amended; `available` to tell a withheld lag from a missing date (absent or None: undated); and
+    `lag_withheld` to tell the two withheld buckets apart (absent: date_corrected)."""
     total, per_member = Acc(), defaultdict(Acc)
     per_chamber, per_year = {ch: Acc() for ch in CHAMBERS}, defaultdict(Acc)
     for t in trades:
@@ -126,11 +135,15 @@ def build_delays(trades: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
             "members": {"cols": MEMBER_COLS, "rows": [per_member[m].row(m) for m in sorted(per_member)]}}
 
 
-def rows_from_trade_file(member: str, rows: Iterable[Sequence[Any]]) -> list[dict[str, Any]]:
-    """Published trade rows (TRADE_COLUMNS order) -> builder input. The published file has no chamber."""
+def rows_from_trade_file(member: str, tf: Mapping[str, Any] | Iterable[Sequence[Any]]) -> list[dict[str, Any]]:
+    """A published trade file (or bare rows in TRADE_COLUMNS order) -> builder input: the counted rows, each with its
+    `lag_withheld` reason. The published file has no chamber."""
+    tf = tf if isinstance(tf, Mapping) else {"rows": list(tf)}
+    skip, withheld = tf.get("not_counted") or {}, tf.get("lag_withheld") or {}
     out = []
-    for r in rows:
+    for r in tf.get("rows", []):
         d = dict(zip(TRADE_COLUMNS, r))
-        out.append({"member": member, "chamber": None, "date": d["date"], "lag_days": d["lag_days"],
-                    "amended": d["amended"], "available": d["available"]})
+        if d["id"] not in skip:
+            out.append({"member": member, "chamber": None, "date": d["date"], "lag_days": d["lag_days"],
+                        "amended": d["amended"], "available": d["available"], "lag_withheld": withheld.get(d["id"])})
     return out

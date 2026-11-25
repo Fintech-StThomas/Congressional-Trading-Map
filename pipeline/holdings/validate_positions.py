@@ -36,7 +36,7 @@ def check_member(c: Any, mid: str, m: dict[str, Any], pos: dict[str, Any], picks
                                                "transitions": "TRANS_COLS"}[k]), "positions cols", f"{mid} {k}")
     tp = OUT / "trades" / f"{mid}.json"
     tf = read_json(tp) if tp.exists() else {"cols": [], "rows": [], "filings": {}}
-    tby = {t["id"]: t for t in rows_of(tf)}
+    tby = {t["id"]: t for t in rows_of(tf) if t["id"] not in (tf.get("not_counted") or {})}   # counted trades only
     c.check(pos["member"] == mid and pos["coverage"] == m["coverage"], "positions identity and coverage", mid)
     assets = rows_of(pos["assets"])
     c.check(len({a["key"] for a in assets}) == len(assets), "asset keys unique", mid)

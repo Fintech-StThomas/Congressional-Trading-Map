@@ -165,15 +165,67 @@ data" and the others as same-version changes; none of it is a new filing.
 
 **Still open (not resolved by an exact signal).**
 
-- 526 single-version House rows marked Amended have no exactly matching earlier trade (518 published as their own
-  trade, 415 of them over 45 days, timed from the amending filing). Comparing 518 such rows with the member's earlier
-  trades: one key field differs for 250 (date 173, action 35, asset text 27, owner 15), two for 172, three or more
-  or nothing earlier for 96. Those are corrections; the trade they correct is usually still published too. Linking
-  them needs a rule that is not an exact match, which is an owner decision.
+- 526 single-version House rows marked Amended have no exactly matching earlier trade. Comparing 518 such rows with
+  the member's earlier trades: one key field differs for 250 (date 173, action 35, asset text 27, owner 15), two
+  for 172, three or more or nothing earlier for 96. Those are corrections; the trade they correct is usually still
+  published too. Linking them needs a rule that is not an exact match. Decided 2026-11-25 (below): the row stays,
+  its lag is withheld.
 - 983 trades (452 groups) share an exact key with a trade in another filing and carry no mark: McCaul 212,
   Harshbarger (H001086) 209, Carper (C000174, Senate) 130, Rick Scott (S001217, Senate) 98. Kept and counted
   (`meta.counts.trades_same_key_other_filing`). Some are real repeated trades; some are a report filed twice.
-- 55 rows are marked Deleted. The trade they delete is still published and summed (46 folded by the dataset, 9 by
-  this rule, shown as `status: "Deleted"` in `amendments`). Whether a deleted transaction should leave counts and
-  sums is an owner decision, not made here.
+- 55 rows are marked Deleted (46 folded by the dataset into the original's event, 9 by this rule). Decided
+  2026-11-25 (below): listed, and not counted when no live printing of the trade is left.
 - Senate rows marked Amended (3,310 rows, 632 current events) were not examined against eFD pages and are not folded.
+
+
+## Owner decisions of 2026-11-25: deleted trades and amended rows without an original
+
+Same snapshot (`c93d0573`), trades stage `load()` without the spine filter.
+
+**Deleted.** A House row marked Deleted cancels one specific earlier row, not the trade. Rule: each Deleted printing
+cancels one live printing (status New, Amended or none) of the same trade that was public no later than it; the
+trade is not counted only when no live printing is left. Printings are every row the dataset folded into the event
+plus the events folded here. No ordering of same-day filings is used (an earlier draft compared filing ids, which
+was wrong: Grijalva below, and 7-digit paper ids do not sort with 8-digit e-filed ones). A not-counted trade stays
+listed in `trades/<id>.json`, flagged amended, and is named in `TradeFile.not_counted`; it is left out of member
+and site trade counts, `trade_summary`, the wall, `traded` / `traded_together` ties and their sums, position
+timelines, `delays.json` and the trades-stage report figures.
+
+The 55 Deleted rows sit on 55 trades. 42 are not counted (37 where the dataset folded the Deleted row into the
+event, 5 folded here, among them Manning M001135 `house:20024436:30` and `:31`, deleted by filing 20029046); 18 of
+the 42 were counted as over 45 days. 13 keep a live printing and stay counted; each lists the Deleted printing and
+the surviving one under the trade (`amendments`, status "Reprinted" or "Amended"):
+
+- Grijalva G000551 `house:20001226:0`, `:1`: New in 20001226 (2014-07-01), New again in the fuller 20001267 and
+  Deleted in 20001268, both 2014-07-09 (PDFs read by the reviewer: the Deleted rows carry the first filing's
+  notification date).
+- Langevin L000559 `house:20012558:0` and S001201 `house:20019379:166`: New in two filings, one Deleted row later.
+  The second live printing keeps the trade counted; whether the two printings are one real trade reported twice or
+  a duplicate report cannot be told from the filings.
+- Neugebauer N000182 `house:20002481:0`: filing 20002483 deletes the purchase and restates it as New in the same filing.
+- Blumenauer B000574, 6 trades: Deleted by 20019618 and restated as Amended by 20019619, both 2021-10-12.
+- Green M001203 `house:20011417:148`, `:150`: printed again after the deletion.
+
+The Deleted row's printed notification date was not used as a signal.
+
+**Amended, original not matched.** A House row marked Amended (or Deleted) that is the earliest printing of its
+trade and has a single version keeps its row and `available` (the amending filing's date, the earliest known), but
+`lag_days` and `late` are null, `TradeFile.lag_withheld` says `amended_unmatched`, and `delays.json` counts it in a
+bucket of that name. A separate bucket was chosen over widening `date_corrected` because the reasons differ and a
+reader is told different things: for `date_corrected` the first public date is known but belonged to another
+transaction date; for `amended_unmatched` the first public date itself is unknown. Of the 526 such rows, 524 have
+both dates and are withheld (423 of them were counted as over 45 days); 2 have no transaction date and were already
+undated. None of them is deleted.
+
+**Result.** Listed 182,729; counted 182,687 (House 163,561, Senate 19,126). Public over 45 days: 22,800 -> 22,359
+(House 20,199 -> 19,758; Senate 2,601 unchanged). Lag withheld: `date_corrected` 48 (House 13, Senate 35),
+`amended_unmatched` 524 (House). Delays totals: dated 181,589, undated 526, negative 0. Pelosi (P000197): 213
+trades, 1 over 45 days (unchanged). Manning (M001135): 807 listed, 805 counted, over 45 days 52 -> 50. Fallon
+(F000246): 193, over 45 days 99 -> 97 (2 withheld). The source re-read validator: 699,991 checks, 0 failures,
+including "not counted exactly when the source's Deleted printings cancel every live one" and "amended_unmatched exactly
+on single-version House rows the source marks".
+
+**Release note.** Compared with the release before: 42 trades leave every count and tie (their rows stay);
+524 more trades lose `lag_days` / `late`; `delays.json` gains `amended_unmatched`; trade files gain `lag_withheld` and
+`not_counted`. A `traded` tie made only of deleted trades disappears, and its organisation with it if nothing else
+ties it; that trade row then has `org` null.

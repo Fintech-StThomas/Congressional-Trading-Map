@@ -28,7 +28,7 @@ from .util import BUILD, OUT, read_json
 from .validate_delays import check_delays
 from .validate_fec_conduits import check_conduits
 from .validate_fec_spending import check_campaign_finance, load_links
-from .validate_trade_amendments import check_folding, check_trade_file, lag_null_is_valid
+from .validate_trade_amendments import check_folding, check_trade_file, counted_rows, lag_null_is_valid
 
 OWNERS = {"self", "spouse", "joint", "dependent", "unspecified"}
 ACTIONS = {"buy", "sell", "exchange", "other"}
@@ -301,15 +301,15 @@ def check_trades(c: Checker, mf: dict[str, Any], where: str, orgs: set[str]) -> 
                 and row["ticker_source"] in TICKER_SOURCES, "trade enums", f"{where}:{row['id']}")
         c.check(opt(is_date)(row["date"]) and opt(is_date)(row["available"]), "schema", f"{where}:{row['id']} dates")
         c.check(row["low"] is None or row["high"] is None or row["low"] <= row["high"], "trade low <= high", row["id"])
-        c.check(lag_null_is_valid(row, t), "lag null iff a date is missing or a later version or printing corrected the date (flagged amended, version > 1 or a later filing listed)", row["id"])
+        c.check(lag_null_is_valid(row, t), "lag null iff a date is missing or the lag is withheld (TradeFile.lag_withheld)", row["id"])
         c.check(row["late"] is None if row["lag_days"] is None else row["late"] == (row["lag_days"] > LATE_DAYS), "late = lag_days > 45", row["id"])
         c.check(row["doc"] in mf["filings"], "trade doc has a filing URL", row["id"])
         c.check(row["org"] is None or row["org"] in orgs, "trade org exists", f"{row['id']}:{row['org']}")
-        c.check((row["org"] is None) == (row["ticker"] is None), "org resolved iff ticker present", row["id"])
+        c.check((row["org"] is None) == (row["ticker"] is None) or (row["org"] is None and row["id"] in (t.get("not_counted") or {})), "org resolved iff ticker present (a not-counted trade may have none)", row["id"])
         key = (row["date"] or "", row["id"])
         c.check(prev is None or key <= prev, "trades newest first", row["id"])
         prev = key
-    return len(t.get("rows", []))
+    return len(counted_rows(t))
 
 
 def check_cases(c: Checker, cases: list[dict[str, Any]], edges: dict[str, dict[str, Any]],
@@ -382,7 +382,7 @@ def main() -> int:
     full_pairs: set[tuple[str, str]] = set()
     terms: dict[str, list[dict[str, Any]]] = {}
     trade_rows = 0
-    published_trades: dict[str, list[list[Any]]] = {}
+    published_trades: dict[str, dict[str, Any]] = {}
     trade_summaries: dict[str, dict[str, Any]] = {}
     for mid in sorted(members):
         mf = read_json(OUT / "members" / f"{mid}.json")
@@ -410,10 +410,10 @@ def main() -> int:
         tpath = OUT / "trades" / f"{mid}.json"
         tf = read_json(tpath) if tpath.exists() else None
         n = check_trades(c, tf, f"trades/{mid}", orgs) if tf is not None else 0
-        published_trades[mid] = tf["rows"] if tf is not None and "rows" in tf else []
+        published_trades[mid] = tf if tf is not None and "rows" in tf else {"rows": []}
         trade_summaries[mid] = mf["trade_summary"]
         trade_rows += n
-        c.check(mf["member"]["counts"]["trades"] == n == mf["trade_summary"]["count"], "trade counts match trades file", where)
+        c.check(mf["member"]["counts"]["trades"] == n == mf["trade_summary"]["count"] and mf["trade_summary"].get("listed") == len(published_trades[mid]["rows"]) >= n, "trade counts match trades file (count = counted rows, listed = all rows >= count)", where)
         for cov in mf["coverage"]:
             c.check(cov["trades"] in ("full", "partial", "none", "n/a") and cov["money"] in ("full", "partial", "none"), "schema", f"{where} coverage")
 
@@ -459,9 +459,9 @@ def main() -> int:
     # Row counts across stages: no join may have multiplied or lost trades.
     resolved = pq.read_metadata(BUILD / "trades_resolved.parquet").num_rows
     parsed = pq.read_metadata(BUILD / "trades.parquet").num_rows
-    expected = meta["reports"]["hf_trades"]["trades_written"]
-    for label, n in (("trades.parquet", parsed), ("trades_resolved.parquet", resolved), ("member files", trade_rows),
-                     ("meta.counts.trades", meta["counts"]["trades"])):
+    expected, gone = meta["reports"]["hf_trades"]["trades_written"], meta["counts"]["trades_deleted_by_later_filing"]
+    for label, n in (("trades.parquet", parsed), ("trades_resolved.parquet", resolved), ("counted in member files", trade_rows + gone),
+                     ("meta.counts.trades", meta["counts"]["trades"] + gone)):
         c.check(n == expected, "trade row counts stable across joins", f"{label}={n} expected {expected}")
     check_owner_never_defaulted(c)
     print(f"validation sample written to {write_sample()}")
