@@ -66,3 +66,11 @@ test("old releases: a trade file without flags hides the Around column and panel
   assert.equal(hasFlags({ flags: [] }), false);
   assert.equal(hasFlags({ flags: {} }), true);
 });
+
+test("the panel subtitle never repeats a ticker the filed asset text already carries", async () => {
+  const { assetWithTicker } = await import("../src/lib/format.ts");
+  assert.equal(assetWithTicker("Eli Lilly and Company Common Stock (LLY)", "LLY"), "Eli Lilly and Company Common Stock (LLY)");
+  assert.equal(assetWithTicker("Holding Co (ABC) class B", "XYZ"), "Holding Co (ABC) class B (XYZ)");
+  assert.equal(assetWithTicker("Microsoft Corporation", "MSFT"), "Microsoft Corporation (MSFT)");
+  assert.equal(assetWithTicker("Treasury note", null), "Treasury note");
+});

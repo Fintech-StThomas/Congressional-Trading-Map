@@ -201,3 +201,8 @@ export function yearRanges(years: number[]): string {
   }
   return out.join(", ");
 }
+
+/** The asset as filed, with its ticker in parentheses unless the filed text already carries exactly that "(TICKER)". */
+export function assetWithTicker(asset: string, ticker: string | null): string {
+  return ticker && !asset.includes(`(${ticker})`) ? `${asset} (${ticker})` : asset;
+}
