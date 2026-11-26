@@ -150,3 +150,14 @@ def load_all(con: duckdb.DuckDBPyConnection, cycles: list[int], audit: dict) -> 
             q(con, "INSERT INTO loaded VALUES (?, ?, ?, ?, ?)", [name, cycle, sha, a["lines"], a["encoding"]])
             print(f"  loaded {name}{cycle % 100:02d}: {audit['files'][f'{name}{cycle % 100:02d}']['rows_loaded']:,} rows",
                   flush=True)
+
+
+LINK_TABLES = ("auth_member", "lpac", "cand_member")
+
+
+def save_links(con: duckdb.DuckDBPyConnection) -> None:
+    """Persist the member links that build.prepare_reference_tables keeps in temp tables (authorised committee ->
+    member, leadership PAC -> member, candidate id -> member) as <name>_saved, so the LDA stage
+    (lda/build.fec_committee_index) can read them from the DuckDB file after this stage has closed it."""
+    for t in LINK_TABLES:
+        con.execute(f"CREATE OR REPLACE TABLE {t}_saved AS SELECT * FROM {t}")

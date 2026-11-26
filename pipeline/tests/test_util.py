@@ -1,4 +1,5 @@
-"""Shared helpers (pipeline/util.py): cached downloads retry and never cache a partial file; overrides need review."""
+"""Shared helpers (pipeline/util.py): cached downloads retry (honouring Retry-After) and never cache a partial file;
+overrides need review; the default User-Agent names the project, not a person."""
 from __future__ import annotations
 
 import pytest
@@ -54,6 +55,20 @@ def test_fetch_raises_404_without_retrying(tmp_path, monkeypatch):
     assert len(calls) == 1
 
 
+def test_fetch_honours_retry_after_on_429_and_503(tmp_path, monkeypatch):
+    limited = FakeResponse([], status=429)
+    limited.headers = {"Retry-After": "7"}
+    answers = iter([limited, FakeResponse([], status=503), FakeResponse([b"ok"], length=2)])
+    slept: list[float] = []
+    monkeypatch.setattr(util._session, "get", lambda *a, **k: next(answers))
+    monkeypatch.setattr(util.time, "sleep", slept.append)
+    util.fetch("https://example.org/r", tmp_path / "r")
+    assert slept == [7.0, 4.0]                       # Retry-After, then the exponential floor (2 x 2^1)
+    assert util.retry_after("1000") == 1000 and util.retry_after("soon") == 0 and util.retry_after(None) == 0
+    assert util.retry_after("Wed, 21 Oct 2015 07:28:00 GMT") == 0      # a date in the past
+    assert "@example.org" in util.DEFAULT_UA          # SEC needs an email-style contact; a placeholder, never personal
+
+
 def test_overrides_without_reviewer_are_ignored(tmp_path, monkeypatch):
     (tmp_path / "org_overrides.csv").write_text(
         "source,source_id_or_name,org_id,note,reviewed_by,reviewed_on\n"
@@ -76,3 +91,17 @@ def test_lda_off_removes_stale_plugin_files(tmp_path, monkeypatch):
     monkeypatch.delenv("PT_ENABLE_LDA", raising=False)
     run.lda()
     assert not any(f.exists() for f in files)
+
+
+def test_fetch_does_not_wait_after_the_last_rate_limited_attempt(tmp_path, monkeypatch):
+    def limited():
+        r = FakeResponse([], status=429)
+        r.headers = {"Retry-After": "7"}
+        return r
+    answers = iter([limited(), limited()])
+    slept: list[float] = []
+    monkeypatch.setattr(util._session, "get", lambda *a, **k: next(answers))
+    monkeypatch.setattr(util.time, "sleep", slept.append)
+    with pytest.raises(RuntimeError):
+        util.fetch("https://example.org/r", tmp_path / "r", retries=2)
+    assert slept == [7.0]

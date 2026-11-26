@@ -1,10 +1,9 @@
 # Data pipeline
 
-Builds the JSON the site reads (written to `web/public/data/`, published to Cloudflare R2; not stored in git) out of
-filed public records: the member list, household
-stock trades, FEC committee money, House annual disclosures (holdings) and, when switched on, lobbying reports. The
-binding description of every output file, type and rule is [`docs/data-dictionary.md`](../docs/data-dictionary.md);
-this file is the map of the code.
+Builds the JSON the site reads (written to `web/public/data/`, published to Cloudflare R2; not stored in git) out of filed
+public records: the member list, household stock trades, SEC Form 8-K filing dates of the traded companies, FEC committee
+money, House annual disclosures (holdings) and, when switched on, lobbying reports. The binding description of every
+output file, type and rule is [`docs/data-dictionary.md`](../docs/data-dictionary.md); this file is the map of the code.
 
 ## Run
 
@@ -24,12 +23,12 @@ Run from the repository root. Downloads are cached in `pipeline/.cache/`; interm
 the output goes to `web/public/data/` (all three gitignored). A clean checkout needs none of them: no stage reads a
 previous build (the holdings overlaps are computed in the second holdings pass, against this build's member files),
 so a run from the download cache alone reproduces the published tree byte for byte except `meta.json`'s build time,
-commit and retrieval times. To get the published data without running the pipeline, point the site at the bucket
+commit and retrieval times (and, on another day, `flags.json`, whose 30-day selection ends on the build date). To get the published data without running the pipeline, point the site at the bucket
 (`web/README.md`, "Data modes"). Environment variables, all optional:
 
 | Variable | Effect |
 |---|---|
-| `SEC_USER_AGENT` | User-Agent for every request (default `congressional-trading-map-class-project research@example.org`) |
+| `SEC_USER_AGENT` | User-Agent for every request (default, used on branch runs: `congressional-trading-map-class-project research@example.org`); 429 and 503 answers are retried after their Retry-After |
 | `HF_REVISION`, `HF_HOLDINGS_REVISION` | pin the trades / holdings datasets to a commit (default: their current commit) |
 | `PT_CACHE_ONLY=1` | reuse every cached download regardless of age (reproducible rebuilds, offline work) |
 | `PT_OUT_DIR` | publish somewhere other than `web/public/data/` (dry runs, comparisons) |
@@ -70,17 +69,17 @@ Times and peak memory (resident set of the whole process, which only grows) from
 | `companies` | `companies.py`, `sic.py` | SEC tickers (daily), FSDS `sub.txt`, `trades.parquet`, overrides | `ticker_orgs.json`, `companies.json`, `company_names.json`, `sources/sec.json` | 1 s | 1.2 GB |
 | `fec` | `fec/` | FEC bulk files (see its README), `spine.json`, `company_names.json`, overrides | `edges/fec_*.jsonl`, `orgs/fec.jsonl`, `sources/fec.json`, `campaign_finance.json`, `sources/fec_spending.json` | 162 s (+ about 5 s per cycle for spending, not yet measured in a full run) | 1.9 GB |
 | `edges_trades` | `edges_trades.py` | `trades.parquet`, `ticker_orgs.json`, `companies.json` | `trades_resolved.parquet`, `edges/trades.jsonl`, `orgs/trades.jsonl` | 23 s | 1.5 GB |
+| `sec_events` | `sec_events/` | SEC EDGAR submissions API (`data.sec.gov`, 10 requests/s, cached), `trades_resolved.parquet` | `sec_events.json`, `sources/sec_events.json`; a download problem is recorded per company, never fatal ([docs](../docs/sec-events.md)) | about 5 min cold, 3.5 min daily (measured 2026-11-25, not yet in a full run) | |
 | `edges_committees` | `edges_committees.py` | `committees.json` | `edges/committees.jsonl` | 1 s | |
 | `lda` | `lda/` | LDA API pages (off unless `PT_ENABLE_LDA=1`) | `edges/lda.jsonl`, `orgs/lda.jsonl`, `sources/lda.json` | 0 s | |
 | `congress` | `congress/` | cached Congress.gov pages (off unless `PT_ENABLE_CONGRESS=1`) | `build/congress/` only (no plug-in file) | 0 s | |
 | `holdings` | `holdings/` | HF `ZipLime/congress-trading` (by commit), build files | `web/public/data/holdings/`, `holdings-index.json`, `edges/holdings_owns.jsonl`, `orgs/holdings.jsonl`, `sources/holdings.json`, `holdings_rows.json` | 21-23 s | 1.7 GB |
-| `assemble` | `assemble/` | every plug-in file, `trades_resolved.parquet` | every other file in `web/public/data/` (staging dir, then swap) | 84 s | 4.2 GB |
+| `assemble` | `assemble/` | every plug-in file, `trades_resolved.parquet`; for review flags `companies.json`, `committees.json`, `crosswalk/committee_sectors.csv` and, when present, `sec_events.json` | every other file in `web/public/data/` (staging dir, then swap) | 84 s | 4.2 GB |
 | `holdings_publish` | `run.py` | the newly published member files | the holdings files again, with this build's overlaps; `meta.json.reports.holdings` | 21-23 s | |
 | `validate` | `validate.py` | `web/public/data/`, `trades*.parquet` | `validation_sample.csv` | 13 s | |
 
 `delays.json` (disclosure timing) is written by the `assemble` stage from `assemble/delays.py`, from the same current-version
-trade rows as `trades/<id>.json`; `validate.py` calls `validate_delays.py`, which re-derives it from the published trade
-files. Contract: data dictionary, "Disclosure timing"; audit: `docs/validation/disclosure-timing-audit.md`. House reprints marked Amended or Deleted are folded into the trade they restate by `trade_amendments.py` (exact signals only; counts in `meta.json`), checked by `validate_trade_amendments.py`.
+trade rows as `trades/<id>.json`; `validate.py` calls `validate_delays.py`, which re-derives it from the published trade files. Contract: data dictionary, "Disclosure timing"; audit: `docs/validation/disclosure-timing-audit.md`. House reprints marked Amended or Deleted are folded into the trade they restate by `trade_amendments.py` (exact signals only; counts in `meta.json`), checked by `validate_trade_amendments.py`. Review flags (five fixed rules on every counted trade: `TradeFile.flags`, `trade_summary.flags`, `flags.json`, `meta.json.flags`) are recomputed by the same stage from `assemble/flags.py` and `flags_out.py` and re-derived by `validate_flags.py` (its re-derivation, with separate code paths, in `validate_flags_derive.py`); method and limits: `docs/review-flags.md`.
 
 Whole run: 322-332 s, peak 4.3 GB (before this review: 294 s, 5.9 GB).
 
@@ -96,15 +95,16 @@ pipeline/
   spine.py trades.py trade_amendments.py companies.py sic.py edges_trades.py edges_committees.py    core sources and edges
   fec/                download -> load (parse) -> refs (identities) -> build (rules, edges, orgs; conduits = the reviewed conduit lists) -> run (write, checks; crosscheck = weball);
                       spending + spending_oppexp + receipts + purposes_api + sponsors_api + totals_api (-> campaign_finance.json)
+  sec_events/         submissions (EDGAR download, paging, coverage) -> run (the stage, sec_events.json) ; window (OrgFile rule)
   holdings/           source (download) -> run (parse, resolve, emit) -> rules + address_rules (redaction) -> validate (+ address_check gate)
   lda/                download -> build (parse) -> match (identities) -> edges -> run (write, checks); off by default
   congress/           download -> facts (parse, exact ids) -> run (fact table, review sample); off by default, unpublished
-  assemble/           plugins (load, merge) cases budget orgs wall members publish, run (the orchestrator)
-  validate.py         output checks (+ validate_delays, validate_trade_amendments, validate_fec_spending/_receipts/_totals/_conduits)
+  assemble/           plugins (load, merge) cases budget orgs wall members delays flags flags_chance flags_out (review flags) publish, run (the orchestrator)
+  validate.py         output checks (+ validate_delays, validate_trade_amendments, validate_flags, validate_fec_spending/_receipts/_totals/_conduits, validate_sec_events)
   publish_r2.py       upload web/public/data to Cloudflare R2 (changed files only); run by the daily workflow
   publish_release.py  opt-in content-addressed archive (release_blobs, release_refs, release_history, release_store,
                       release_manifest, release_provider_check, release_repair, withdraw_release); served by worker/
-  crosswalk/org_overrides.csv   hand-reviewed org matches
+  crosswalk/org_overrides.csv   hand-reviewed org matches; committee_sectors.csv: committee -> SIC major groups (review flags, draft for team review)
   tests/              one test file per module: test_edges, test_trades, test_fec, test_assemble, test_holdings, ...
 ```
 

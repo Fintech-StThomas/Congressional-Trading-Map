@@ -14,6 +14,7 @@ import re
 import threading
 import time
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any, Iterable, Iterator
 
@@ -33,6 +34,8 @@ OUT = Path(os.environ["PT_OUT_DIR"]).resolve() if os.environ.get("PT_OUT_DIR") e
 PORTRAITS = ROOT / "web" / "public" / "portraits"
 CROSSWALK = PIPE / "crosswalk"
 
+# Branch runs have no SEC_USER_AGENT secret. SEC answers 403 without an email-style contact, so the default keeps a
+# non-personal placeholder address (tested 2026-11-26); never a personal address.
 DEFAULT_UA = "congressional-trading-map-class-project research@example.org"
 
 
@@ -75,6 +78,19 @@ class RateLimiter:
 
 
 _session = requests.Session()
+RETRY_AFTER_MAX = 120.0   # seconds; a longer Retry-After is cut to this (the attempt still counts)
+
+
+def retry_after(value: str | None) -> float:
+    """Seconds asked by a Retry-After header (delta-seconds or an HTTP date); 0 when absent or unreadable."""
+    if not value:
+        return 0.0
+    if value.strip().isdigit():
+        return float(value.strip())
+    try:
+        return max(0.0, (parsedate_to_datetime(value) - datetime.now(timezone.utc)).total_seconds())
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def fetch(url: str, dest: Path, *, max_age: float | None = None, headers: dict[str, str] | None = None,
@@ -118,6 +134,12 @@ def fetch(url: str, dest: Path, *, max_age: float | None = None, headers: dict[s
             if e.response is not None and 400 <= e.response.status_code < 500 and e.response.status_code != 429:
                 raise
             last_err = e
+            if e.response is not None and e.response.status_code in (429, 503):
+                # Rate limited or overloaded: honour Retry-After, with exponential backoff as the floor (no wait
+                # after the last attempt).
+                if attempt + 1 < retries:
+                    time.sleep(min(RETRY_AFTER_MAX, max(retry_after(e.response.headers.get("Retry-After")), 2 * 2 ** attempt)))
+                continue
         except (requests.RequestException, OSError) as e:  # includes ChunkedEncodingError and short reads
             last_err = e
         time.sleep(2 * (attempt + 1))

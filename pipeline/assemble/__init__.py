@@ -2,7 +2,7 @@
 
 Modules, one job each: plugins (load and merge plug-in files), cases (the Case rule), budget (full edge vs ledger
 row), orgs (shards, party split, org index), wall (wall.json, wall-years.json), members (member and trade file
-pieces, coverage), finance (the campaign_finance block), publish (staging and swap), run (the orchestrator).
+pieces, coverage), finance (the campaign_finance block), flags, flags_chance and flags_out (review flags), publish (staging and swap), run (the orchestrator).
 Constants live in pipeline/config.py, contract shapes in pipeline/contract.py.
 """
 from __future__ import annotations

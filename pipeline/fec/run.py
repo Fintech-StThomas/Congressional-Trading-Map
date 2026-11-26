@@ -6,8 +6,7 @@ file, build.aggregate, build.fundraises_with, build.org_records) -> self-check (
 Rules: pipeline/fec/README.md; contract: docs/data-dictionary.md ("Intermediate plug-in format").
 
 Writes
-  pipeline/build/edges/fec_pac_money.jsonl, fec_outside_spending.jsonl, fec_funds.jsonl,
-  fec_fundraises_with.jsonl   (contract Edge without id)
+  pipeline/build/edges/fec_pac_money.jsonl, fec_outside_spending.jsonl, fec_funds.jsonl, fec_fundraises_with.jsonl (contract Edge without id)
   pipeline/build/orgs/fec.jsonl (contract OrgSummary without degree)
   pipeline/build/sources/fec.json (source metadata + audit report, merged into meta.json)
 and prints the audit and sanity checks.
@@ -160,6 +159,7 @@ def main(argv: list[str] | None = None) -> int:
     report["files"] = audit["files"]
 
     build.prepare_reference_tables(con, members, cycles, report)
+    load.save_links(con)   # read by the LDA stage (lda/build.fec_committee_index)
     spending.run(con, members, cycles, report, report["files"], SOURCE_FILE.parent.parent)   # loans + leadership PAC categories
     build.classify_rows(con, cycles, build.today_iso())
     build.resolve_orgs(con, companies, overrides, report)

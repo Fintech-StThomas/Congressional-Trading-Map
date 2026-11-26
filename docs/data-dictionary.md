@@ -41,8 +41,7 @@ Matching is exact on a normalised name, plus a hand-reviewed override file (`pip
 - **Headers**: every object is plain JSON (no Content-Encoding) with `Content-Type: application/json` and
   `Cache-Control: public, max-age=300, s-maxage=3600, stale-while-revalidate=86400` (the same URLs are overwritten each build).
 - **Manifest**: `<base>/_manifest.json` is `{build_time, prefix, cache_control, files: {<path>: <sha256>}}` for the build in the
-  bucket. It is not a data file: the publisher compares against it to upload only changed files, and uploads it
-  after every data file.
+  bucket. It is not a data file: the publisher compares against it to upload only changed files, and uploads it after every data file.
 - **`meta.json` is a completion marker**: it is uploaded after every other data file of a build. This is not an
   atomic switch: mutable objects can change before metadata does, and caches can retain different versions.
   Objects no longer in the build are deleted only after metadata and manifest publication. A failed data-file
@@ -77,15 +76,13 @@ Content is addressed by hash, so a file that did not change is stored once howev
   paths of different types share bytes, the first type stays and the Worker sets the type from the requested path.
 - `releases/<release_id>/release.json` is the release: the descriptor above, encoded as sorted-key compact JSON
   (`ensure_ascii=True`, no trailing newline). It is created only after every blob it names exists and was verified
-  (a newly uploaded blob is read back and hashed; an existing one is checked by HEAD for size and headers). A
-  release has no other objects.
+  (a newly uploaded blob is read back and hashed; an existing one is checked by HEAD for size and headers). A release has no other objects.
 - Optional `releases/current.json` is `{schema_version: 1, release_id: <sha256>, manifest_sha256: <sha256>}`.
   Its manifest hash covers the exact descriptor bytes, including `release_id`. It contains no user-supplied URLs.
 - **Reader contract (unchanged):** `<base>/current.json`, `<base>/index.json` and `<base>/<release_id>/<path>`, where
   `<base>` is `<worker>/releases`. The Cloudflare Worker (`worker/`) resolves `<path>` through the descriptor to
   `releases/blobs/<sha256>`, serves it with the type of the requested path, and answers 404 for a withdrawn or
-  unknown release, an unknown path or an invalid id. A descriptor that names a missing blob is corruption (502).
-  Readers never address blobs.
+  unknown release, an unknown path or an invalid id. A descriptor that names a missing blob is corruption (502). Readers never address blobs.
 
 Blobs and descriptors use `Cache-Control: public, max-age=31536000, immutable` in the bucket (the Worker sends its own
 headers). The pointer uses `Cache-Control: no-cache, max-age=0, must-revalidate`. Object creation is conditional
@@ -126,8 +123,7 @@ written with `If-None-Match: *` and the pointer's no-cache headers. It then dele
 the entry from the index. Blobs shared with other live releases are kept; if those bytes hold the exposed data
 (`--exposed-path`, default: any file of the release) the other releases are exposed too, and the command refuses
 unless `--also-withdraw` names all of them. The current release cannot be withdrawn. Publishing
-or activating a release that has a tombstone is refused. Normal corrections publish a new release; old bytes are
-never rewritten.
+or activating a release that has a tombstone is refused. Normal corrections publish a new release; old bytes are never rewritten.
 
 Cited-release semantics: a citation names a `release_id`. If that release was withdrawn, or its objects are
 absent, the reader must say the release is not available. It must never substitute the latest release.
@@ -135,13 +131,11 @@ A tombstone does not recall copies already held by browsers, CDN caches, or earl
 
 ### Provider check prefix
 
-`python -m pipeline.release_provider_check` writes and deletes only under `release-provider-check/<random id>/`.
-Nothing there is read by any reader.
+`python -m pipeline.release_provider_check` writes and deletes only under `release-provider-check/<random id>/`. Nothing there is read by any reader.
 
 Descriptor validation includes its schema, release ID, canonical identity, file hash/size types, required
 `meta.json`, and safe relative POSIX paths (no empty/dot/traversal segments, backslashes, colons, control
-characters, reserved root filenames, or absolute paths). This protects remote verification from fetching keys
-outside the specified release.
+characters, reserved root filenames, or absolute paths). This protects remote verification from fetching keys outside the specified release.
 Build identity and completeness do not prove filing accuracy, redaction, or source authenticity. Callers must
 run the pipeline's data/privacy validators before archiving. Production activation also requires PR checks,
 provider conditional-write verification (`release_provider_check`), release-pinned readers, and the withdrawal
@@ -164,34 +158,24 @@ process above. Operating procedure: `docs/RELEASE-OPERATIONS.md`.
 | `wall-years.json` | `WallYears`: per member, terms by year and sparse per-year measures, so the wall can be drawn for any year 2000..current year; a single fetch (about 350 KB, 120 KB gzipped) |
 | `org-index.json` | `OrgIndex`: the top organisations by current members reached and by dollars to current members, split by party, so the site can browse organisations without shipping `orgs.json` |
 | `delays.json` | `Delays`: site-wide and per-member counts of elapsed days from transaction date to public availability, in bands (see "Disclosure timing") |
+| `flags.json` | `ReviewFlags`: the review-flag rules with their counts, and the trades meeting 2 or more rules or any rule and made public in the last 30 days (see "Review flags") |
 
 The whole directory is built in a staging directory and swapped into place, so a reader never sees a half-written tree.
-All JSON is minified with sorted keys; output is byte-stable between runs on the same inputs, except `meta.json` (build time, retrieval times).
+All JSON is minified with sorted keys; output is byte-stable between runs on the same inputs, except `meta.json` (build time, retrieval times) and, on a different day, `flags.json` (its `build_date` and the 30-day selection that ends on it).
 
 ## Publication budget
 
-Full `Edge` objects (with evidence) are written **only in member files**. Constants live in `pipeline/config.py`
-and are echoed in `meta.json.publication_budget` (type `Meta`).
+Full `Edge` objects (with evidence) are written **only in member files**. Constants live in `pipeline/config.py` and are echoed in `meta.json.publication_budget` (type `Meta`).
 
-- A member file holds, as full edges: every non-money edge touching the member except `sits_with`, every edge in one
-  of the member's Cases, and the member's `MONEY_EDGES_PER_MEMBER` (10) largest money edges (by `amount.exact`, else `high`, else `low`).
-  A member-to-member money edge is judged separately in each endpoint's file.
-- The member's remaining money ties are `ledger` rows (no evidence), largest first. The ledger is complete for current
-  members; former members keep their `FORMER_MEMBER_LEDGER_ROWS` (100) largest rows. `ledger_totals` always covers every
-  money tie that is not a full edge, so headline totals never need the rows to be summed.
-- `sits_with` (`LEDGER_ONLY_TYPES`) is never a full edge: each member gets one ledger row per colleague
-  (`kind` member, `note` = shared committee names, amounts null, `dir` both) after the money rows, and it is counted
-  in `ledger_totals`. Its evidence is the member's `committees` list and the committee pages.
-- Org files carry no full edges. `OrgFile.ties` lists every non-money tie and, for money, every tie with the
-  `MONEY_MEMBERS_PER_ORG` (200) members with the largest money totals with that org; `ledger_totals` covers the rest.
-  `ties.edge` is the edge id when the full edge is in that member's file (fetch `members/<member>.json` for evidence), else null.
-- Provenance for a ledger row or a tie without `edge` is derived, not stored: the site links `pac:<id>` and `via` ids to
-  `https://www.fec.gov/data/committee/<id>/`.
-- `MemberFile.board` lists up to 12 ids of the member's full edges in map order; `MemberFile.nodes` names every
-  org or member those full edges reference (ledger rows excluded).
-- `member-ties.json` holds member-to-member edges that exist as full edges in some member file, excluding context
-  edges (`sits_with`, `legislates_with`): all derived edges, and filed money edges within a member's cap.
+- A member file holds, as full edges: every non-money edge touching the member except `sits_with`, every edge in one of the member's Cases, and the member's `MONEY_EDGES_PER_MEMBER` (10) largest money edges (by `amount.exact`, else `high`, else `low`). A member-to-member money edge is judged separately in each endpoint's file.
+- The member's remaining money ties are `ledger` rows (no evidence), largest first. The ledger is complete for current members; former members keep their `FORMER_MEMBER_LEDGER_ROWS` (100) largest rows. `ledger_totals` always covers every money tie that is not a full edge, so headline totals never need the rows to be summed.
+- `sits_with` (`LEDGER_ONLY_TYPES`) is never a full edge: each member gets one ledger row per colleague (`kind` member, `note` = shared committee names, amounts null, `dir` both) after the money rows, and it is counted in `ledger_totals`. Its evidence is the member's `committees` list and the committee pages.
+- Org files carry no full edges. `OrgFile.ties` lists every non-money tie and, for money, every tie with the `MONEY_MEMBERS_PER_ORG` (200) members with the largest money totals with that org; `ledger_totals` covers the rest. `ties.edge` is the edge id when the full edge is in that member's file (fetch `members/<member>.json` for evidence), else null.
+- Provenance for a ledger row or a tie without `edge` is derived, not stored: the site links `pac:<id>` and `via` ids to `https://www.fec.gov/data/committee/<id>/`.
+- `MemberFile.board` lists up to 12 ids of the member's full edges in map order; `MemberFile.nodes` names every org or member those full edges reference (ledger rows excluded).
+- `member-ties.json` holds member-to-member edges that exist as full edges in some member file, excluding context edges (`sits_with`, `legislates_with`): all derived edges, and filed money edges within a member's cap.
 - Every edge, kept or not, stays in `pipeline/build/`; counts (`MemberSummary.counts`, `OrgSummary.degree`) include all ties.
+- `flags.json` holds at most `FLAGS_MAX_ROWS` (10,000) rows, about 1.3 MB; over that it keeps the rows with the most rules, then the newest public date, then id, and says so (`selection.truncated`). Measured 2026-11-25: 3,136 rows, 0.39 MB (46 KB gzipped), not truncated. Per-trade flag details are in the trade files only.
 
 ## Types
 
@@ -353,6 +337,7 @@ type MemberFile = {
     count: number; first: string | null; last: string | null; late: number; listed: number; // count and every other figure: counted trades only. listed = rows in trades/<id>.json (counted + TradeFile.not_counted), so listed >= count; the trade file exists iff listed > 0 (a member can have count 0 and listed >= 1)
     by_year: { [year: string]: number };   // "none" for trades without a transaction date
     by_owner: { [owner: string]: number }; by_action: { [action: string]: number };
+    flags?: { [ruleId: string]: number };  // review flags: counted trades meeting each rule, every rule id present (0 included); absent in older builds
   };
   cases: Case[];
   campaign_finance: CampaignFinance | null; // FEC loans and leadership PAC spending; null = no FEC candidacy row and no leadership PAC row
@@ -366,6 +351,8 @@ type TradeFile = {           // trades/<memberId>.json
   filings: { [doc: string]: string }; // filing id -> official filing URL; covers every row's doc and every amendments[].doc
   amendments: { [tradeId: string]: { id: string; doc: string; status: "Amended" | "Deleted" | "Version" | "Reprinted"; available: string | null }[] }; // later filings of that row's trade, oldest first; {} when none. "Amended"/"Deleted": a later House printing folded into the row (id = that printing's own eventId, never a row; status = the filing status the source records for it). "Version": the filing of a later version of the same dataset event (id = the row's own id; House and Senate). doc = the later filing, available = the date it became public. A "Deleted" printing does NOT remove the row: the trade stays listed (see not_counted)
   lag_withheld: { [tradeId: string]: "date_corrected" | "amended_unmatched" }; not_counted: { [tradeId: string]: "deleted_by_later_filing" }; // both {} when none. lag_withheld: exactly the rows whose lag_days is null though both dates are present (Trade.lag_days). not_counted (owner decision 2026-11-25): each House printing marked Deleted cancels ONE live printing (status New, Amended or none) of the same trade that was public no later than it; the row is not counted only when no live printing is left (so a second live printing, or one public after the last Deleted printing, keeps the trade counted; no ordering of same-day filings is used). An Amended printing is a live copy like any other, so New, then Amended, then one Deleted row stays counted. The order in which `amendments` lists entries public on the same day is a display convention (Deleted first), not the order of filing. The web marks deletion from not_counted only: a counted row may still list a "Deleted" entry, and then also lists the surviving printings the dataset folded into it (status "Amended", or "Reprinted" for a printing marked New or unmarked; id `house:<doc>:<row>`). Such a row stays listed, flagged amended, with its own fields, but is left OUT of every figure: MemberSummary.counts.trades, wall and wall-years trade counts, trade_summary (count, late, by_*), `traded` and `traded_together` edges and their sums, org trade ties, position timelines, delays.json and meta.counts.trades. Its `org` is null when no counted trade publishes that org
+  flags?: { [tradeId: string]: { [ruleId: string]: FlagDetail } }; // review flags ("Review flags"): counted trades meeting at least one rule, met rules only; {} when none. A not_counted row never appears. Absent in older builds
+  flags_not_evaluated?: { [ruleId: string]: number }; // per rule, this member's counted trades the rule could not be evaluated for (missing date, range, org or source data); every rule id present. Not evaluated is never "not met"
 };
 
 type OrgFile = {
@@ -374,6 +361,8 @@ type OrgFile = {
   ledger_totals: LedgerTotals; // money ties not listed in ties
   chambers: { rep: number; sen: number }; // distinct members tied to it (all ties) by MemberSummary.chamber; sums to degree
   years: [number, number];    // earliest first year and latest last year over all its ties
+  sec_coverage?: { from: string; to: string; complete: boolean }; // optional, see "SEC 8-K events"; absent = not available
+  sec_events?: SecEvent[];    // the company's 8-K filings within 30 days either side of a dated counted trade in it, by date
 };
 
 type Wall = {                 // wall.json, rows sorted by id, one per member in members.json
@@ -438,6 +427,7 @@ type Meta = {
   unmatched: { trades_without_ticker: number | null; tickers_without_sec_match: number | null;
                trades_with_unmatched_ticker: number | null; edges_dropped_at_assembly: { [reason: string]: number } };
   exclusions: { [what: string]: { rows: number; reason: string; filings?: unknown[][]; members?: string[] } }; // trades; `amended_rows_without_original`, `same_key_other_filing`, `lag_withheld_date_corrected` and `deleted_by_later_filing` (kept and listed, not counted) count rows that are KEPT (their reason says so); FEC: `conduit_pass_through` (also `dollars`, `committees`, `by_cycle`; see docs/fec-conduits.md) and `reviewed_not_received` (also `dollars`, `by_reason`, `listed`, `not_taken`; see docs/fec-reviewed-rows.md)
+  flags?: { method_version: string; file: "flags.json"; rules: { [ruleId: string]: FlagCounts }; baselines: { [ruleId: string]: FlagBaseline }; trades_counted: number; trades_flagged: number; statement: string }; // review flags summary for /method; absent in older builds
   assembly: { edges_read: { [file: string]: number }; edges_after_merge: number;
               edges_dropped: { [reason: string]: number }; edges_dropped_examples: { [reason: string]: string[] };
               org_files: string[];
@@ -465,8 +455,7 @@ type Source = {
 computed from **every** tie between the org and a member, full edges and ledger rows alike, current and former members:
 
 - `given`: `pac_money` ties (money the org's PAC gave to a member's campaign committee);
-- `support` / `oppose`: `outside_spending` ties whose `note` is `support` / `oppose` (independent expenditures for or
-  against the member);
+- `support` / `oppose`: `outside_spending` ties whose `note` is `support` / `oppose` (independent expenditures for or against the member);
 - `traded`: `traded` ties (the member's household traded the org's stock); member counts only, dollars null.
 
 Each tie counts under the member's party **at the time of the tie**, not their latest party: the tie's `by_year`
@@ -478,8 +467,7 @@ against the tie's other parties, largest first, so no share is negative and the 
 - A year inside a term follows the coverage rule (a term ending on 3 January does not count that year). When two terms
   in different parties share a year, the term covering more days of it wins; equal days go to the later term.
 - A year outside every term (money to a challenger before taking office, a former member's leftover committee) goes
-  to the nearest term in time (equal distance: the later term). How often this happens is reported in
-  `meta.json.assembly.party_split`.
+  to the nearest term in time (equal distance: the later term). How often this happens is reported in `meta.json.assembly.party_split`.
 - A member is counted once per measure **per party they were tied under**: a party switcher with ties on both sides
   of the switch counts under both parties, so the member counts can sum to more than the distinct members.
 
@@ -554,6 +542,34 @@ Rules:
   `MemberFile.trade_summary.count`; trades over 45 days equal `trade_summary.late`; totals equal the sum of member
   rows and the figures re-derived from all trade files; chambers sum to totals; by_year groups equal the re-derived
   figures and sum to totals; every member id exists in `members.json`.
+
+## SEC 8-K events (`pipeline/build/sec_events.json`, `OrgFile.sec_events`; rules in [`docs/sec-events.md`](sec-events.md))
+
+`{ source: "sec_edgar_submissions"; fetched: ISO date; coverage: { [cik]: { from, to, complete } }; events: { [cik]: SecEvent[] }; report: { companies, requests, cached, failed: { cik, error }[], events } }`, keys decimal CIKs, events sorted by date.
+`type SecEvent = { date: string /* filingDate */; accepted: string | null /* acceptanceDateTime, UTC */; form: "8-K" | "8-K/A"; items: string[] /* "2.02" */; accession: string; url: string /* www.sec.gov/Archives */ }`.
+Targets: every `co:<CIK>` org of a counted trade. `coverage[cik]` is the span read (`from` = earliest filingDate read, never before 2011-12-02; `to` = latest);
+inside it the list is complete, so no event there means no 8-K was filed. `complete` is false when an older page failed. A company whose fetch failed has no
+`coverage` entry and is in `report.failed`. Missing is never zero: an org file without `sec_coverage` (failed, stage not run, older release) means "not available", never "no filings". A foreign issuer files 6-K, not 8-K, so its list is empty. Validated by `pipeline/validate_sec_events.py`.
+
+## Review flags (`flags.json`, `TradeFile.flags`)
+
+Five fixed rules evaluated on every counted trade, every build (method and limits: [`docs/review-flags.md`](review-flags.md); code `pipeline/assemble/flags.py`, `flags_out.py`; checks `pipeline/validate_flags.py`). A flag means only that a published rule was met: a prompt for reporting, not a finding. Rule ids never change: `late`, `large_amount`, `pile_on`, `money_both_ways`, `sector_overseen`. A rule or threshold change bumps `method_version` (`flags-3` now: rolling 365-day `pile_on` baseline, SIC-prefix committee table, `owner` column; drafts as `flags-1` also had `before_company_news`, now context only, so readers ignore unknown rule ids).
+
+```ts
+type FlagDetail = { lag_days: number } | { low: number } | { members: string[]; observed: number; expected: number } // late | large_amount | pile_on (<= 5 ids, nearest first; expected to 3 decimals)
+  | { edge: string } | { committee: string }; // money_both_ways | sector_overseen (cmte:<thomas id>)
+type FlagCounts = { met: number; evaluated: number; not_evaluated: number }; type FlagBaseline = { kind: "chance" | "descriptive"; expected_met: number | null; expected_share: number | null; method: string; expected_others_sum?: number; observed_others_sum?: number; expected_others_mean?: number | null }; // FlagCounts: evaluated + not_evaluated = counted trades. FlagBaseline: trades expected to meet the rule by chance (1 decimal) and that / evaluated; null for descriptive rules and without data; pile_on adds the other-member sums (docs/review-flags.md, "Expected by chance")
+type ReviewFlags = {          // flags.json
+  method_version: string; build_date: string; statement: string; // build_date: UTC date of the build (the "last 30 days" end)
+  rules: { id: string; label: string; definition: string; thresholds: object; counts: FlagCounts; baseline: FlagBaseline; note: string | null }[]; // fixed order
+  selection: { rule: string; min_rules: 2; recent_days: 30; max_rows: number; order: string; rows_selected: number; rows_published: number; truncated: boolean };
+  cols: ["member", "id", "date", "available", "ticker", "org", "action", "low", "high", "rules", "owner"]; // owner as in Trade.owner (from flags-3)
+  rows: unknown[][];          // every counted trade meeting >= 2 rules, plus every one meeting any rule with build_date - 30 < available <= build_date; most rules first, then newest available, then id; rules = met rule ids in the fixed order
+};
+```
+
+The committee table is `pipeline/crosswalk/committee_sectors.csv` (`committee_id, committee_name, sic_prefixes, sic_excluded, basis`: SIC prefixes of 2 to 4 digits separated by `;`, a company's 4-digit SIC code matching when it starts with a listed prefix and with no excluded one; `basis` the chamber-rule clause and every change; drafted for team review; assignments are current rosters applied back to 2025-01-03, changes during the Congress not dated). The
+flags do not read `sec_events.json`; a company's 8-Ks are context only (`OrgFile.sec_events`, "Around this trade").
 
 ## Rules the pipeline must keep
 
@@ -639,28 +655,11 @@ were not loaded. `report.cache.stale_days` is the age of the newest posting cuto
 
 ## Privacy
 
-Public data stays public: everything here comes from public filings (FEC reports, House and Senate disclosure
-reports, congress-legislators), and adults named in them are published as filed. Only minors are redacted, because
-they did not choose public life.
+Public data stays public: everything here comes from public filings (FEC reports, House and Senate disclosure reports, congress-legislators), and adults named in them are published as filed. Only minors are redacted, because they did not choose public life.
 
-- **Published as filed:** members and their spouses; adults named in account titles (an IRA "FBO" an adult, trusts
-  named after adults, the member's or spouse's own name); FEC committees, and independent-expenditure payees
-  (the vendors and consultants a committee paid, individuals and organisations alike, in the "(paid to ...)"
-  evidence labels and `meta.json.reports.fec.review_large_funds_rows`); liability creditors and types (no change
-  to the creditor name, whether a bank or a person).
-- **Redacted (minors only):** a beneficiary's name becomes `[name redacted]` only when the filing row itself
-  indicates a minor: (1) a custodial account form (`UTMA`, `UGMA`, `UTA` but not `UTA DTD`, "custodian (for)",
-  "cust", "minor" / "a minor"); (2) a 529 or education-savings account (`529`, Coverdell, `ESA`, "education
-  savings") naming a beneficiary; (3) any row whose owner is filed as a dependent child (owner `dependent`), where
-  person-shaped names in the account title are redacted as well. On rows (1) and (2) the name after `FBO`, `f/b/o`,
-  "for the benefit of", "custodian for" or "beneficiary", and a "First [M.] Last" name directly before
-  `UTMA`/`UGMA`/`UTA`, are redacted. When the filing gives no way to tell and the owner is not a dependent child, the
-  text is published as filed. Counts per rule: `meta.json.reports.holdings` (`asset_minor_name_redacted_<rule>`).
-- **Never published:** street addresses (locations are cut to "City, ST"; street addresses in asset, creditor and
-  liability-type text become `[street address redacted]`) and personal residences (rows that name a personal
-  residence or non-rental second home are dropped). The pipeline never reads the FEC individual-contributions file,
-  so no individual contributor is published. The campaign finance block (see its section) publishes leadership PAC spending
-  as per-category aggregates only, never a payee name or address.
+- **Published as filed:** members and their spouses; adults named in account titles (an IRA "FBO" an adult, trusts named after adults, the member's or spouse's own name); FEC committees, and independent-expenditure payees (the vendors and consultants a committee paid, individuals and organisations alike, in the "(paid to ...)" evidence labels and `meta.json.reports.fec.review_large_funds_rows`); liability creditors and types (no change to the creditor name, whether a bank or a person).
+- **Redacted (minors only):** a beneficiary's name becomes `[name redacted]` only when the filing row itself indicates a minor: (1) a custodial account form (`UTMA`, `UGMA`, `UTA` but not `UTA DTD`, "custodian (for)", "cust", "minor" / "a minor"); (2) a 529 or education-savings account (`529`, Coverdell, `ESA`, "education savings") naming a beneficiary; (3) any row whose owner is filed as a dependent child (owner `dependent`), where person-shaped names in the account title are redacted as well. On rows (1) and (2) the name after `FBO`, `f/b/o`, "for the benefit of", "custodian for" or "beneficiary", and a "First [M.] Last" name directly before `UTMA`/`UGMA`/`UTA`, are redacted. When the filing gives no way to tell and the owner is not a dependent child, the text is published as filed. Counts per rule: `meta.json.reports.holdings` (`asset_minor_name_redacted_<rule>`).
+- **Never published:** street addresses (locations are cut to "City, ST"; street addresses in asset, creditor and liability-type text become `[street address redacted]`) and personal residences (rows that name a personal residence or non-rental second home are dropped). The pipeline never reads the FEC individual-contributions file, so no individual contributor is published. The campaign finance block (see its section) publishes leadership PAC spending as per-category aggregates only, never a payee name or address.
 
 Both validators check that no published asset or trade text still carries a minor's name under these indicators.
 
@@ -677,8 +676,7 @@ Each source module writes, under `pipeline/build/`:
 
 ### Org overrides (`pipeline/crosswalk/org_overrides.csv`)
 
-Columns: `source, source_id_or_name, org_id, note, reviewed_by, reviewed_on`. Rows without `reviewed_by` are ignored.
-`source` is case-insensitive:
+Columns: `source, source_id_or_name, org_id, note, reviewed_by, reviewed_on`. Rows without `reviewed_by` are ignored. `source` is case-insensitive:
 - `ticker`: `source_id_or_name` is a ticker as filed or in normalised form (`BRK.B`); applied by `companies.py`.
 - `fec`, `fec_committee` or `fec_connected_org`: `source_id_or_name` is an FEC committee id (`C` + 8 digits) or a PAC
   connected-organisation name (normalised before lookup); applied by `pipeline/fec/`.

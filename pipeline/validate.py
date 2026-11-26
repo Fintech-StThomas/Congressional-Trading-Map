@@ -2,9 +2,9 @@
 
 Reads the published tree and pipeline/build/trades*.parquet. Checks (a) the schema of every output file, (b)
 invariants: row counts across joins, evidence and endpoints, by_year sums and order, owner never defaulted, ledger
-completeness and caps, the Case rule re-derived from published edges, cross-file counts (members, wall, wall-years,
-org index, meta), no minor's name in trade text; and writes (c) a reproducible sample of 25 trades for hand
-checking (pipeline/build/validation_sample.csv). Exits non-zero on any failure. Holdings: pipeline/holdings/validate.py.
+completeness and caps, the Case rule re-derived from published edges, cross-file counts (members, wall, wall-years, org
+index, meta), SEC 8-K events (validate_sec_events), review flags (validate_flags), no minor's name in trade text; and
+writes (c) a reproducible sample of 25 trades for hand checking (pipeline/build/validation_sample.csv). Exits non-zero on any failure.
 """
 from __future__ import annotations
 
@@ -19,15 +19,16 @@ import pyarrow.parquet as pq
 
 from .assemble import case_ok, shard
 from .config import BOARD_EDGES, FORMER_MEMBER_LEDGER_ROWS, LATE_DAYS, LEDGER_ONLY_TYPES, MAX_EVIDENCE, MONEY_EDGES_PER_MEMBER, ORG_INDEX_TOP, SAMPLE_SEED, SAMPLE_SIZE
-from .contract import (FAMILY, MEMBER_LEDGER_COLS, ORG_INDEX_COLS, ORG_TIE_COLS, PARTIES, SPLIT_MEASURES, TRADE_COLUMNS,
-                       WALL_COLS, WALL_YEARS_COLS)
+from .contract import FAMILY, MEMBER_LEDGER_COLS, ORG_INDEX_COLS, ORG_TIE_COLS, PARTIES, SPLIT_MEASURES, TRADE_COLUMNS, WALL_COLS, WALL_YEARS_COLS
 from .assemble.orgs import year_party
 from .edges import edge_id, sum_amounts
 from .holdings.rules import redact_beneficiary
 from .util import BUILD, OUT, read_json
 from .validate_delays import check_delays
 from .validate_fec_conduits import check_conduits
+from .validate_flags import check_flags
 from .validate_fec_spending import check_campaign_finance, load_links
+from .validate_sec_events import ORG_SEC_KEYS, check_org_sec, check_sec_file
 from .validate_trade_amendments import check_folding, check_trade_file, counted_rows, lag_null_is_valid
 
 OWNERS = {"self", "spouse", "joint", "dependent", "unspecified"}
@@ -361,8 +362,7 @@ def main() -> int:
     sources = set(meta["sources"])
     members_list = read_json(OUT / "members.json")
     orgs_list = read_json(OUT / "orgs.json")
-    members = {m["id"] for m in members_list}
-    orgs = {o["id"] for o in orgs_list}
+    members, orgs = {m["id"] for m in members_list}, {o["id"] for o in orgs_list}
     for m in members_list:
         shape(c, m, MEMBER_SUMMARY, f"members.json:{m.get('id')}")
     for o in orgs_list:
@@ -387,8 +387,7 @@ def main() -> int:
     for mid in sorted(members):
         mf = read_json(OUT / "members" / f"{mid}.json")
         where = f"members/{mid}"
-        c.check(set(mf) == {"member", "edges", "board", "nodes", "ledger", "ledger_totals", "trade_summary", "cases", "campaign_finance",
-                                  "coverage"}, "schema", f"{where} keys")
+        c.check(set(mf) == {"member", "edges", "board", "nodes", "ledger", "ledger_totals", "trade_summary", "cases", "campaign_finance", "coverage"}, "schema", f"{where} keys")
         c.check(mf["member"]["id"] == mid, "member file id", where)
         check_campaign_finance(c, mf.get("campaign_finance"), where, mid, mf["member"]["fec_ids"], links)
         terms[mid] = mf["member"]["terms"]
@@ -407,8 +406,7 @@ def main() -> int:
         c.check(len(mf["cases"]) == mf["member"]["counts"]["cases"], "member file cases match counts", where)
         c.check(len(mf["board"]) <= BOARD_EDGES and set(mf["board"]) <= ids, "board: <= 12 ids of full edges", where)
         check_member_ledger(c, mf, where, orgs, members)
-        tpath = OUT / "trades" / f"{mid}.json"
-        tf = read_json(tpath) if tpath.exists() else None
+        tf = read_json(OUT / "trades" / f"{mid}.json") if (OUT / "trades" / f"{mid}.json").exists() else None
         n = check_trades(c, tf, f"trades/{mid}", orgs) if tf is not None else 0
         published_trades[mid] = tf if tf is not None and "rows" in tf else {"rows": []}
         trade_summaries[mid] = mf["trade_summary"]
@@ -417,15 +415,16 @@ def main() -> int:
         for cov in mf["coverage"]:
             c.check(cov["trades"] in ("full", "partial", "none", "n/a") and cov["money"] in ("full", "partial", "none"), "schema", f"{where} coverage")
 
+    sec, sec_days = check_sec_file(c)   # SEC 8-K events: optional org fields, re-derived from sec_events.json
     for k in sorted({shard(o) for o in orgs}):
         doc = read_json(OUT / "orgs" / f"{k}.json")
         for oid, of in doc.items():
             c.check(shard(oid) == k, "org in the right shard", oid)
-            c.check(set(of) == {"org", "ties", "ledger_totals", "chambers", "years"}, "schema", f"orgs/{k}:{oid} keys")
+            c.check(set(of) - ORG_SEC_KEYS == {"org", "ties", "ledger_totals", "chambers", "years"}, "schema", f"orgs/{k}:{oid} keys")
+            check_org_sec(c, sec, sec_days, oid, of)
             shape(c, of["org"], ORG_SUMMARY, f"orgs/{k}:{oid}")
             c.check(of["org"] == orgs_by_id.get(oid), "org file summary equals orgs.json", oid)
-            c.check(set(of["chambers"]) == {"rep", "sen"} and sum(of["chambers"].values()) == of["org"]["degree"],
-                    "org chambers sum to degree", oid)
+            c.check(set(of["chambers"]) == {"rep", "sen"} and sum(of["chambers"].values()) == of["org"]["degree"], "org chambers sum to degree", oid)
             c.check(isinstance(of["years"], list) and len(of["years"]) == 2 and of["years"][0] <= of["years"][1], "schema", f"{oid} years")
             ties = check_table(c, of["ties"], ORG_TIE_COLS, f"orgs/{k}:{oid}.ties")
             check_split(c, of, ties, party, terms, oid)
@@ -455,6 +454,7 @@ def main() -> int:
     check_delays(c, read_json(OUT / "delays.json"), members, published_trades, trade_summaries, is_date)
     check_folding(c, published_trades, meta, OUT)
     check_conduits(c, meta)   # listed conduit PACs: exclusion counted, review of kept rows printed
+    check_flags(c, OUT, published_trades, trade_summaries, meta)   # review flags re-derived (validate_flags.py)
 
     # Row counts across stages: no join may have multiplied or lost trades.
     resolved = pq.read_metadata(BUILD / "trades_resolved.parquet").num_rows

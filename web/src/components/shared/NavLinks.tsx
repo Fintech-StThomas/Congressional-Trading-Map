@@ -1,5 +1,5 @@
 "use client";
-// The header's site navigation. Desktop: Board, New, Cases, Organisations and a "More" menu (Wall, Timing, Saved,
+// The header's site navigation. Desktop: Board, New, Cases, Organisations and a "More" menu (Wall, Timing, Review flags, Saved,
 // Following, Method, Data status); `aria-current` marks the current section, and the More button when the current page
 // is inside it. Phones (720px and narrower): one "Menu" button that opens a panel with every link, in the same
 // order. The panel closes on Escape, on a click outside and when a link is chosen. Wording is in lib/copy-ui.ts.
@@ -7,12 +7,13 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 import { NAV_UI } from "@/lib/copy-ui";
-import { delaysHref, newHref, savedHref, statusHref, watchHref } from "@/lib/urls";
+import { delaysHref, flagsHref, newHref, savedHref, statusHref, watchHref } from "@/lib/urls";
 import { ActionMenu } from "./ActionMenu";
 
 const MORE_HREF: Record<(typeof NAV_UI.more)[number]["key"], string> = {
   wall: "/wall",
   delays: delaysHref(),
+  flags: flagsHref(),
   saved: savedHref(),
   watch: watchHref(),
   method: "/method",

@@ -58,6 +58,18 @@ def congress() -> None:
         print(f"  congress: failed ({type(e).__name__}: {e})")
 
 
+def sec_events() -> None:
+    """SEC Form 8-K events for the traded companies (pipeline/sec_events/). Download problems are recorded per company
+    inside the stage; anything else that breaks it removes its outputs, so the build goes on without SEC coverage
+    (org files then carry no sec_* fields: "not available", never "no events")."""
+    from .sec_events import run as sec_run
+    try:
+        sec_run.run()
+    except Exception as e:  # noqa: BLE001 - optional context data; never fail the whole pipeline
+        sec_run.clear()
+        print(f"  sec_events: failed ({type(e).__name__}: {e}); no SEC coverage in this build")
+
+
 def holdings_publish() -> None:
     """Rerun the holdings stage once the new tree is in place. Why: its overlaps compare each holding with the
     member's *published* file (contract), and before assemble that file is the previous build's. The plug-in files
@@ -75,6 +87,7 @@ STAGES: dict[str, Callable[[], None]] = {
     "companies": companies.run,
     "fec": fec,
     "edges_trades": edges_trades.run,
+    "sec_events": sec_events,  # needs trades_resolved.parquet from edges_trades
     "edges_committees": edges_committees.run,
     "lda": lda,
     "congress": congress,      # pilot, off by default, writes no plug-in file

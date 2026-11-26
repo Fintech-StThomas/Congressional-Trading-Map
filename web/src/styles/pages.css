@@ -235,7 +235,7 @@
   align-items: center;
   gap: 4px;
   min-width: 0;
-  text-decoration-color: oklch(0.62 0.205 28 / 0.4);
+  text-decoration-color: color-mix(in oklch, var(--text-3) 70%, transparent);
 }
 .trades__assettext {
   display: block;
@@ -246,18 +246,11 @@
   display: block;
   font-size: 11.5px;
 }
-.late {
-  margin-left: 6px;
-  font-family: var(--type);
-  font-weight: 700;
-  font-size: 10.5px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--paper);
-  background: var(--red-ink);
-  padding: 1px 5px 0;
-  border-radius: 2px;
-}
+/* Over 45 days: a neutral outline chip like the flag badges (never red: red means a tie); in the trades table it sits
+   under the day count so it fits the 96px Lag column and the 44px row. */
+.late { display: inline-block; margin-left: 6px; padding: 0 5px; border: 1px solid var(--text-3); border-radius: var(--r-sm); }
+.late { color: var(--text-2); font: 600 11px/1.4 var(--sans); white-space: nowrap; }
+.tradetable .late { display: block; width: fit-content; margin: 2px 0 0 auto; }
 
 .ledger__totals {
   list-style: none;
@@ -490,7 +483,7 @@
 .timeline__bar {
   display: block;
   width: 100%;
-  background: var(--red);
+  background: var(--text-2); /* counts per year, not a tie: chalk */
   border-radius: 1px 1px 0 0;
 }
 .cov--full {

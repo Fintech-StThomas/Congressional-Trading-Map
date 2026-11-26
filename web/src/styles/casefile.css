@@ -1,5 +1,5 @@
 /* The printable case file (components/member/CaseFile.tsx). Hidden on screen; in print it
-   replaces the page: black ink on white, one red accent, greyscale portrait. */
+   replaces the page: black ink on white, no red (red means a tie), greyscale portrait. */
 .casefile {
   display: none;
 }
@@ -103,8 +103,8 @@
     display: inline-block;
     margin: 10mm 0 3mm;
     padding: 2mm 5mm;
-    border: 2.2pt solid oklch(0.47 0.175 27);
-    color: oklch(0.47 0.175 27);
+    border: 2.2pt solid #000;
+    color: #000;
     font: 700 26pt/1 var(--type);
     letter-spacing: 0.12em;
   }

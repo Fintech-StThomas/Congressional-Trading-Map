@@ -299,7 +299,7 @@ export const DELAYS = {
   memberLine: "Days from transaction to public",
   memberLink: "How this is measured",
   overTitle: "Public more than 45 days after the stated transaction date. Observed days, not a compliance finding.",
-  overChip: "over 45 days",
+  overChip: "Over 45 days",
   overFilter: "Over 45 days only",
   overLabelLong: "Public over 45 days after the transaction",
 } as const;

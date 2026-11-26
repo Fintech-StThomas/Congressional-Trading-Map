@@ -86,7 +86,7 @@ export function NewView({ rows, windowEnd, files }: Props) {
                       <td data-label={NEW.cols.date} className="mono">{r.dateText}</td>
                       <td data-label={NEW.cols.lag} className="mono">
                         {r.lagText}
-                        {r.over && <span className="late" title={DELAYS.overTitle}>{DELAYS.overChip}</span>}
+                        {r.over && <span className="late" title={DELAYS.overTitle} aria-label={DELAYS.overTitle}>{DELAYS.overChip}</span>}
                       </td>
                       <td data-label={NEW.cols.filing}>
                         {r.filing ? <a href={r.filing} target="_blank" rel="noopener noreferrer">{NEW.filingLink} <ExternalIcon /></a> : <span className="nd">{NEW.noFiling}</span>}

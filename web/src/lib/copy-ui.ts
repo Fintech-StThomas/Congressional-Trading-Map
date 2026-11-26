@@ -21,6 +21,7 @@ export const NAV_UI = {
   more: [
     { key: "wall", label: "Wall" },
     { key: "delays", label: "Timing" },
+    { key: "flags", label: "Review flags" },
     { key: "saved", label: "Saved" },
     { key: "watch", label: "Following" },
     { key: "method", label: "Method" },
