@@ -16,7 +16,7 @@ import { AROUND, RULE_LABEL, type RuleId } from "@/lib/copy-flags";
 import { cycleOf, metRules } from "@/lib/domain/flags";
 import { eventsNear, itemLabel, newsSearchUrl, secState, secStateText } from "@/lib/domain/secevents";
 import { fecCommitteeUrl, notChecked, notCheckedText, pacEmptyKind, pacTies } from "@/lib/domain/around";
-import { amountText, count, date, NOT_DISCLOSED, plural } from "@/lib/format";
+import { amountText, assetWithTicker, count, date, NOT_DISCLOSED, plural } from "@/lib/format";
 import { dataUrl, memberHref, safeHttpUrl } from "@/lib/urls";
 import { getJSON } from "@/lib/data/fetch";
 import { orgShard } from "@/lib/hash";
@@ -139,7 +139,7 @@ export function TradeAround({ t, info, flags, onClose }: { t: TradeRow; info: Tr
       <header className="around__head">
         <h3 id="around-h">{AROUND.title}</h3>
         <p className="around__trade">
-          <span className="mono">{date(t.date)}</span> · {actionLabel(t.action)} · {t.asset}{t.ticker ? ` (${t.ticker})` : ""} · <span className="mono">{amountText({ low: t.low, high: t.high, exact: null }) ?? NOT_DISCLOSED}</span>
+          <span className="mono">{date(t.date)}</span> · {actionLabel(t.action)} · {assetWithTicker(t.asset, t.ticker)} · <span className="mono">{amountText({ low: t.low, high: t.high, exact: null }) ?? NOT_DISCLOSED}</span>
         </p>
         <button type="button" className="btn btn--small around__close" onClick={onClose} data-testid="around-close">{AROUND.close}</button>
       </header>

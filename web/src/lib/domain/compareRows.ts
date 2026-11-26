@@ -1,7 +1,7 @@
 // Tables and CSV for a release comparison (lib/domain/compare.ts): one table per class with changes, in the shape
 // DataTable shows, and one CSV of every change. Wording comes from lib/copy.ts; amounts are before → after ranges.
 import { COMPARE } from "../copy.ts";
-import { amountText, NOT_DISCLOSED } from "../format.ts";
+import { amountText, assetWithTicker, NOT_DISCLOSED } from "../format.ts";
 import { toCSV, type Cell, type Col } from "./records.ts";
 import type { CompareResult, FieldChange, TradeChange } from "./compare.ts";
 
@@ -15,7 +15,7 @@ export function fieldsText(fields: readonly FieldChange[]): string {
 }
 
 const rangeOf = (t: { low: number | null; high: number | null }) => amountText({ low: t.low, high: t.high, exact: null }) ?? NOT_DISCLOSED;
-const assetOf = (t: TradeChange) => `${t.row.asset}${t.row.ticker ? ` (${t.row.ticker})` : ""}`;
+const assetOf = (t: TradeChange) => assetWithTicker(t.row.asset, t.row.ticker);
 
 const TRADE_COLS: Col[] = [
   col("id", "Event id", "text", 150), col("date", "Transaction date", "date", 110), col("available", "Public from", "date", 100),
