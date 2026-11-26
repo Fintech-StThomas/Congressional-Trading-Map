@@ -352,7 +352,7 @@ button.crumb:hover {
 .slip a,
 .slip .linkbtn {
   color: var(--ink);
-  text-decoration-color: var(--red-ink);
+  text-decoration-color: var(--ink-3);
 }
 .slip__kicker {
   display: flex;
@@ -366,7 +366,7 @@ button.crumb:hover {
   border-bottom: 1px solid var(--paper-edge);
 }
 .slip__kicker .stamp-label {
-  color: var(--red-ink);
+  color: var(--ink-2);
   font-size: 12px;
 }
 .slip__title {
@@ -1146,7 +1146,7 @@ button.crumb:hover {
 }
 .drawer a {
   color: var(--ink);
-  text-decoration-color: var(--red-ink);
+  text-decoration-color: var(--ink-3);
 }
 .drawer :focus-visible {
   outline-color: var(--ink);
@@ -1188,7 +1188,7 @@ button.crumb:hover {
   background: var(--paper);
   color: var(--ink);
   border-color: var(--ink);
-  box-shadow: inset 0 -2px 0 var(--red-ink);
+  box-shadow: inset 0 -2px 0 var(--ink);
 }
 .drawer__tab .linesample__core,
 .drawer__tab .linesample__fibre {

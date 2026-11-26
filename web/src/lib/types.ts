@@ -160,6 +160,7 @@ type MemberFile = {
     listed?: number;                       // rows in the trade file, counted + not counted; absent in older builds (then count)
     by_year: { [year: string]: number };   // "none" for trades without a transaction date
     by_owner: { [owner: string]: number }; by_action: { [action: string]: number };
+    flags?: { [ruleId: string]: number }; // review flags met per rule (docs/review-flags.md); absent in older builds
   };
   cases: Case[];
   coverage: { year: number; trades: "full" | "partial" | "none" | "n/a"; money: "full" | "partial" | "none" }[];
@@ -174,6 +175,8 @@ type TradeFile = {           // trades/<memberId>.json
   amendments?: { [tradeId: string]: { id: string; doc: string; status: "Amended" | "Deleted" | "Reprinted" | "Version"; available: string | null }[] }; // later filings of that row's trade, oldest first; {} when none; ABSENT in files built before this field existed. id may be "house:<doc>:<row>" (a printing, never a trade link); "Reprinted" = a surviving printing marked New or unmarked. A "Deleted" printing does not remove the row; not_counted decides that
   lag_withheld?: { [tradeId: string]: "date_corrected" | "amended_unmatched" }; // rows whose lag_days is null though both dates are present, and why; ABSENT in builds before the owner decision of 2026-11-25
   not_counted?: { [tradeId: string]: "deleted_by_later_filing" }; // rows a later filing marks Deleted: listed and marked, counted nowhere; absent in older builds
+  flags?: { [tradeId: string]: { [ruleId: string]: FlagDetail } }; // review flags: met rules only, counted trades only; a prompt for reporting, not a finding; absent in older builds
+  flags_not_evaluated?: { [ruleId: string]: number }; // per rule, trades the rule could not be evaluated for (never "not met"); absent in older builds
 };
 
 type OrgFile = {
@@ -182,6 +185,8 @@ type OrgFile = {
   ledger_totals: LedgerTotals; // money ties not listed in ties
   chambers?: { rep: number; sen: number }; // distinct members tied to it (all ties) by MemberSummary.chamber
   years?: [number, number];   // earliest first year and latest last year over all its ties
+  sec_coverage?: SecCoverage; // SEC 8-K span read for the company; absent = not available (never "no filings")
+  sec_events?: SecEvent[];    // the company's 8-K filings within 30 days either side of a dated counted trade in it, by date
 };
 
 type Wall = {                 // wall.json, rows sorted by id, one per member in members.json
@@ -209,6 +214,7 @@ type Board = {
   states: { [state: string]: string[] };        // current member ids, senators first
 };
 // END CONTRACT
+import type { FlagDetail, SecCoverage, SecEvent } from "./types-flags.ts";
 export type { CampaignFinance, LoanRow, ReceiptsRow, LeadershipPacYear, LeadershipPacCategory, LeadershipPacPurpose } from "./types-finance.ts";
 
 export type {
@@ -263,3 +269,4 @@ export type Meta = {
 };
 
 export type { DelayBands, DelayGroup, DelayMemberCol, Delays } from "./types-delays.ts";
+export type { FlagDetail, FlagCounts, FlagBaseline, FlagRule, ReviewFlags, MetaFlags, SecCoverage, SecEvent } from "./types-flags.ts";

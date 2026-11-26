@@ -1,0 +1,221 @@
+/* Review flags: /flags, the flag badges in the member trades table, and the "Around this trade" panel.
+   Neutral tokens only. Red means a tie and nothing else, so no flag, badge or note here uses --red or its kin;
+   a flag is an outlined chip in chalk grey. Every meaning is also text. */
+
+.flags .fl-statement {
+  margin: 18px 0 0;
+  max-width: 78ch;
+  padding: 14px 18px 12px;
+  border: 1px solid var(--paper-edge);
+  border-radius: var(--r-sm);
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: var(--shadow-print);
+  font-size: 14.5px;
+  line-height: 1.5;
+}
+.fl-statement__text {
+  margin: 0 0 10px;
+  font-family: var(--type);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+.fl-statement h2 {
+  margin: 0 0 2px;
+  font-size: 13.5px;
+  color: var(--ink);
+}
+.fl-statement ul {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--ink-2);
+}
+.fl-statement li { margin: 3px 0; }
+
+.fl-sec {
+  margin-top: 44px;
+}
+.fl-sec > h2 {
+  font-size: 19px;
+  margin: 0 0 4px;
+}
+.fl-sub {
+  margin: 0 0 14px;
+  max-width: 78ch;
+  font-size: 13.5px;
+  color: var(--text-3);
+}
+.fl-unavailable {
+  margin-top: 24px;
+  max-width: 76ch;
+  padding: 14px 16px;
+  border: 1px dashed var(--rule);
+  border-radius: var(--r);
+  color: var(--text-2);
+}
+.fl-unavailable h2 { font-size: 17px; margin: 0 0 4px; color: var(--text); }
+
+/* the rules: label, definition, counts, baseline, link */
+.fl-rules {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr));
+  gap: 0 32px;
+  margin: 0;
+}
+.fl-rule {
+  padding: 14px 0 12px;
+  border-top: 1px solid var(--rule-soft);
+  scroll-margin-top: 80px;
+}
+.fl-rule dt { margin: 0 0 6px; }
+.fl-rule dd { margin: 0; font-size: 14px; line-height: 1.5; color: var(--text-2); }
+.fl-rule dd p { margin: 0 0 4px; max-width: 64ch; }
+.fl-rule__counts { font-size: 12.5px; color: var(--text-3); }
+.fl-rule__base { font-size: 13px; color: var(--text); }
+.fl-rule__note { font-size: 13px; color: var(--text-3); }
+
+/* the flag chip: neutral outline, never filled with the tie colour */
+.flagchips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.flagchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border: 1px solid var(--text-3);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-2);
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.flagchip--lg {
+  font-size: 13px;
+  padding: 2px 9px;
+  color: var(--text);
+}
+.flagchip svg { flex: none; }
+
+/* the table */
+.fl-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 18px;
+  margin: 0 0 12px;
+}
+.fl-seg { display: flex; flex-wrap: wrap; gap: 6px; }
+.fl-filter { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-3); }
+.fl-count { margin: 0 0 0 auto; font-size: 12.5px; color: var(--text-3); }
+.fl-rows { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.fl-rows th,
+.fl-rows td {
+  padding: 9px 12px;
+  text-align: left;
+  vertical-align: baseline;
+  border-bottom: 1px solid var(--rule-soft);
+}
+.fl-rows thead th {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-3);
+  background: var(--bg-2);
+  white-space: nowrap;
+}
+.fl-rows tbody tr:last-child td { border-bottom: 0; }
+.fl-rows td.mono { white-space: nowrap; }
+.fl-rows tbody tr:hover td { background: oklch(0.955 0.012 88 / 0.03); }
+.fl-rows td .sub { color: var(--text-3); font-size: 12px; }
+.fl-open { white-space: nowrap; text-align: right; }
+.fl-open a { font-size: 13px; }
+.fl-more { margin: 14px 0 0; text-align: center; }
+
+@media (max-width: 720px) {
+  .fl-count { margin-left: 0; width: 100%; }
+  .fl-wrap { border: 0; background: none; overflow: visible; }
+  .fl-rows, .fl-rows tbody, .fl-rows tr, .fl-rows td { display: block; width: 100%; }
+  .fl-rows thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .fl-rows tr {
+    margin: 0 0 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--rule-soft);
+    border-radius: var(--r);
+    background: var(--surface);
+  }
+  .fl-rows td {
+    display: grid;
+    grid-template-columns: 8.5em minmax(0, 1fr);
+    gap: 8px;
+    padding: 3px 0;
+    border: 0;
+    text-align: left !important;
+  }
+  .fl-rows td[data-label]::before {
+    content: attr(data-label);
+    font-family: var(--sans);
+    color: var(--text-3);
+    font-size: 12px;
+  }
+  .fl-rows td.fl-open { display: block; padding-top: 8px; }
+  .fl-rows tbody tr:hover td { background: none; }
+}
+
+/* /method: one block per rule, anchored */
+.method__flag { scroll-margin-top: 80px; }
+.method__flag dd { margin-left: 0; }
+.method__flag dd p { margin: 2px 0 4px; }
+
+/* member trades table: the badge cell and the selected row */
+.vtable .tradetable { min-width: 1040px; }
+.vtable .tradetable th.trades__aroundh { width: 128px; text-align: right; }
+.vtable .tradetable.has-later { min-width: 1344px; }
+/* The badge column stays in view while the table scrolls sideways (phones): pinned to the right edge. */
+.vtable .tradetable th.trades__aroundh,
+.vtable tbody td.trades__around {
+  position: sticky;
+  right: 0;
+  padding-left: 6px;
+  padding-right: 6px;
+  text-align: right;
+  overflow: visible;
+  box-shadow: -1px 0 0 var(--rule-soft);
+}
+.vtable tbody td.trades__around { background: var(--surface); z-index: 0; }
+.vtable .tradetable th.trades__aroundh { z-index: 2; }
+.aroundbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 6px 0 4px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--text-3);
+  font: inherit;
+  cursor: pointer;
+}
+.aroundbtn:hover,
+.aroundbtn[aria-expanded="true"] { border-color: var(--rule); color: var(--text); background: var(--surface-2); }
+.aroundbtn svg { transition: transform 160ms cubic-bezier(0.16, 1, 0.3, 1); }
+.aroundbtn[aria-expanded="true"] svg.chev { transform: rotate(90deg); }
+.vtable tbody tr.is-active td { background: oklch(0.955 0.012 88 / 0.07); }
+.trades__flagline {
+  margin: 0 0 10px;
+  max-width: 90ch;
+  font-size: 13.5px;
+  color: var(--text-2);
+}
+.trades__flagline .flagchip { margin-right: 2px; }
+.trades__flagline .stmt { color: var(--text-3); }
+@media (prefers-reduced-motion: reduce) { .aroundbtn svg { transition: none; } }
+@media print {
+  .trades__around, .trades__aroundh { display: none; }
+  .flagchip { border-color: #111; color: #111; }
+}

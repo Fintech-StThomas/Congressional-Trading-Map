@@ -46,3 +46,12 @@ def test_validator_checks_the_reviewed_count(monkeypatch) -> None:
     meta["exclusions"][reviewed_rows.KEY]["by_reason"]["voided"]["rows"] += 1
     meta["reports"]["fec"]["exclusions"] = meta["exclusions"]
     assert rule in run_check(meta, rev).errors
+
+
+def test_member_links_are_saved_for_the_lda_stage(monkeypatch) -> None:
+    from pipeline.fec import load
+    con, _ = setup(monkeypatch)
+    load.save_links(con)
+    for t in load.LINK_TABLES:
+        assert con.execute(f"SELECT count(*) FROM {t}_saved").fetchone() == con.execute(f"SELECT count(*) FROM {t}").fetchone()
+    assert ("C00492785", "C001098") in con.execute("SELECT CMTE_ID, bioguide FROM auth_member_saved").fetchall()

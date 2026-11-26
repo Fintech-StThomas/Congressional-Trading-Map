@@ -1,9 +1,11 @@
 """Assemble every plug-in source into the site files (docs/data-dictionary.md, "Files in web/public/data/").
 
-Reads pipeline/build/{spine.json, trades_resolved.parquet, edges/*.jsonl, orgs/*.jsonl, sources/*.json}. Writes
-every file in web/public/data/ except the holdings files (carried over), into a staging directory that is then
-swapped into place. Steps: load plug-ins -> index edges by member and org -> cases -> member files (written as they
-are built, so they are not all held in memory) -> org shards -> summary files (incl. delays.json) -> meta.json -> swap.
+Reads pipeline/build/{spine.json, trades_resolved.parquet, edges/*.jsonl, orgs/*.jsonl, sources/*.json} and, when
+present, sec_events.json (SEC 8-K events, shown as context on org files). Writes every file in
+web/public/data/ except the holdings files (carried over), into a staging directory that is then swapped into place.
+Steps: load plug-ins -> index edges by member and org -> cases -> review flags -> member files (written as they are
+built, so they are not all held in memory) -> org shards (with SEC 8-K events, sec_events/window.py) -> summary files
+(incl. delays.json, flags.json) -> meta.json -> swap.
 """
 from __future__ import annotations
 
@@ -16,15 +18,18 @@ import pyarrow.parquet as pq
 from .. import config
 from ..config import BOARD_EDGES, FORMER_MEMBER_LEDGER_ROWS, LEDGER_ONLY_TYPES, MONEY_EDGES_PER_MEMBER, MONEY_MEMBERS_PER_ORG
 from ..contract import Case, Edge, Trade
-from ..util import BUILD, PORTRAITS, print_table, read_json, utc_now, write_json
+from ..util import BUILD, PORTRAITS, dumps, print_table, read_json, utc_now, write_json
 from .budget import ledger_totals, member_end, member_ledger, org_ties, split_member_edges
 from .cases import find_cases
 from .delays import build_delays
 from .finance import load_campaign_finance
+from .flags import compute as compute_flags, load_inputs as flag_inputs
+from .flags_out import flags_file, flags_meta
 from .members import board_order, coverage, node_info, trade_file, trade_summary
 from .orgs import SplitStats, org_index, party_split, shard
 from .plugins import attach_evidence, load_edges, load_orgs, load_sources
 from .publish import git_commit, staging_dir, swap_into_place
+from ..sec_events import window as sec_window
 from .wall import wall_rows, wall_years
 
 
@@ -92,6 +97,9 @@ def run() -> None:
     full_pairs = {(mid, e["id"]) for mid, es in full.items() for e in es}
     full_ids = {eid for _, eid in full_pairs}
     attach_evidence(edges, full_ids, set(spine), orgs, set(sources))
+    # Review flags on counted trades only (docs/review-flags.md); recomputed every run.
+    flag_in = flag_inputs(spine, orgs, edges, {t["org"] for t in trades if t["org"]})
+    review = compute_flags(trades, flag_in)
 
     staging = staging_dir()
     summaries: dict[str, dict[str, Any]] = {}
@@ -114,28 +122,37 @@ def run() -> None:
         rows = sorted(by_member_listed.get(mid, []), key=lambda t: (t["date"] or date.min, t["id"]), reverse=True)
         ts = [t for t in rows if not t["deleted"]]
         if rows:
-            write_json(staging / "trades" / f"{mid}.json", trade_file(rows, set(used_orgs)))
+            write_json(staging / "trades" / f"{mid}.json", {**trade_file(rows, set(used_orgs)), **review.trade_fields(mid)})
         refs = {end["id"]: end for e in full[mid] for end in (e["from"], e["to"]) if end["id"] != mid}
         write_json(staging / "members" / f"{mid}.json", {
             "member": {**summary, "terms": m["terms"], "committees": m["committees"], "fec_ids": m["fec_ids"]},
             "edges": full[mid], "board": [e["id"] for e in sorted(full[mid], key=lambda e: board_order(e, case_edges))[:BOARD_EDGES]],
             "nodes": {k: node_info(v, orgs, spine) for k, v in sorted(refs.items())},
             "ledger": member_ledger(mid, shown), "ledger_totals": ledger_totals(rest + context),
-            "trade_summary": trade_summary(ts, len(rows)),
+            "trade_summary": {**trade_summary(ts, len(rows)), "flags": review.met(mid)},
             "cases": member_cases.get(mid, []), "campaign_finance": finance.get(mid),
             "coverage": coverage(m, trades_report["coverage"], failed[mid], money_cov, this_year)})
 
+    # SEC 8-K events near each company's dated counted trades (optional fields; absent without SEC coverage).
+    sec, trade_days = sec_window.load(), defaultdict(list)
+    for t in trades:
+        if t["org"] and t["date"]:
+            trade_days[t["org"]].append(t["date"])
+    sec_bytes = 0
     shards: dict[str, dict[str, Any]] = defaultdict(dict)
     for o, es in org_edges.items():
         ties, rest = org_ties(es, full_pairs)
         chambers = Counter(spine[mid]["chamber"] for mid in {member_end(e) for e in es})
+        extra = sec_window.org_fields(sec, o, trade_days.get(o, []))
+        sec_bytes += len(dumps(extra)) - 2 + (1 if extra else 0)   # the fields plus their separating comma
         shards[shard(o)][o] = {"org": used_orgs[o], "ties": ties, "ledger_totals": ledger_totals(rest),
                                "chambers": {ch: chambers[ch] for ch in ("rep", "sen")},
-                               "years": [min(int(e["first"][:4]) for e in es), max(int(e["last"][:4]) for e in es)]}
+                               "years": [min(int(e["first"][:4]) for e in es), max(int(e["last"][:4]) for e in es)], **extra}
     for k, v in sorted(shards.items()):
         write_json(staging / "orgs" / f"{k}.json", dict(sorted(v.items())))
     n_shards = len(shards)
     del shards
+    print(f"org files: SEC 8-K fields {sec_bytes / 1e6:.2f} MB" if sec else "org files: no sec_events.json, no SEC fields")
 
     states: dict[str, list[str]] = defaultdict(list)
     current = sorted((s for s in summaries.values() if s["current"]),
@@ -163,7 +180,7 @@ def run() -> None:
             "trades_with_unmatched_ticker": reports.get("sec", {}).get("trades_unmatched_ticker"),
             "edges_dropped_at_assembly": edge_report["edges_dropped"],
         },
-        "exclusions": merged_exclusions(reports),
+        "exclusions": merged_exclusions(reports), "flags": flags_meta(review),
         "assembly": {**edge_report, "org_files": org_files, "party_split": split_report},
         "coverage_notes": [
             f"House trades: the dataset's House filings begin {trades_report['coverage']['rep']['first_filing']}; "
@@ -181,7 +198,7 @@ def run() -> None:
         ("board.json", {"states": dict(sorted(states.items()))}),
         ("member-ties.json", member_ties), ("cases.json", cases),
         ("wall.json", wall_rows(summaries, member_edges)), ("org-index.json", org_index(used_orgs, org_edges, spine)),
-        ("delays.json", build_delays(trades)),
+        ("delays.json", build_delays(trades)), ("flags.json", flags_file(review, date.fromisoformat(meta["build"]["time"][:10]), len(flag_in.committee_sectors))),
         ("wall-years.json", wall_years(spine, member_edges, member_cases, by_member_trades, this_year, trade_first)),
     ):
         write_json(staging / rel, obj)

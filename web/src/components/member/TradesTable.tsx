@@ -10,6 +10,7 @@ import { decodeTradeFile, type TradeRow } from "@/lib/data/decode";
 import Link from "next/link";
 import { amountText, count, date, days, NOT_DISCLOSED } from "@/lib/format";
 import { DELAYS, VIEW } from "@/lib/copy";
+import { FLAGS } from "@/lib/copy-flags";
 import { AMEND, DELAYS_AMEND } from "@/lib/copy-amend";
 import { LaterCell, type Later } from "./LaterCell";
 import { readAmendments } from "@/lib/domain/amendments";
@@ -20,30 +21,18 @@ import { delayGroupFromTrades, overCount } from "@/lib/domain/delays";
 import { getJSON } from "@/lib/data/fetch";
 import { delaysHref, safeHttpUrl } from "@/lib/urls";
 import { ExternalIcon } from "@/components/shared/ExternalIcon";
+import "@/styles/flags.css";
+import { ACTION_LABEL, CLASS_LABEL, OWNER_LABEL, cmp } from "./tradeLabels";
+import type { FlagMap, TradeFlagInfo } from "./memberTrades";
+import { AroundCell, FlagSummary, useLinkedTrade } from "./TradeFlags";
+import { TradeAround } from "./TradeAround";
 
-type Props = { initial: TradeRow[]; total: number; fullUrl: string; later?: Later; /** rows in the file, including those not counted (defaults to `total`) */ listed?: number };
+type Props = { initial: TradeRow[]; total: number; fullUrl: string; later?: Later; /** rows in the file, including those not counted (defaults to `total`) */ listed?: number; /** review flags and what "Around this trade" needs */ flags?: TradeFlagInfo };
 type Key = "date" | "available" | "lag_days" | "owner" | "action" | "asset" | "ticker" | "low";
 
 const ROW = 44; // px, fixed so the list can be windowed
 const VIEW_ROWS = 14;
 const OVERSCAN = 8;
-
-const OWNER_LABEL: Record<Trade["owner"], string> = {
-  self: "Self", spouse: "Spouse", joint: "Joint", dependent: "Dependent", unspecified: "Unspecified",
-};
-const ACTION_LABEL: Record<Trade["action"], string> = { buy: "Buy", sell: "Sell", exchange: "Exchange", other: "Other" };
-const CLASS_LABEL: Record<Trade["asset_class"], string> = {
-  stock: "Stock", option: "Option", fund: "Fund", bond: "Bond", crypto: "Crypto", private: "Private", other: "Other", unknown: "Unknown",
-};
-
-function cmp(a: TradeRow, b: TradeRow, k: Key): number {
-  const va = a[k], vb = b[k];
-  if (va == null && vb == null) return 0;
-  if (va == null) return 1;
-  if (vb == null) return -1;
-  if (typeof va === "number" && typeof vb === "number") return va - vb;
-  return String(va).localeCompare(String(vb));
-}
 
 function Nd({ text = NOT_DISCLOSED }: { text?: string }) {
   return <span className="nd">{text}</span>;
@@ -72,7 +61,7 @@ const COLS: { k: Key; label: string; cls?: string }[] = [
  * Every periodic transaction report row, sortable and filterable. The list is
  * windowed: only the rows in view are in the DOM, so tens of thousands stay fast.
  */
-export function TradesTable({ initial, total, fullUrl, later: laterProp, listed }: Props) {
+export function TradesTable({ initial, total, fullUrl, later: laterProp, listed, flags: info }: Props) {
   const rowsInFile = listed ?? total;
   const [trades, setTrades] = useState(initial);
   const [later, setLater] = useState<Later>(laterProp ?? { map: {}, filings: {}, marked: false });
@@ -84,6 +73,9 @@ export function TradesTable({ initial, total, fullUrl, later: laterProp, listed 
   const [late, setLate] = useState(false);
   const [undatedFor, setUndatedFor] = useState<string | null>(null);
   const [top, setTop] = useState(0);
+  const [flagMap, setFlagMap] = useState<FlagMap>(info?.byTrade ?? {});
+  const [selected, setSelected] = useState<string | null>(null);
+  const linked = useLinkedTrade();
   const view = useView();
   // "Show only the undated" holds for the year window it was chosen under, and lapses when the window changes.
   const yearsKey = view.years ? view.years.join("-") : "";
@@ -98,6 +90,7 @@ export function TradesTable({ initial, total, fullUrl, later: laterProp, listed 
         if (!live) return;
         setTrades(decodeTradeFile(file, undefined, { listed: true }));
         setLater({ map: readAmendments(file), filings: file.filings ?? {}, marked: file.not_counted !== undefined });
+        if (file.flags) setFlagMap(file.flags);
         setStatus("ok");
       })
       .catch(() => live && setStatus("error"));
@@ -142,6 +135,15 @@ export function TradesTable({ initial, total, fullUrl, later: laterProp, listed 
   useEffect(() => {
     scroller.current?.scrollTo({ top: 0 });
   }, [year, owner, cls, late, sort, view.years, view.basis, view.assume, undatedOnly]);
+  // A link from /flags (?t=<trade id>): once every row is loaded, scroll that row into view and open its panel.
+  useEffect(() => {
+    const at = linked && status === "ok" ? rows.findIndex((t) => t.id === linked) : -1;
+    if (at < 0) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- a one-time jump to a linked row
+    setSelected(linked);
+    scroller.current?.scrollTo({ top: Math.max(0, (at - 2) * ROW) });
+  }, [linked, status]); // eslint-disable-line react-hooks/exhaustive-deps
+  const picked = selected ? trades.find((t) => t.id === selected) ?? null : null;
 
   if (!total && !rowsInFile) return <p className="empty">No periodic transaction reports on file for this member&rsquo;s household. Reports exist only from July 2012.</p>;
 
@@ -170,6 +172,7 @@ export function TradesTable({ initial, total, fullUrl, later: laterProp, listed 
         </p>
       )}
       {counted.length < trades.length && <p className="view-undated" data-testid="trades-leftout">{VIEW.leftOut(trades.length - counted.length)}</p>}
+      {info && <FlagSummary info={info} />}
       <div className="filters">
         <label>
           <span>Year</span>
@@ -241,17 +244,18 @@ export function TradesTable({ initial, total, fullUrl, later: laterProp, listed 
                 );
               })}
               {showLater && <th scope="col" className="trades__laterh">{AMEND.column}</th>}
+              {info && <th scope="col" className="trades__aroundh">{FLAGS.aroundColumn}</th>}
             </tr>
           </thead>
           <tbody>
-            {first > 0 && <tr className="vspacer" style={{ height: first * ROW }} aria-hidden="true"><td colSpan={showLater ? 9 : 8} /></tr>}
+            {first > 0 && <tr className="vspacer" style={{ height: first * ROW }} aria-hidden="true"><td colSpan={8 + (showLater ? 1 : 0) + (info ? 1 : 0)} /></tr>}
             {slice.map((t, i) => (
-              <tr key={t.id} aria-rowindex={first + i + 2} className={t.notCounted ? "is-notcounted" : undefined} title={t.notCounted ? AMEND.notCounted : undefined}>
+              <tr key={t.id} aria-rowindex={first + i + 2} className={[t.notCounted ? "is-notcounted" : "", selected === t.id ? "is-active" : ""].join(" ").trim() || undefined} title={t.notCounted ? AMEND.notCounted : undefined}>
                 <td className="mono">{t.date ? date(t.date) : <Nd />}</td>
                 <td className="mono">{t.available ? date(t.available) : <Nd />}</td>
                 <td className="num mono">
                   {t.lag_days != null ? <>{count(t.lag_days)} d</> : t.lagWithheld === "amended_unmatched" ? <span className="nd" title={AMEND.unmatched}>{AMEND.unmatchedShort}</span> : t.date && t.available && t.amended ? <span className="nd" title={AMEND.dateCorrectedTitle}>{AMEND.dateCorrectedShort}</span> : <Nd />}
-                  {t.late && !t.notCounted && <span className="late" title={DELAYS.overTitle}>{DELAYS.overChip}</span>}
+                  {t.late && !t.notCounted && <span className="late" title={DELAYS.overTitle} aria-label={DELAYS.overTitle}>{DELAYS.overChip}</span>}
                 </td>
                 <td className={`owner owner--${t.owner}`}>{t.owner === "unspecified" ? <Nd text="not stated" /> : OWNER_LABEL[t.owner]}</td>
                 <td>
@@ -277,13 +281,15 @@ export function TradesTable({ initial, total, fullUrl, later: laterProp, listed 
                   {amountText({ low: t.low, high: t.high, exact: null }) ?? <Nd />}
                 </td>
                 {showLater && <td className="trades__later">{t.amended && <LaterCell t={t} later={later} />}</td>}
+                {info && <AroundCell t={t} flags={flagMap[t.id]} info={info} open={selected === t.id} onToggle={() => setSelected(selected === t.id ? null : t.id)} />}
               </tr>
             ))}
-            {last < rows.length && <tr className="vspacer" style={{ height: (rows.length - last) * ROW }} aria-hidden="true"><td colSpan={showLater ? 9 : 8} /></tr>}
+            {last < rows.length && <tr className="vspacer" style={{ height: (rows.length - last) * ROW }} aria-hidden="true"><td colSpan={8 + (showLater ? 1 : 0) + (info ? 1 : 0)} /></tr>}
           </tbody>
         </table>
         {rows.length === 0 && status !== "loading" && <p className="empty">No trades match these filters.</p>}
       </div>
+      {info && picked && <TradeAround key={picked.id} t={picked} info={info} flags={flagMap[picked.id]} onClose={() => setSelected(null)} />}
     </div>
   );
 }

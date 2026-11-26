@@ -14,6 +14,8 @@ import { LineSample } from "@/components/shared/LineSample";
 import { Exclusions } from "@/components/method/Exclusions";
 import { METHOD_AMEND } from "@/lib/copy-amend";
 import { siteTerms, typesInBuild } from "@/lib/domain/method-build";
+import { MethodFlags } from "@/components/method/MethodFlags";
+import { readFlags } from "@/lib/domain/flags";
 
 export const metadata: Metadata = {
   title: "Method and sources",
@@ -172,6 +174,8 @@ export default async function MethodPage() {
           hatched R), never as a colour.
         </p>
       </section>
+
+      <MethodFlags meta={meta} flags={readFlags(await data.readData<unknown>("flags.json", null))} />
 
       <section className="section" aria-labelledby="limits-h">
         <h2 id="limits-h">Known limits</h2>

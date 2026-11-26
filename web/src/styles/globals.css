@@ -41,19 +41,19 @@ main {
 }
 
 ::selection {
-  background: oklch(0.62 0.205 28 / 0.42);
+  background: oklch(0.79 0.011 80 / 0.32); /* chalk, not the tie red */
   color: var(--text);
 }
 
-a {
+a { /* chalk underline, brighter and thicker on hover; never the red, which means a tie */
   color: var(--text);
   text-decoration-line: underline;
-  text-decoration-color: oklch(0.62 0.205 28 / 0.7);
+  text-decoration-color: var(--text-3);
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;
 }
 a:hover {
-  text-decoration-color: var(--red-hot);
+  text-decoration-color: var(--text);
   text-decoration-thickness: 2px;
 }
 
@@ -407,7 +407,7 @@ button {
   padding: 0;
   color: var(--text);
   text-decoration: underline;
-  text-decoration-color: oklch(0.62 0.205 28 / 0.7);
+  text-decoration-color: var(--text-3);
   text-underline-offset: 3px;
   cursor: pointer;
   font-size: inherit;

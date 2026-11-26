@@ -61,6 +61,21 @@ export function memberHref(id: string): string {
   return `/m/${id}`;
 }
 
+/** One trade row in a member's trades table: "/m/K000389?t=<trade id>#trades" (the table scrolls to it and opens its context). */
+export function memberTradeHref(member: string, tradeId: string): string {
+  return `/m/${member}?t=${encodeURIComponent(tradeId)}#trades`;
+}
+
+/** The review flags page. */
+export function flagsHref(): string {
+  return "/flags";
+}
+
+/** A rule's section on /method: "/method#flag-pile_on". */
+export function flagMethodHref(rule: string): string {
+  return `/method#flag-${rule}`;
+}
+
 /** The site-wide disclosure-timing page. */
 export function delaysHref(): string {
   return "/delays";

@@ -17,7 +17,7 @@ import { CASE_NOT_SHOWN, CORRECTIONS, caseRuleText, RELEASE, SITE, TIMING } from
 import { CASES_UI } from "@/lib/copy-ui";
 import type { Edge, OrgSummary } from "@/lib/types";
 import { TieSection } from "@/components/member/TieSection";
-import { memberTrades } from "@/components/member/memberTrades";
+import { flagInfo, memberTrades } from "@/components/member/memberTrades";
 import { TradesTable } from "@/components/member/TradesTable";
 import { amendmentsFor, hasListedTrades } from "@/lib/domain/amendments";
 import { LedgerTable } from "@/components/member/LedgerTable";
@@ -251,7 +251,7 @@ export async function MemberPageView({ data, id, pinned }: { data: Data; id: str
         </p>
         <CoverageNote facts={facts} scopes={["trades", "owner", "values"]} label="Coverage for trades" testId="coverage-trades" />
         <ErrorBoundary label="trades table">
-          <TradesTable initial={initialTrades} total={nTrades} fullUrl={data.fileUrl(`trades/${m.id}.json`)} later={amendmentsFor(tradeFile, initialTrades.map((t) => t.id))} listed={listedN} />
+          <TradesTable initial={initialTrades} total={nTrades} fullUrl={data.fileUrl(`trades/${m.id}.json`)} later={amendmentsFor(tradeFile, initialTrades.map((t) => t.id))} listed={listedN} flags={flagInfo(tradeFile, file, memberIndex, orgName, initialTrades, meta) ?? undefined} />
         </ErrorBoundary>
         {nTrades > countedInitial.length && <p className="print-only">The full list of {count(nTrades)} trades is on the website; this dossier prints the {countedInitial.length} most recent.</p>}
       </section>

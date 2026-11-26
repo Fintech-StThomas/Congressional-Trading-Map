@@ -2,7 +2,7 @@
 # Counts only go down; remove a line when its file is under 300. Regenerate: check_lines.py --write-allow
 1743 web/src/styles/board.css
 1244 web/src/styles/pages.css
-1022 docs/data-dictionary.md
+1020 docs/data-dictionary.md
 945 web/tests/smoke.test.mjs
 892 web/src/styles/reach.css
 888 web/src/lib/copy.ts

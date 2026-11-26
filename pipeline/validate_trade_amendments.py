@@ -30,6 +30,7 @@ from .trades import available_date
 from .util import CACHE
 
 FILE_KEYS = {"cols", "rows", "filings", "amendments", "lag_withheld", "not_counted"}
+FLAG_KEYS = {"flags", "flags_not_evaluated"}   # added by the assembler; required and checked by validate_flags.py
 Files = dict[str, dict[str, Any]]                        # member id -> trades/<id>.json ({"rows": []} when none)
 __all__ = ["check_folding", "check_trade_file", "counted_rows", "lag_null_is_valid"]
 AMENDMENT_KEYS = {"id", "doc", "status", "available"}
@@ -37,7 +38,7 @@ Later = dict[str, dict[str, list[dict[str, Any]]]]      # member id -> TradeFile
 
 
 def check_trade_file(c: Any, tf: dict[str, Any], where: str) -> None:
-    c.check(set(tf) == FILE_KEYS, "schema", f"{where} keys")
+    c.check(set(tf) - FLAG_KEYS == FILE_KEYS, "schema", f"{where} keys")
     later = tf.get("amendments")
     c.check(isinstance(later, dict), "schema", f"{where}.amendments")
     if not isinstance(later, dict):
